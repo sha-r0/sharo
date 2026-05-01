@@ -24,3 +24,44 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.input {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+}
+
+.chip {
+  @apply px-3 py-1 rounded-full bg-gray-100 text-gray-700;
+}
+
+.chip.blue {
+  @apply bg-blue-50 text-blue-600;
+}
+
+.chip.orange {
+  @apply bg-orange-50 text-orange-600;
+}
+
+.chip.green {
+  @apply bg-green-50 text-green-600;
+}
+
+/* 🔥 Hide scrollbar but keep scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE */
+  scrollbar-width: none;     /* Firefox */
+}

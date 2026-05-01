@@ -1,111 +1,196 @@
 "use client";
+
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("employee");
+  const router = useRouter();
+
+  const [form, setForm] = useState({
+    corporateId: "",
+    employeeId: "",
+    password: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (!form.corporateId || !form.employeeId || !form.password) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // 🔥 Query Companies collection
+      const q = query(
+        collection(db, "Companies"),
+        where("corporateId", "==", form.corporateId),
+        where("employeeId", "==", form.employeeId)
+      );
+
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        alert("Invalid Corporate ID or Employee ID");
+        return;
+      }
+
+      const user = snapshot.docs[0].data();
+
+      // 🔐 Password check
+      if (user.password !== form.password) {
+        alert("Wrong password");
+        return;
+      }
+
+      // 🚫 Service check
+      if (user.serviceStatus !== "active") {
+        alert("Account is not active");
+        return;
+      }
+
+      // 🚫 Payment check (IMPORTANT)
+      if (user.paymentStatus !== "paid") {
+        alert("Payment not completed");
+        return;
+      }
+
+      const docSnap = snapshot.docs[0];
+
+      // 💾 Save session
+      localStorage.setItem(
+        "adminUser",
+        JSON.stringify({
+          companyDocId: docSnap.id,
+          corporateId: user.corporateId,
+          employeeId: user.employeeId,
+          companyName: user.companyName,
+        })
+      );
+
+      // ensure storage completes
+      setTimeout(() => {
+        router.push("/manager");
+      }, 50);
+
+    } catch (err) {
+      console.error(err);
+      alert("Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <main className="bg-black text-white min-h-screen px-6 md:px-16 py-10">
+    <main className="min-h-screen bg-gray-50 flex flex-col">
 
       {/* HEADER */}
-      <header className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">SHARO</h1>
+      <header className="flex justify-between items-center px-8 py-5 bg-white border-b">
+        <h1 className="text-xl font-semibold text-gray-800">SHARO</h1>
 
         <a
           href="tel:+919811880794"
-          className="border border-white/30 px-5 py-2 rounded-xl hover:bg-white/10 transition"
+          className="text-sm border px-4 py-2 rounded-lg hover:bg-gray-100"
         >
-          📞 Talk to the Team
+          Talk to Team
         </a>
       </header>
 
-      {/* HERO */}
-      <section className="flex flex-col lg:flex-row justify-between items-center mt-16 gap-10">
+      {/* MAIN */}
+      <section className="flex flex-1 items-center justify-center px-6">
 
-        {/* LEFT */}
-        <div className="max-w-xl space-y-6">
+        <div className="grid md:grid-cols-2 gap-10 w-full max-w-6xl items-center">
 
-          <div className="px-4 py-2 rounded-full bg-gradient-to-r from-black via-gray-900 to-purple-900 w-fit">
-            🚀 Empowering Global Startup Growth
-          </div>
+          {/* LEFT */}
+          <div className="space-y-6">
+            <h1 className="text-4xl font-semibold text-gray-800 leading-tight">
+              Manage your company <br /> operations efficiently
+            </h1>
 
-          <h1 className="text-4xl md:text-6xl font-extrabold leading-tight">
-            FUTURE - DRIVEN SOFTWARE
-            <br />
-            <span className="text-purple-500">{`{DEVELOPMENT}`}</span>
-          </h1>
-
-          <p className="text-gray-400">
-            We craft high-quality digital solutions that help businesses grow,
-            scale, and innovate.
-          </p>
-
-          <div className="flex gap-4">
-            <button className="bg-purple-600 px-6 py-3 rounded-lg font-semibold hover:bg-purple-700">
-              Signup (New Company)
-            </button>
-
-            <button className="border border-white/30 px-6 py-3 rounded-lg hover:bg-white/10">
-              View Features
-            </button>
-          </div>
-        </div>
-
-        {/* RIGHT - LOGIN CARD */}
-        <div className="w-full max-w-md bg-gradient-to-b from-[#231540] to-black p-6 rounded-xl border border-white/20 shadow-2xl">
-
-          {/* TABS */}
-          <div className="flex mb-6 bg-white/10 rounded-lg overflow-hidden">
-            <button
-              onClick={() => setActiveTab("employee")}
-              className={`flex-1 py-2 text-sm ${
-                activeTab === "employee"
-                  ? "bg-purple-600"
-                  : "hover:bg-white/10"
-              }`}
-            >
-              Employee Login
-            </button>
-
-            <button
-              onClick={() => setActiveTab("admin")}
-              className={`flex-1 py-2 text-sm ${
-                activeTab === "admin"
-                  ? "bg-purple-600"
-                  : "hover:bg-white/10"
-              }`}
-            >
-              Admin / Manager
-            </button>
-          </div>
-
-          {/* FORM */}
-          <div className="space-y-4">
-
-            <input
-              type="email"
-              placeholder="Email"
-              className="w-full p-3 rounded-lg bg-black border border-white/20 focus:outline-none"
-            />
-
-            <input
-              type="password"
-              placeholder="Password"
-              className="w-full p-3 rounded-lg bg-black border border-white/20 focus:outline-none"
-            />
-
-            <button className="w-full bg-purple-600 py-3 rounded-lg font-semibold hover:bg-purple-700">
-              {activeTab === "employee"
-                ? "Login as Employee"
-                : "Login as Admin"}
-            </button>
-
-            <p className="text-xs text-gray-400 text-center">
-              {activeTab === "employee"
-                ? "Access your tasks & work logs"
-                : "Manage company, employees & finance"}
+            <p className="text-gray-500">
+              SHARO helps you manage employees, attendance, and business operations.
             </p>
+
+            <div className="flex gap-4">
+              <Link
+                href="/signup"
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg"
+              >
+                Create Company
+              </Link>
+            </div>
           </div>
+
+          {/* LOGIN CARD */}
+          <div className="bg-white p-8 rounded-xl shadow-sm border w-full max-w-md">
+
+            {/* TABS */}
+            <div className="flex mb-6 border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setActiveTab("employee")}
+                className={`flex-1 py-2 ${activeTab === "employee"
+                    ? "bg-blue-600 text-white"
+                    : "hover:bg-gray-100"
+                  }`}
+              >
+                Employee
+              </button>
+
+              <button
+                onClick={() => setActiveTab("admin")}
+                className={`flex-1 py-2 ${activeTab === "admin"
+                    ? "bg-blue-600 text-white"
+                    : "hover:bg-gray-100"
+                  }`}
+              >
+                Admin / Manager
+              </button>
+            </div>
+
+            {/* FORM */}
+            <div className="space-y-4">
+
+              <input
+                placeholder="Corporate ID"
+                className="w-full p-3 border rounded-lg"
+                onChange={(e) =>
+                  setForm({ ...form, corporateId: e.target.value })
+                }
+              />
+
+              <input
+                placeholder="Employee ID"
+                className="w-full p-3 border rounded-lg"
+                onChange={(e) =>
+                  setForm({ ...form, employeeId: e.target.value })
+                }
+              />
+
+              <input
+                type="password"
+                placeholder="Password"
+                className="w-full p-3 border rounded-lg"
+                onChange={(e) =>
+                  setForm({ ...form, password: e.target.value })
+                }
+              />
+
+              <button
+                onClick={handleLogin}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg"
+              >
+                {loading ? "Checking..." : "Login"}
+              </button>
+
+            </div>
+          </div>
+
         </div>
       </section>
     </main>
