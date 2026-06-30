@@ -5,10 +5,7 @@ let cashfree;
 async function initializeCashfree() {
   if (!cashfree) {
     cashfree = await load({
-      mode:
-        process.env.NEXT_PUBLIC_CASHFREE_ENV === "PRODUCTION"
-          ? "production"
-          : "sandbox",
+      mode: "production",
     });
   }
 
@@ -25,7 +22,11 @@ export async function createOrder(formData) {
     body: JSON.stringify(formData),
   });
 
+  console.log(response.data);
+
   const result = await response.json();
+
+  console.log("Create Order:", result);
 
   if (!result.success) {
     throw new Error(result.message);
@@ -36,6 +37,8 @@ export async function createOrder(formData) {
 
 // Open Cashfree Checkout
 export async function openCheckout(paymentSessionId) {
+  console.log("Payment Session:", paymentSessionId);
+
   const cashfree = await initializeCashfree();
 
   return cashfree.checkout({
