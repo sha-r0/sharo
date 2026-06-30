@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-export default function PaymentSuccess() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -21,7 +21,7 @@ export default function PaymentSuccess() {
       }
 
       try {
-        const response = await fetch("/api/payment/verify", {
+        const response = await fetch("/api/cashfree/verify-payment", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -41,16 +41,14 @@ export default function PaymentSuccess() {
 
         setStatus("Payment Successful!");
 
-        // Redirect after 2 seconds
         setTimeout(() => {
           router.push("/dashboard");
         }, 2000);
 
       } catch (error) {
         console.error(error);
-        setStatus("Something went wrong.");
-      } finally {
         setLoading(false);
+        setStatus("Something went wrong.");
       }
     };
 
@@ -59,7 +57,6 @@ export default function PaymentSuccess() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-
       <div className="bg-white shadow-lg rounded-xl p-10 w-full max-w-md text-center">
 
         {loading ? (
@@ -91,7 +88,20 @@ export default function PaymentSuccess() {
         )}
 
       </div>
-
     </div>
+  );
+}
+
+export default function PaymentSuccess() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          Loading...
+        </div>
+      }
+    >
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }
