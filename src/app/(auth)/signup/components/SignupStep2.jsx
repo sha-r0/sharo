@@ -1,25 +1,31 @@
 "use client";
+
 import { useState, useEffect } from "react";
 
 export default function SignupStep2({ next, back, data: prevData }) {
-
   const generateCorporateId = (name) => {
     if (!name) return "";
 
-    const base = name.toLowerCase().replace(/\s+/g, "");
-    const random = Math.floor(10 + Math.random() * 90); // 2 digit
+    const base = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .substring(0, 10);
 
-    return base + random;
+    const random = Math.floor(1000 + Math.random() * 9000);
+
+    return `${base}${random}`;
   };
 
   const [data, setData] = useState({
     corporateId: "",
-    employeeId: "",
+    fullName: "",
+    adminEmail: "",
+    adminPhone: "",
     password: "",
+    confirmPassword: "",
     role: "manager",
   });
 
-  // Auto generate corporate ID on load
   useEffect(() => {
     if (prevData?.companyName) {
       setData((prev) => ({
@@ -30,13 +36,37 @@ export default function SignupStep2({ next, back, data: prevData }) {
   }, [prevData]);
 
   const handleNext = () => {
-    if (!data.corporateId || !data.employeeId || !data.password) {
+    if (
+      !data.corporateId ||
+      !data.fullName ||
+      !data.adminEmail ||
+      !data.adminPhone ||
+      !data.password ||
+      !data.confirmPassword
+    ) {
       alert("Please fill all fields");
       return;
     }
 
-    if (data.password.length < 4) {
-      alert("Password must be at least 4 characters");
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(data.adminEmail)) {
+      alert("Enter a valid email address");
+      return;
+    }
+
+    if (data.adminPhone.length !== 10) {
+      alert("Enter a valid 10 digit mobile number");
+      return;
+    }
+
+    if (data.password.length < 6) {
+      alert("Password must be at least 6 characters");
+      return;
+    }
+
+    if (data.password !== data.confirmPassword) {
+      alert("Passwords do not match");
       return;
     }
 
@@ -46,68 +76,113 @@ export default function SignupStep2({ next, back, data: prevData }) {
   return (
     <div className="space-y-6">
 
-      {/* HEADING */}
+      {/* Heading */}
+
       <div>
         <h2 className="text-xl font-semibold text-gray-800">
-          Admin Login Setup
+          Administrator Details
         </h2>
+
         <p className="text-sm text-gray-500">
-          Create your admin credentials to manage your company
+          Create the owner account for your company.
         </p>
       </div>
 
-      {/* FORM */}
+      {/* Form */}
+
       <div className="space-y-4">
 
-        {/* CORPORATE ID */}
+        {/* Corporate ID */}
+
         <input
           type="text"
-          placeholder="Corporate ID"
-          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           value={data.corporateId}
-          onChange={(e) =>
-            setData({ ...data, corporateId: e.target.value.toLowerCase() })
-          }
+          readOnly
+          className="w-full p-3 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
         />
 
-        {/* EMPLOYEE ID */}
+        {/* Full Name */}
+
         <input
           type="text"
-          placeholder="Employee ID (e.g. admin01)"
+          placeholder="Full Name"
           className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={data.employeeId}
+          value={data.fullName}
           onChange={(e) =>
-            setData({ ...data, employeeId: e.target.value })
+            setData({
+              ...data,
+              fullName: e.target.value,
+            })
           }
         />
 
-        {/* PASSWORD */}
+        {/* Work Email */}
+
+        <input
+          type="email"
+          placeholder="Work Email"
+          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={data.adminEmail}
+          onChange={(e) =>
+            setData({
+              ...data,
+              adminEmail: e.target.value.toLowerCase(),
+            })
+          }
+        />
+
+        {/* Mobile */}
+
+        <input
+          type="tel"
+          maxLength={10}
+          placeholder="Mobile Number"
+          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={data.adminPhone}
+          onChange={(e) =>
+            setData({
+              ...data,
+              adminPhone: e.target.value.replace(/\D/g, ""),
+            })
+          }
+        />
+
+        {/* Password */}
+
         <input
           type="password"
           placeholder="Password"
           className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           value={data.password}
           onChange={(e) =>
-            setData({ ...data, password: e.target.value })
+            setData({
+              ...data,
+              password: e.target.value,
+            })
           }
         />
 
-        {/* ROLE */}
-        <select
-          className="w-full p-3 border border-gray-300 rounded-lg"
-          value={data.role}
+        {/* Confirm Password */}
+
+        <input
+          type="password"
+          placeholder="Confirm Password"
+          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={data.confirmPassword}
           onChange={(e) =>
-            setData({ ...data, role: e.target.value })
+            setData({
+              ...data,
+              confirmPassword: e.target.value,
+            })
           }
-        >
-          <option value="manager">Manager (Default)</option>
-          {/* <option value="admin">Admin</option> */}
-        </select>
+        />
 
       </div>
 
-      {/* BUTTONS */}
+      {/* Buttons */}
+
       <div className="flex gap-3">
+
         <button
           onClick={back}
           className="w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-100"
@@ -121,7 +196,9 @@ export default function SignupStep2({ next, back, data: prevData }) {
         >
           Continue
         </button>
+
       </div>
+
     </div>
   );
 }

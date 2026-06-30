@@ -1,4 +1,5 @@
 "use client";
+
 import { useState } from "react";
 
 import SignupStep1 from "./components/SignupStep1";
@@ -10,7 +11,11 @@ export default function Signup() {
   const [formData, setFormData] = useState({});
 
   const next = (data) => {
-    setFormData((prev) => ({ ...prev, ...data }));
+    setFormData((prev) => ({
+      ...prev,
+      ...data,
+    }));
+
     setStep((prev) => prev + 1);
   };
 
@@ -19,46 +24,81 @@ export default function Signup() {
   };
 
   return (
-    <main className="bg-gray-50 min-h-screen flex items-center justify-center px-6">
+    <main className="bg-gray-50 min-h-screen py-10 px-6">
 
-      <div className="w-full max-w-xl bg-white p-8 rounded-xl border border-gray-200 shadow-sm">
+      <div className="w-full max-w-6xl mx-auto bg-white rounded-xl border border-gray-200 shadow-sm p-8">
 
-        {/* HEADER */}
-        <h1 className="text-2xl font-semibold mb-6 text-center text-gray-800">
+        {/* Header */}
+
+        <h1 className="text-3xl font-bold text-center text-gray-800">
           Create Company Account
         </h1>
 
-        {/* STEP INDICATOR */}
-        <div className="flex justify-between mb-8 text-sm text-gray-400">
-          <span className={step >= 1 ? "text-blue-600 font-medium" : ""}>
+        {/* Step Indicator */}
+
+        <div className="flex justify-between mt-8 mb-10 text-sm">
+
+          <span
+            className={
+              step >= 1
+                ? "text-blue-600 font-semibold"
+                : "text-gray-400"
+            }
+          >
             1. Company
           </span>
-          <span className={step >= 2 ? "text-blue-600 font-medium" : ""}>
+
+          <span
+            className={
+              step >= 2
+                ? "text-blue-600 font-semibold"
+                : "text-gray-400"
+            }
+          >
             2. Admin
           </span>
-          <span className={step >= 3 ? "text-blue-600 font-medium" : ""}>
+
+          <span
+            className={
+              step >= 3
+                ? "text-blue-600 font-semibold"
+                : "text-gray-400"
+            }
+          >
             3. Payment
           </span>
+
         </div>
 
-        {/* STEPS */}
-        {step === 1 && <SignupStep1 next={next} />}
+        {/* Step Content */}
+
+        {step === 1 && (
+          <div className="max-w-3xl mx-auto">
+            <SignupStep1 next={next} />
+          </div>
+        )}
 
         {step === 2 && (
-          <SignupStep2
-            next={next}
-            back={back}
-            data={formData}   // ✅ IMPORTANT FIX
-          />
+          <div className="max-w-3xl mx-auto">
+            <SignupStep2
+              next={next}
+              back={back}
+              data={formData}
+            />
+          </div>
         )}
 
         {step === 3 && (
-          <SignupStep3
-            data={formData}
-            back={back}
-          />
+          <div className="max-w-7xl mx-auto">
+            <SignupStep3
+              data={formData}
+              back={back}
+            />
+          </div>
         )}
+
       </div>
+
     </main>
   );
 }

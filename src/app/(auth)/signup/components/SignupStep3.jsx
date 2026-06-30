@@ -1,256 +1,402 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createCompany } from "../services/companyService";
+import { createOrder, openCheckout } from "../services/paymentService";
 
 export default function SignupStep3({ data, back }) {
-  const [plan, setPlan] = useState({ basic: 0, pro: 0, enterprise: 0 });
-  const [billingType, setBillingType] = useState("monthly");
-  const [duration, setDuration] = useState(1);
-  const [amount, setAmount] = useState(0);
-  const [utr, setUtr] = useState("");
-  const [showPayment, setShowPayment] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [success, setsuccess] = useState(false);
 
-  const prices = { basic: 49, pro: 59, enterprise: 99 };
+  const plans = {
+    starter: {
+      name: "Starter",
+      price: 49,
+      description: "Perfect for small teams",
+    },
 
-  // AUTO CALCULATION
-  useEffect(() => {
-    let monthlyAmount =
-      plan.basic * prices.basic +
-      plan.pro * prices.pro +
-      plan.enterprise * prices.enterprise;
+    professional: {
+      name: "Professional",
+      price: 59,
+      description: "Most Popular",
+    },
 
-    let finalAmount =
-      billingType === "yearly"
-        ? monthlyAmount * 12 * duration
-        : monthlyAmount * duration;
-
-    setAmount(finalAmount);
-  }, [plan, billingType, duration]);
-
-  // 🔥 UPI QR LINK (replace pa later)
-  const upiLink = `upi://pay?pa=9811880794@idfcfirst&pn=Sharo&am=${amount}&cu=INR`;
-
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-    upiLink
-  )}`;
-
-  const handleNext = () => {
-    if (amount <= 0) {
-      alert("Please select at least 1 user");
-      return;
-    }
-    setShowPayment(true);
+    enterprise: {
+      name: "Enterprise",
+      price: 99,
+      description: "Advanced Features",
+    },
   };
 
-  const handleSubmit = async () => {
-    if (!utr) {
-      alert("Enter UTR / Transaction ID");
-      return;
+  const employeeRanges = [
+    { label: "1-10 Employees", value: 10 },
+    { label: "11-25 Employees", value: 25 },
+    { label: "26-50 Employees", value: 50 },
+    { label: "51-100 Employees", value: 100 },
+    { label: "101-250 Employees", value: 250 },
+    { label: "251-500 Employees", value: 500 },
+    { label: "500+ Employees", value: 500 },
+  ];
+
+  const [billingType, setBillingType] = useState("monthly");
+
+  const [selectedPlan, setSelectedPlan] =
+    useState("professional");
+
+  const [employees, setEmployees] =
+    useState(employeeRanges[0]);
+
+  const [amount, setAmount] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+
+    const monthlyAmount =
+      plans[selectedPlan].price *
+      employees.value;
+
+    if (billingType === "yearly") {
+
+      const yearly = monthlyAmount * 12;
+
+      const discount = yearly * 0.15;
+
+      setAmount(yearly - discount);
+
+    } else {
+
+      setAmount(monthlyAmount);
+
     }
 
+  }, [
+    selectedPlan,
+    employees,
+    billingType,
+  ]);
+
+  const handleContinue = async () => {
     try {
       setLoading(true);
 
       const finalData = {
         ...data,
-        planDistribution: plan,
-        billingMonths: billingType === "yearly" ? duration * 12 : duration,
-        billingLabel:
-          billingType === "yearly"
-            ? `${duration} Year`
-            : `${duration} Month`,
-        amount,
-        paymentUTR: utr,
+
+        subscription: {
+          billingType,
+
+          plan: selectedPlan,
+
+          employeeRange: employees.label,
+
+          employeeCount: employees.value,
+
+          pricePerUser: plans[selectedPlan].price,
+
+          yearlyDiscount:
+            billingType === "yearly" ? 15 : 0,
+
+          amount,
+        },
       };
 
-      const res = await createCompany(finalData);
+      // Create Cashfree Order
+      const order = await createOrder(finalData);
 
-      if (res.success) {
-        setsuccess(true);
-      } else {
-        alert("❌ Error");
-      }
+      // Open Cashfree Checkout
+      await openCheckout(order.paymentSessionId);
 
-    } catch (err) {
-      console.error(err);
-      alert("Something went wrong");
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Unable to start payment.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (success) {
-    return (
-      <div className="text-center space-y-6">
+  return (
 
-        <div className="bg-green-50 border border-green-200 p-6 rounded-xl">
+    <div className="flex justify-between items-center">
 
-          <h2 className="text-2xl font-semibold text-green-600">
-            🎉 Payment Submitted Successfully
+      <div className="space-y-8">
+
+        <div>
+
+          <h2 className="text-xl font-semibold">
+            Subscription Plan
           </h2>
 
-          <p className="text-gray-600 mt-2">
-            Your company account has been created.  
-            Our team will verify your payment shortly.
+          <p className="text-gray-500 text-sm mt-1">
+            Choose your billing preference.
           </p>
 
-          <div className="mt-4 text-sm text-gray-700 space-y-1">
-            <p><strong>Company:</strong> {data.companyName}</p>
-            <p><strong>Amount:</strong> ₹{amount}</p>
-            <p><strong>Transaction ID:</strong> {utr}</p>
+        </div>
+
+        <div>
+
+          <label className="text-sm font-medium">
+            Billing Cycle
+          </label>
+
+          <div className="flex mt-3 rounded-lg overflow-hidden border">
+
+            <button
+
+              className={`flex-1 py-3 ${billingType === "monthly"
+                ? "bg-blue-600 text-white"
+                : "bg-white"
+                }`}
+
+              onClick={() => setBillingType("monthly")}
+
+            >
+
+              Monthly
+
+            </button>
+
+            <button
+
+              className={`flex-1 py-3 ${billingType === "yearly"
+                ? "bg-blue-600 text-white"
+                : "bg-white"
+                }`}
+
+              onClick={() => setBillingType("yearly")}
+
+            >
+
+              Yearly
+
+            </button>
+
+          </div>
+
+          {billingType === "yearly" && (
+
+            <p className="text-green-600 text-sm mt-2">
+
+              🎉 Save 15% with yearly billing
+
+            </p>
+
+          )}
+
+        </div>
+
+        <div>
+
+          <label className="text-sm font-medium">
+
+            Employees
+
+          </label>
+
+          <select
+
+            className="w-full border rounded-lg p-3 mt-2"
+
+            value={employees.label}
+
+            onChange={(e) => {
+
+              const selected =
+                employeeRanges.find(
+                  item => item.label === e.target.value
+                );
+
+              setEmployees(selected);
+
+            }}
+
+          >
+
+            {employeeRanges.map((item) => (
+
+              <option
+                key={item.label}
+                value={item.label}
+              >
+
+                {item.label}
+
+              </option>
+
+            ))}
+
+          </select>
+
+        </div>
+
+        <div>
+
+          <label className="text-sm font-medium">
+
+            Choose Plan
+
+          </label>
+
+          <div className="grid grid-cols-3 gap-4 mt-3">
+
+            {Object.entries(plans).map(([key, plan]) => (
+
+              <div
+
+                key={key}
+
+                onClick={() => setSelectedPlan(key)}
+
+                className={`
+
+border
+
+rounded-xl
+
+cursor-pointer
+
+p-5
+
+transition
+
+${selectedPlan === key
+
+                    ?
+
+                    "border-blue-600 bg-blue-50"
+
+                    :
+
+                    "border-gray-200"
+
+                  }
+
+`}
+
+              >
+
+                <h3 className="font-semibold">
+
+                  {plan.name}
+
+                </h3>
+
+                <p className="text-sm text-gray-500 mt-1">
+
+                  {plan.description}
+
+                </p>
+
+                <p className="mt-4 text-2xl font-bold">
+
+                  ₹{plan.price}
+
+                </p>
+
+                <p className="text-xs text-gray-500">
+
+                  per user / month
+
+                </p>
+
+              </div>
+
+            ))}
+
           </div>
 
         </div>
 
-        <button
-          onClick={() => window.location.href = "/"}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg"
-        >
-          Go to Login
-        </button>
-
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-
-      <div>
-        <h2 className="text-xl font-semibold text-gray-800">
-          Plan & Billing
-        </h2>
-        <p className="text-sm text-gray-500">
-          Choose how many users you want and your billing cycle
-        </p>
       </div>
 
-      {!showPayment ? (
-        <>
-          {/* PLAN */}
-          <div className="space-y-3">
-            <label className="text-sm text-gray-600">Plan Distribution</label>
+      <div className="w-lg max-w-md space-y-6">
+        {/* PRICE SUMMARY */}
 
-            <input
-              type="number"
-              placeholder="Basic Users (₹49/month)"
-              className="w-full p-3 border rounded-lg"
-              onChange={(e) =>
-                setPlan({ ...plan, basic: Number(e.target.value) })
-              }
-            />
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
 
-            <input
-              type="number"
-              placeholder="Pro Users (₹59/month)"
-              className="w-full p-3 border rounded-lg"
-              onChange={(e) =>
-                setPlan({ ...plan, pro: Number(e.target.value) })
-              }
-            />
-
-            <input
-              type="number"
-              placeholder="Enterprise Users (₹99/month)"
-              className="w-full p-3 border rounded-lg"
-              onChange={(e) =>
-                setPlan({ ...plan, enterprise: Number(e.target.value) })
-              }
-            />
+          <div className="flex justify-between py-2">
+            <span className="text-gray-600">Plan</span>
+            <span className="font-semibold">
+              {plans[selectedPlan].name}
+            </span>
           </div>
 
-          {/* BILLING */}
-          <div className="space-y-2">
-            <label className="text-sm text-gray-600">Billing Cycle</label>
+          <div className="flex justify-between py-2">
+            <span className="text-gray-600">Employees</span>
+            <span className="font-semibold">
+              {employees.label}
+            </span>
+          </div>
 
-            <div className="flex gap-3">
-              <select
-                className="w-full p-3 border rounded-lg"
-                value={billingType}
-                onChange={(e) => setBillingType(e.target.value)}
-              >
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-              </select>
+          <div className="flex justify-between py-2">
+            <span className="text-gray-600">Billing</span>
+            <span className="font-semibold capitalize">
+              {billingType}
+            </span>
+          </div>
 
-              <input
-                type="number"
-                placeholder="Duration"
-                className="w-full p-3 border rounded-lg"
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
-              />
+          <div className="flex justify-between py-2">
+            <span className="text-gray-600">
+              Price / User
+            </span>
+            <span className="font-semibold">
+              ₹{plans[selectedPlan].price}
+            </span>
+          </div>
+
+          {billingType === "yearly" && (
+            <div className="flex justify-between py-2 text-green-600">
+              <span>Yearly Discount</span>
+              <span>15%</span>
             </div>
+          )}
+
+          <hr className="my-4" />
+
+          <div className="flex justify-between items-center">
+
+            <div>
+
+              <p className="text-gray-600 text-sm">
+                Total Payable
+              </p>
+
+              <h2 className="text-3xl font-bold text-blue-600">
+                ₹{amount.toLocaleString()}
+              </h2>
+
+            </div>
+
+            <div className="text-right text-sm text-gray-500">
+
+              {billingType === "monthly"
+                ? "per month"
+                : "per year"}
+
+            </div>
+
           </div>
 
-          {/* AMOUNT */}
-          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-            <p className="text-sm text-gray-600">Total Payable</p>
-            <p className="text-2xl font-bold text-blue-600">₹{amount}</p>
-          </div>
+        </div>
+
+        {/* BUTTONS */}
+
+        <div className="flex gap-3">
 
           <button
-            onClick={handleNext}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg"
+            onClick={back}
+            className="w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-100"
           >
-            Continue to Payment
-          </button>
-
-          <button onClick={back} className="w-full border py-3 rounded-lg">
             Back
           </button>
-        </>
-      ) : (
-        <>
-          {/* PAYMENT */}
-          <div className="text-center space-y-3">
-            <p className="text-gray-600">
-              Scan & Pay using UPI apps (GPay / PhonePe)
-            </p>
-
-            <img src={qrUrl} alt="QR" className="mx-auto rounded-lg" />
-
-            <p className="text-lg font-semibold text-blue-600">
-              ₹{amount}
-            </p>
-
-            {/* UPI LINK BUTTON */}
-            <a
-              href={upiLink}
-              className="block bg-green-600 text-white py-2 rounded-lg"
-            >
-              Pay via UPI App
-            </a>
-          </div>
-
-          {/* UTR */}
-          <input
-            type="text"
-            placeholder="Enter UTR / Transaction ID"
-            className="w-full p-3 border rounded-lg"
-            value={utr}
-            onChange={(e) => setUtr(e.target.value)}
-          />
 
           <button
-            onClick={handleSubmit}
+            onClick={handleContinue}
             disabled={loading}
-            className="w-full bg-green-600 text-white py-3 rounded-lg"
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "Submitting..." : "Confirm Payment"}
+            {loading ? "Creating Order..." : "Continue to Payment"}
           </button>
 
-          <button
-            onClick={() => setShowPayment(false)}
-            className="w-full border py-3 rounded-lg"
-          >
-            Back
-          </button>
-        </>
-      )}
+        </div>
+      </div>
+
     </div>
   );
 }
