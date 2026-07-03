@@ -90,12 +90,15 @@ export async function POST(req) {
     });
 
   } catch (error) {
-    console.error(error);
 
+    console.error("VALIDATE API ERROR");
+    console.error(error);
+  
     return NextResponse.json(
       {
         success: false,
         message: error.message,
+        code: error.code,
       },
       {
         status: 500,
