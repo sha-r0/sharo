@@ -29,10 +29,16 @@ export async function POST(req) {
     // Verify Payment from Cashfree
     // =====================================
 
-    const response = await Cashfree.PGOrderFetchPayments(
-      "2025-01-01",
-      orderId
-    );
+    const response = await Cashfree.PGFetchOrder("2025-01-01", orderId);
+
+    const order = response.data;
+    
+    if (order.order_status !== "PAID") {
+      return NextResponse.json({
+        success: false,
+        message: "Payment not completed.",
+      });
+    }
 
     const payments = response.data || [];
 
@@ -75,13 +81,13 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
     
-      paymentStatus: payment.payment_status,
+      paymentStatus: order.order_status,
     
-      orderId: payment.order_id,
+      orderId: order.order_id,
     
-      cfPaymentId: payment.cf_payment_id,
+      cfPaymentId: order.cf_order_id,
     
-      amount: payment.payment_amount,
+      amount: order.order_amount,
     
       companyId: registration.companyId,
     
