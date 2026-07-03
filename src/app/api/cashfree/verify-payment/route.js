@@ -1,15 +1,5 @@
 import { NextResponse } from "next/server";
-import { Cashfree, CFEnvironment } from "cashfree-pg";
 import { completeRegistration } from "@/lib/server/registrationService";
-
-// Cashfree Configuration
-Cashfree.XClientId = process.env.CASHFREE_CLIENT_ID;
-Cashfree.XClientSecret = process.env.CASHFREE_CLIENT_SECRET;
-
-Cashfree.XEnvironment =
-  process.env.CASHFREE_ENV === "PRODUCTION"
-    ? CFEnvironment.PRODUCTION
-    : CFEnvironment.SANDBOX;
 
 export async function POST(req) {
   try {
@@ -26,34 +16,44 @@ export async function POST(req) {
     }
 
     // =====================================
-    // Verify Payment from Cashfree
+    // Verify Payment from Cashfree REST API
     // =====================================
 
-    const response = await Cashfree.PGFetchOrder("2025-01-01", orderId);
+    const CASHFREE_URL =
+      process.env.CASHFREE_ENV === "PRODUCTION"
+        ? `https://api.cashfree.com/pg/orders/${orderId}`
+        : `https://sandbox.cashfree.com/pg/orders/${orderId}`;
 
-    const order = response.data;
-    
+    const cashfreeResponse = await fetch(CASHFREE_URL, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        "x-client-id": process.env.CASHFREE_CLIENT_ID,
+        "x-client-secret": process.env.CASHFREE_CLIENT_SECRET,
+        "x-api-version": "2023-08-01",
+      },
+      cache: "no-store",
+    });
+
+    const order = await cashfreeResponse.json();
+
+    if (!cashfreeResponse.ok) {
+      console.error("Cashfree Error:", order);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: order.message || "Unable to verify payment.",
+        },
+        { status: cashfreeResponse.status }
+      );
+    }
+
+    // =====================================
+    // Check Payment Status
+    // =====================================
+
     if (order.order_status !== "PAID") {
-      return NextResponse.json({
-        success: false,
-        message: "Payment not completed.",
-      });
-    }
-
-    const payments = response.data || [];
-
-    if (payments.length === 0) {
-      return NextResponse.json({
-        success: false,
-        message: "Payment not found.",
-      });
-    }
-
-    const payment = payments.find(
-      (item) => item.payment_status === "SUCCESS"
-    );
-
-    if (!payment) {
       return NextResponse.json({
         success: false,
         message: "Payment not completed.",
@@ -72,48 +72,44 @@ export async function POST(req) {
           success: false,
           message: registration.message,
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
+    // =====================================
+    // Success
+    // =====================================
+
     return NextResponse.json({
       success: true,
-    
+
       paymentStatus: order.order_status,
-    
+
       orderId: order.order_id,
-    
-      cfPaymentId: order.cf_order_id,
-    
+
+      cfOrderId: order.cf_order_id,
+
       amount: order.order_amount,
-    
+
       companyId: registration.companyId,
-    
+
       uid: registration.uid,
-    
+
       customToken: registration.customToken,
-    
+
       message: "Registration completed successfully.",
     });
 
   } catch (error) {
 
-    console.error(error);
+    console.error("VERIFY PAYMENT ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message:
-          error.response?.data?.message ||
-          error.message ||
-          "Verification Failed",
+        message: error.message || "Verification Failed",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
-
   }
 }
