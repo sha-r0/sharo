@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createOrder, openCheckout } from "../services/paymentService";
 import { savePendingRegistration } from "../services/pendingRegistrationService";
 import { or } from "firebase/firestore";
+import { validateSignup } from "@/app/api/signup/services/validationService";
 
 export default function SignupStep3({ data, back }) {
 
@@ -99,18 +100,27 @@ export default function SignupStep3({ data, back }) {
         },
       };
 
+      // Validate first
+      const validation = await validateSignup(finalData);
+
+      if (!validation.success) {
+        alert(validation.message);
+        setLoading(false);
+        return;
+      }
+
       // Create Cashfree Order
       const order = await createOrder(finalData);
 
       console.log("Saving registration...", finalData);
-      
+
       const saved = await savePendingRegistration(
         order.orderId,
         finalData
       );
-      
+
       console.log("Saved:", saved);
-      
+
       if (!saved) {
         alert("Unable to start registration.");
         return;

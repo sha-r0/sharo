@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { signInWithCustomToken } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 function PaymentSuccessContent() {
   const searchParams = useSearchParams();
@@ -12,6 +14,7 @@ function PaymentSuccessContent() {
 
   useEffect(() => {
     const verifyPayment = async () => {
+
       const orderId = searchParams.get("order_id");
 
       if (!orderId) {
@@ -21,6 +24,9 @@ function PaymentSuccessContent() {
       }
 
       try {
+
+        setStatus("Verifying payment...");
+
         const response = await fetch("/api/cashfree/verify-payment", {
           method: "POST",
           headers: {
@@ -34,22 +40,45 @@ function PaymentSuccessContent() {
         const result = await response.json();
 
         if (!result.success) {
+
           setLoading(false);
-          setStatus(result.message || "Payment verification failed.");
+
+          setStatus(result.message);
+
           return;
+
         }
 
-        setStatus("Payment Successful!");
+        // ===============================
+        // Sign In Using Custom Token
+        // ===============================
+
+        setStatus("Signing you in...");
+
+        await signInWithCustomToken(
+          auth,
+          result.customToken
+        );
+        setLoading(false);
+
+        setStatus("Registration Completed");
 
         setTimeout(() => {
-          router.push("/dashboard");
-        }, 2000);
+
+          router.push("/workspace-creating");
+
+        }, 1000);
 
       } catch (error) {
+
         console.error(error);
+
         setLoading(false);
+
         setStatus("Something went wrong.");
+
       }
+
     };
 
     verifyPayment();
@@ -60,11 +89,30 @@ function PaymentSuccessContent() {
       <div className="bg-white shadow-lg rounded-xl p-10 w-full max-w-md text-center">
 
         {loading ? (
-          <div className="space-y-4">
+          <div className="space-y-6">
+
             <div className="animate-spin h-12 w-12 rounded-full border-4 border-blue-600 border-t-transparent mx-auto" />
+
             <h2 className="text-xl font-semibold">
-              Verifying Payment...
+              {status}
             </h2>
+
+            <div className="w-full bg-gray-200 rounded-full h-2">
+
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                style={{
+                  width:
+                    status === "Verifying payment..."
+                      ? "30%"
+                      : status === "Signing you in..."
+                        ? "80%"
+                        : "100%",
+                }}
+              />
+
+            </div>
+
           </div>
         ) : (
           <>
@@ -72,7 +120,7 @@ function PaymentSuccessContent() {
               {status}
             </h2>
 
-            {status === "Payment Successful!" ? (
+            {status === "Registration Completed" ? (
               <p className="mt-4 text-gray-500">
                 Redirecting...
               </p>

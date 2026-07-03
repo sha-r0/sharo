@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { Cashfree, CFEnvironment } from "cashfree-pg";
+import { completeRegistration } from "@/lib/server/registrationService";
 
-// Configure SDK
+// Cashfree Configuration
 Cashfree.XClientId = process.env.CASHFREE_CLIENT_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_CLIENT_SECRET;
 
@@ -18,13 +19,16 @@ export async function POST(req) {
       return NextResponse.json(
         {
           success: false,
-          message: "Order ID missing",
+          message: "Order ID missing.",
         },
         { status: 400 }
       );
     }
 
-    // Fetch all payments for this order
+    // =====================================
+    // Verify Payment from Cashfree
+    // =====================================
+
     const response = await Cashfree.PGOrderFetchPayments(
       "2025-01-01",
       orderId
@@ -35,44 +39,61 @@ export async function POST(req) {
     if (payments.length === 0) {
       return NextResponse.json({
         success: false,
-        message: "Payment not found",
+        message: "Payment not found.",
       });
     }
 
-    // Find successful payment
-    const successPayment = payments.find(
-      (payment) => payment.payment_status === "SUCCESS"
+    const payment = payments.find(
+      (item) => item.payment_status === "SUCCESS"
     );
 
-    if (!successPayment) {
+    if (!payment) {
       return NextResponse.json({
         success: false,
-        message: "Payment not completed",
+        message: "Payment not completed.",
       });
     }
 
-    /*
-    ====================================================
+    // =====================================
+    // Complete Registration
+    // =====================================
 
-    NEXT STEP
+    const registration = await completeRegistration(orderId);
 
-    Create Company
-
-    await createCompany(...)
-
-    ====================================================
-    */
+    if (!registration.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: registration.message,
+        },
+        {
+          status: 500,
+        }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      paymentStatus: successPayment.payment_status,
-      orderId: successPayment.order_id,
-      cfPaymentId: successPayment.cf_payment_id,
-      amount: successPayment.payment_amount,
-      message: "Payment Verified",
+    
+      paymentStatus: payment.payment_status,
+    
+      orderId: payment.order_id,
+    
+      cfPaymentId: payment.cf_payment_id,
+    
+      amount: payment.payment_amount,
+    
+      companyId: registration.companyId,
+    
+      uid: registration.uid,
+    
+      customToken: registration.customToken,
+    
+      message: "Registration completed successfully.",
     });
 
   } catch (error) {
+
     console.error(error);
 
     return NextResponse.json(
@@ -87,5 +108,6 @@ export async function POST(req) {
         status: 500,
       }
     );
+
   }
 }
