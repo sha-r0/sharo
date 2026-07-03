@@ -75,18 +75,18 @@ export async function POST(req) {
     // Prevent Amount Tampering
     //------------------------------------
 
-    if (
-      subscription.amount &&
-      Number(subscription.amount) !== amount
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Amount mismatch",
-        },
-        { status: 400 }
-      );
-    }
+    // if (
+    //   subscription.amount &&
+    //   Number(subscription.amount) !== amount
+    // ) {
+    //   return NextResponse.json(
+    //     {
+    //       success: false,
+    //       message: "Amount mismatch",
+    //     },
+    //     { status: 400 }
+    //   );
+    // }
 
     //------------------------------------
     // Create Cashfree Order
