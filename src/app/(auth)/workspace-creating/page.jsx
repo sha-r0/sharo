@@ -23,78 +23,74 @@ export default function WorkspaceSuccess() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-
-      // ------------------------
-      // Not Logged In
-      // ------------------------
-
-      if (!user) {
-
-        router.replace("/login");
-
-        return;
-
+      try {
+        console.log("========== WORKSPACE CHECK ==========");
+        console.log("Auth User:", user);
+  
+        if (!user) {
+          console.log("❌ No logged in user");
+          router.replace("/login");
+          return;
+        }
+  
+        console.log("UID:", user.uid);
+  
+        const userSnap = await getDocs(
+          query(
+            collection(db, "Usermanagement"),
+            where("uid", "==", user.uid)
+          )
+        );
+  
+        console.log("Usermanagement count:", userSnap.size);
+  
+        if (userSnap.empty) {
+          console.log("❌ User not found");
+          router.replace("/login");
+          return;
+        }
+  
+        const owner = userSnap.docs[0].data();
+  
+        console.log("Owner:", owner);
+  
+        const companyRef = doc(db, "Companies", owner.companyId);
+  
+        const companySnap = await getDoc(companyRef);
+  
+        console.log("Company exists:", companySnap.exists());
+  
+        if (!companySnap.exists()) {
+          console.log("❌ Company not found");
+          router.replace("/login");
+          return;
+        }
+  
+        const company = companySnap.data();
+  
+        console.log("Company:", company);
+  
+        console.log("workspaceCompleted:", company.workspaceCompleted);
+  
+        if (company.workspaceCompleted) {
+          console.log("➡ Redirecting to dashboard");
+          router.replace("/dashboard");
+          return;
+        }
+  
+        console.log("✅ Stay on workspace page");
+  
+        setCheckingAuth(false);
+  
+      } catch (err) {
+        console.error("🔥 Workspace Error:", err);
+  
+        setCheckingAuth(false);
       }
-
-      // ------------------------
-      // Find Owner
-      // ------------------------
-
-      const userSnap = await getDocs(
-        query(
-          collection(db, "Usermanagement"),
-          where("uid", "==", user.uid)
-        )
-      );
-
-      if (userSnap.empty) {
-
-        router.replace("/login");
-
-        return;
-
-      }
-
-      const owner = userSnap.docs[0].data();
-
-      // ------------------------
-      // Company
-      // ------------------------
-
-      const companyRef = doc(db, "Companies", owner.companyId);
-
-      const companySnap = await getDoc(companyRef);
-      
-      if (!companySnap.exists()) {
-      
-        router.replace("/login");
-      
-        return;
-      
-      }
-      
-      const company = companySnap.data();
-
-      // ------------------------
-      // Already Completed
-      // ------------------------
-
-      if (company.workspaceCompleted) {
-
-        router.replace("/dashboard");
-
-        return;
-
-      }
-
-      setCheckingAuth(false);
-
     });
-
+  
     return () => unsubscribe();
-
   }, [router]);
 
   const neoShadow =
