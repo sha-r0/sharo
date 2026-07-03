@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createOrder, openCheckout } from "../services/paymentService";
+import { savePendingRegistration } from "../services/pendingRegistrationService";
+import { or } from "firebase/firestore";
 
 export default function SignupStep3({ data, back }) {
 
@@ -100,10 +102,7 @@ export default function SignupStep3({ data, back }) {
       // Create Cashfree Order
       const order = await createOrder(finalData);
 
-      const saved = await savePendingRegistration(
-        order.orderId,
-        finalData
-      );
+      const saved = await savePendingRegistration(order.orderId, finalData);
       
       if (!saved) {
         alert("Unable to start registration.");
