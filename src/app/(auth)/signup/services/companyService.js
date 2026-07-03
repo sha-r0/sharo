@@ -2,77 +2,75 @@ import { db } from "@/lib/firebase";
 import { collection, addDoc, Timestamp } from "firebase/firestore";
 
 export const createCompany = async (data) => {
-    try {
-        const now = new Date();
+  try {
+    const payload = {
+      // ==========================
+      // COMPANY DETAILS
+      // ==========================
+      companyName: data.companyName || "",
+      companyAddress: data.companyAddress || "",
+      companyEmail: data.companyEmail || "",
+      phone: data.phone || "",
+      gstNumber: data.gstNumber || "",
 
-        // 🔢 TOTAL EMPLOYEE COUNT (from plan distribution)
-        const totalEmployees =
-            Number(data.planDistribution?.basic || 0) +
-            Number(data.planDistribution?.pro || 0) +
-            Number(data.planDistribution?.enterprise || 0);
+      // ==========================
+      // OWNER DETAILS
+      // ==========================
+      ownerName: data.fullName || "",
+      ownerEmail: data.adminEmail || "",
+      ownerPhone: data.adminPhone || "",
 
-        // 📅 PLAN DATES (initially same, will update after payment verification)
-        const planStart = null;
-        const planEnd = null;
+      corporateId: data.corporateId || "",
 
-        const payload = {
-            // 🏢 COMPANY DETAILS (Step 1)
-            companyName: data.companyName || "",
-            companyAddress: data.companyAddress || "",
-            companyEmail: data.companyEmail || "",
-            phone: data.phone || "",
-            gstNumber: data.gstNumber || "",
+      // ==========================
+      // SUBSCRIPTION
+      // ==========================
+      subscription: {
+        plan: data.subscription?.plan || "",
+        billingType: data.subscription?.billingType || "",
+        employeeRange: data.subscription?.employeeRange || "",
+        employeeCount: data.subscription?.employeeCount || 0,
+        pricePerUser: data.subscription?.pricePerUser || 0,
+        yearlyDiscount:
+          data.subscription?.yearlyDiscount || 0,
+      },
 
-            // 👤 ADMIN DETAILS (Step 2)
-            corporateId: data.corporateId || "",
-            employeeId: data.employeeId || "",
-            password: data.password || "", // ⚠️ hash later
-            role: data.role || "manager",
+      // ==========================
+      // PAYMENT
+      // ==========================
+      amount: data.subscription?.amount || 0,
+      paymentStatus: "PAID",
 
-            // 📊 PLAN (Step 3)
-            planDistribution: data.planDistribution || {
-                basic: 0,
-                pro: 0,
-                enterprise: 0,
-            },
+      // Will be updated later when renewal is added
+      planStart: Timestamp.now(),
+      planEnd: null,
 
-            billingMonths: data.billingMonths || 0,
-            billingLabel: data.billingLabel || "",
+      // ==========================
+      // STATUS
+      // ==========================
+      serviceStatus: "active",
 
-            // 💰 PAYMENT
-            amount: data.amount || 0,
-            paymentStatus: "unpaid", // ✅ initially unpaid
-            paymentUTR: data.paymentUTR || "",
+      // ==========================
+      // SYSTEM
+      // ==========================
+      createdAt: Timestamp.now(),
+    };
 
-            // 👥 SYSTEM CALCULATED
-            employeeCount: totalEmployees,
+    const docRef = await addDoc(
+      collection(db, "Companies"),
+      payload
+    );
 
-            // 📅 DATES
-            createdAt: Timestamp.now(),
-            planStart: null,
-            planEnd: null,
+    return {
+      success: true,
+      companyId: docRef.id,
+    };
+  } catch (error) {
+    console.error("Create Company Error:", error);
 
-            // ⚙️ STATUS
-            serviceStatus: "active",
-
-            // 🧾 OPTIONAL
-            //   Advances: {},
-            //   userId: data.employeeId || "",
-        };
-
-        const docRef = await addDoc(collection(db, "Companies"), payload);
-
-        return {
-            success: true,
-            id: docRef.id,
-        };
-
-    } catch (error) {
-        console.error("Create Company Error:", error);
-
-        return {
-            success: false,
-            error: error.message,
-        };
-    }
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
 };

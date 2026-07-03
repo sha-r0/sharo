@@ -100,6 +100,16 @@ export default function SignupStep3({ data, back }) {
       // Create Cashfree Order
       const order = await createOrder(finalData);
 
+      const saved = await savePendingRegistration(
+        order.orderId,
+        finalData
+      );
+      
+      if (!saved) {
+        alert("Unable to start registration.");
+        return;
+      }
+
       // Open Cashfree Checkout
       await openCheckout(order.paymentSessionId);
 

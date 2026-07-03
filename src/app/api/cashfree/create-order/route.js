@@ -133,8 +133,7 @@ export async function POST(req) {
 
         order_meta: {
           return_url:
-            `${process.env.NEXT_PUBLIC_APP_URL}` +
-            `/payment/success?order_id={order_id}`,
+            `${process.env.NEXT_PUBLIC_APP_URL}/signup/success?order_id={order_id}`,
         },
 
         order_note: "SHARO Workspace",
