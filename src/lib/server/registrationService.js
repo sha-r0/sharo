@@ -125,6 +125,10 @@ export async function completeRegistration(orderId) {
 
             serviceStatus: "active",
 
+            workspaceCompleted: false,
+
+            setupCompletedAt: null,
+
             createdAt: Timestamp.now(),
 
         });

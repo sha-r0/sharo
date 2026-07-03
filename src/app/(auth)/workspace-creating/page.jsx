@@ -1,6 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { auth, db } from "@/lib/firebase";
+
+import { onAuthStateChanged } from "firebase/auth";
+
+import { collection, query, where, getDocs, doc } from "firebase/firestore";
 import {
   CheckCircle2,
   Building2,
@@ -13,9 +20,97 @@ import {
 
 export default function WorkspaceSuccess() {
   const router = useRouter();
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+
+      // ------------------------
+      // Not Logged In
+      // ------------------------
+
+      if (!user) {
+
+        router.replace("/login");
+
+        return;
+
+      }
+
+      // ------------------------
+      // Find Owner
+      // ------------------------
+
+      const userSnap = await getDocs(
+        query(
+          collection(db, "Usermanagement"),
+          where("uid", "==", user.uid)
+        )
+      );
+
+      if (userSnap.empty) {
+
+        router.replace("/login");
+
+        return;
+
+      }
+
+      const owner = userSnap.docs[0].data();
+
+      // ------------------------
+      // Company
+      // ------------------------
+
+      const companyRef = doc(db, "Companies", owner.companyId);
+
+      const companySnap = await getDoc(companyRef);
+      
+      if (!companySnap.exists()) {
+      
+        router.replace("/login");
+      
+        return;
+      
+      }
+      
+      const company = companySnap.data();
+
+      // ------------------------
+      // Already Completed
+      // ------------------------
+
+      if (company.workspaceCompleted) {
+
+        router.replace("/dashboard");
+
+        return;
+
+      }
+
+      setCheckingAuth(false);
+
+    });
+
+    return () => unsubscribe();
+
+  }, [router]);
 
   const neoShadow =
     "shadow-[0px_0.706592px_0.706592px_-0.666667px_rgba(0,0,0,0.08),0px_1.80656px_1.80656px_-1.33333px_rgba(0,0,0,0.08),0px_3.62176px_3.62176px_-2px_rgba(0,0,0,0.07),0px_6.8656px_6.8656px_-2.66667px_rgba(0,0,0,0.07),0px_13.6468px_13.6468px_-3.33333px_rgba(0,0,0,0.05),0px_30px_30px_-4px_rgba(0,0,0,0.02),inset_0px_3px_1px_0px_rgb(255,255,255)]";
+
+  if (checkingAuth) {
+
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+
+        Checking Workspace...
+
+      </div>
+    );
+
+  }
 
   return (
     <div className="min-h-screen bg-[#eef2f7] flex items-center justify-center p-8">
