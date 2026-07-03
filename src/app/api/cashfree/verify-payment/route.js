@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { Cashfree, CFEnvironment } from "cashfree-pg";
-import { completeRegistration } from "@/app/signup/services/registrationService";
 
 // Configure SDK
 Cashfree.XClientId = process.env.CASHFREE_CLIENT_ID;
@@ -25,10 +24,7 @@ export async function POST(req) {
       );
     }
 
-    // ==========================
-    // Verify Payment
-    // ==========================
-
+    // Fetch all payments for this order
     const response = await Cashfree.PGOrderFetchPayments(
       "2025-01-01",
       orderId
@@ -43,6 +39,7 @@ export async function POST(req) {
       });
     }
 
+    // Find successful payment
     const successPayment = payments.find(
       (payment) => payment.payment_status === "SUCCESS"
     );
@@ -54,25 +51,17 @@ export async function POST(req) {
       });
     }
 
-    // ==========================
-    // Complete Registration
-    // ==========================
+    /*
+    ====================================================
 
-    const registration = await completeRegistration(orderId);
+    NEXT STEP
 
-    if (!registration.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: registration.message,
-        },
-        { status: 500 }
-      );
-    }
+    Create Company
 
-    // ==========================
-    // Success
-    // ==========================
+    await createCompany(...)
+
+    ====================================================
+    */
 
     return NextResponse.json({
       success: true,
@@ -80,9 +69,7 @@ export async function POST(req) {
       orderId: successPayment.order_id,
       cfPaymentId: successPayment.cf_payment_id,
       amount: successPayment.payment_amount,
-      companyId: registration.companyId,
-      uid: registration.uid,
-      message: "Registration Completed Successfully",
+      message: "Payment Verified",
     });
 
   } catch (error) {

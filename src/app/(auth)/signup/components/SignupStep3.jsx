@@ -102,7 +102,14 @@ export default function SignupStep3({ data, back }) {
       // Create Cashfree Order
       const order = await createOrder(finalData);
 
-      const saved = await savePendingRegistration(order.orderId, finalData);
+      console.log("Saving registration...", finalData);
+      
+      const saved = await savePendingRegistration(
+        order.orderId,
+        finalData
+      );
+      
+      console.log("Saved:", saved);
       
       if (!saved) {
         alert("Unable to start registration.");
