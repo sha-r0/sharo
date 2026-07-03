@@ -50,7 +50,10 @@ export async function POST(req) {
     // Server Side Amount Calculation
     //------------------------------------
 
-    const price = PLAN_PRICE[subscription.plan];
+    // const price = PLAN_PRICE[subscription.plan];
+
+    // Testing only
+    const price = 1;
 
     if (!price)
       return NextResponse.json(
@@ -65,7 +68,8 @@ export async function POST(req) {
       amount = amount * 0.85; // 15% Discount
     }
 
-    amount = Number(amount.toFixed(2));
+    // amount = Number(amount.toFixed(2));
+    amount = 1;
 
     //------------------------------------
     // Prevent Amount Tampering
