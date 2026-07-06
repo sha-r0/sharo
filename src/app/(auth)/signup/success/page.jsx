@@ -11,9 +11,14 @@ function PaymentSuccessContent() {
 
   const [status, setStatus] = useState("Verifying Payment...");
   const [loading, setLoading] = useState(true);
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     const verifyPayment = async () => {
+
+      if (verifying) return;
+
+      setVerifying(true);
 
       const orderId = searchParams.get("order_id");
 
@@ -61,11 +66,11 @@ function PaymentSuccessContent() {
         );
         setLoading(false);
 
-        setStatus("Registration Completed");
+        setStatus("Preparing your workspace...");
 
         setTimeout(() => {
 
-          router.push("/workspace-creating");
+          router.replace("/workspace-creating");
 
         }, 1000);
 
@@ -120,7 +125,7 @@ function PaymentSuccessContent() {
               {status}
             </h2>
 
-            {status === "Registration Completed" ? (
+            {status === "Preparing your workspace..." ? (
               <p className="mt-4 text-gray-500">
                 Redirecting...
               </p>

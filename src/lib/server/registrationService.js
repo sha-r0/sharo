@@ -6,6 +6,8 @@ export async function completeRegistration(orderId) {
     let companyRef = null;
     let ownerRef = null;
 
+    const ownerEmployeeId = "00000001";
+
     try {
         // ============================================
         // Get Pending Registration
@@ -89,7 +91,9 @@ export async function completeRegistration(orderId) {
 
             corporateId: data.admin.corporateId,
 
-            employeeId: "00000001",
+            companyCode: data.admin.corporateId,
+
+            employeeId: ownerEmployeeId,
 
             ownerUid: authUser.uid,
 
@@ -127,9 +131,15 @@ export async function completeRegistration(orderId) {
 
             workspaceCompleted: false,
 
+            onboardingCompleted: false,
+            
+            onboardingStep: 1,
+            
             setupCompletedAt: null,
-
+            
             createdAt: Timestamp.now(),
+            
+            updatedAt: Timestamp.now(),
 
         });
 
@@ -143,7 +153,7 @@ export async function completeRegistration(orderId) {
 
             companyId: companyRef.id,
 
-            employeeId: "00000001",
+            
 
             name: data.admin.fullName,
 
@@ -151,7 +161,7 @@ export async function completeRegistration(orderId) {
 
             phone: data.admin.adminPhone,
 
-            password: data.admin.password,
+            // password: data.admin.password,
 
             department: "Management",
 
@@ -185,6 +195,14 @@ export async function completeRegistration(orderId) {
         // ============================================
 
         await pendingRef.delete();
+
+        await adminAuth.setCustomUserClaims(authUser.uid, {
+
+            companyId: companyRef.id,
+          
+            role: "manager",
+          
+          });
 
         // ============================================
         // Create Custom Token
