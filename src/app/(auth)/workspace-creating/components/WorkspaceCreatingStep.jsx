@@ -114,8 +114,8 @@ export default function WorkspaceCreatingStep({
       
       setTimeout(() => {
       
-        router.replace("/");
-      s
+        router.replace("/manager");
+
       }, 2000);
 
     }
@@ -311,7 +311,7 @@ export default function WorkspaceCreatingStep({
 
                     {error}
 
-                  </p>s
+                  </p>
 
                 </div>
 

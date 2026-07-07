@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
+
 import {
   LayoutGrid,
   Users,
@@ -8,44 +10,102 @@ import {
   ReceiptIndianRupee,
   BarChart3,
   BanknoteArrowDown,
-  FileText,
-  UserPlus,
   Calculator,
   ClipboardList,
   FileCheck,
   LogOut,
 } from "lucide-react";
-import Image from "next/image";
-import { useState } from "react";
+
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
+import { useAuth } from "@/app/(auth)/context/AuthContext";
 
 export default function Sidebar() {
+
   const pathname = usePathname();
+
   const router = useRouter();
 
-  const isActive = (route) => pathname.startsWith(route);
+  const {
+    company,
+  } = useAuth();
 
-  const handleLogout = () => {
-    localStorage.removeItem("adminUser");
-    router.replace("/");
+  const isActive = (route) => {
+
+    if (route === "/manager") {
+
+      return pathname === "/manager";
+
+    }
+
+    return pathname.startsWith(route);
+
+  };
+
+  const handleLogout = async () => {
+
+    try {
+
+      await signOut(auth);
+
+      router.replace("/login");
+
+    } catch (error) {
+
+      console.error(error);
+
+    }
+
   };
 
   return (
-    <aside className="w-[72px] h-screen              
-         bg-[#F8F9FD]
-          border border-white
-            rounded-xl  flex flex-col items-center py-5">
+
+    <aside
+      className="
+        w-[72px]
+        h-screen
+        bg-[#F8F9FD]
+        border
+        border-white
+        rounded-xl
+        flex
+        flex-col
+        items-center
+        py-5
+      "
+    >
 
       {/* LOGO */}
-      <div className="w-10 h-10 mb-6 rounded-xl flex items-center justify-center overflow-hidden">
-        <Image
-          src="/logo.png"
-          alt="Logo"
-          width={40}
-          height={40}
-        />
+
+      <div className="w-10 h-10  rounded-xl overflow-hidden flex items-center justify-center">
+
+        {company?.logoUrl ? (
+
+          <img
+            src={company.logoUrl}
+            alt="Company Logo"
+            className="w-10 h-10 object-cover rounded-xl"
+          />
+
+        ) : (
+
+          <Image
+            src="/logo.png"
+            alt="Logo"
+            width={40}
+            height={40}
+          />
+          
+
+        )}
+
       </div>
 
+      <div className="w-8 h-px bg-gray-300 mb-6 mt-2" />
+
       {/* DASHBOARD */}
+
       <SidebarItem
         icon={LayoutGrid}
         label="Dashboard"
@@ -54,63 +114,210 @@ export default function Sidebar() {
       />
 
       {/* MAIN */}
+
       <div className="flex flex-col mt-6 gap-2">
-        <SidebarItem icon={Users} label="Users" onClick={() => router.push("/manager/userManagement")} />
-        <SidebarItem icon={FolderKanban} label="Projects" onClick={() => router.push("/manager/projects")} />
-        <SidebarItem icon={BarChart3} label="Expenses" onClick={() => router.push("/manager/expenses")} />
-        <SidebarItem icon={BanknoteArrowDown} label="Advance" onClick={() => router.push("/manager/advance")} />
+
+        <SidebarItem
+          icon={Users}
+          label="Users"
+          active={isActive("/manager/userManagement")}
+          onClick={() => router.push("/manager/userManagement")}
+        />
+
+        <SidebarItem
+          icon={FolderKanban}
+          label="Projects"
+          active={isActive("/manager/projects")}
+          onClick={() => router.push("/manager/projects")}
+        />
+
+        <SidebarItem
+          icon={BarChart3}
+          label="Expenses"
+          active={isActive("/manager/expenses")}
+          onClick={() => router.push("/manager/expenses")}
+        />
+
+        <SidebarItem
+          icon={BanknoteArrowDown}
+          label="Advance"
+          active={isActive("/manager/advance")}
+          onClick={() => router.push("/manager/advance")}
+        />
+
       </div>
 
       <div className="w-8 h-px bg-gray-300 my-4" />
 
       {/* BILLING */}
+
       <div className="flex flex-col gap-2">
-        <SidebarItem icon={ReceiptIndianRupee} label="Billing" onClick={() => router.push("/manager/billing")} />
-        {/* <SidebarItem icon={FileText} label="Quotation" onClick={() => router.push("/manager/quotation")} /> */}
-        <SidebarItem icon={Calculator} label="Salary" onClick={() => router.push("/manager/salary")} />
-        <SidebarItem icon={ClipboardList} label="Notice" onClick={() => router.push("/manager/notice")} />
-        <SidebarItem icon={FileCheck} label="Shift Policy" onClick={() => router.push("/manager/officePolicy")} />
+
+        <SidebarItem
+          icon={ReceiptIndianRupee}
+          label="Billing"
+          active={isActive("/manager/billing")}
+          onClick={() => router.push("/manager/billing")}
+        />
+
+        <SidebarItem
+          icon={Calculator}
+          label="Salary"
+          active={isActive("/manager/salary")}
+          onClick={() => router.push("/manager/salary")}
+        />
+
+        <SidebarItem
+          icon={ClipboardList}
+          label="Notice"
+          active={isActive("/manager/notice")}
+          onClick={() => router.push("/manager/notice")}
+        />
+
+        <SidebarItem
+          icon={FileCheck}
+          label="Shift Policy"
+          active={isActive("/manager/officePolicy")}
+          onClick={() => router.push("/manager/officePolicy")}
+        />
+
       </div>
 
-      {/* PUSH DOWN */}
       <div className="flex-1" />
 
       <div className="w-8 h-px bg-gray-300 my-4" />
 
-      {/* LOGOUT */}
       <SidebarItem
         icon={LogOut}
         label="Logout"
         danger
         onClick={handleLogout}
       />
+
     </aside>
-  );
-}
 
-function SidebarItem({ icon: Icon, label, active, danger, onClick }) {
-  return (
-    <div className="relative group">
-      <button
-        onClick={onClick}
-        className={`
-          w-12 h-12 rounded-xl flex items-center justify-center
-          transition
-          ${active
-            ? "bg-white text-blue-600 shadow"
-            : danger
-              ? "text-red-500 hover:bg-red-100"
-              : "text-gray-500 hover:bg-white hover:text-blue-600"
-          }
-        `}
-      >
-        <Icon size={20} />
-      </button>
-
-      {/* TOOLTIP */}
-      <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-white text-blue-600 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap">
-        {label}
-      </span>
-    </div>
   );
+
+  function SidebarItem({
+
+    icon: Icon,
+  
+    label,
+  
+    active,
+  
+    danger = false,
+  
+    onClick,
+  
+  }) {
+  
+    return (
+  
+      <div className="relative group">
+  
+        <button
+          onClick={onClick}
+          className={`
+            w-11
+            h-11
+            rounded-xl
+            flex
+            items-center
+            justify-center
+            transition-all
+            duration-200
+  
+            ${
+              active
+                ? "bg-white text-blue-600 shadow-md scale-105"
+                : danger
+                ? "text-red-500 hover:bg-red-100 hover:scale-105"
+                : "text-gray-500 hover:bg-white hover:text-blue-600 hover:shadow hover:scale-105"
+            }
+          `}
+        >
+  
+          <Icon size={20} />
+  
+        </button>
+  
+        {/* Active Indicator */}
+  
+        {active && (
+  
+          <div
+            className="
+              absolute
+              -left-3
+              top-1/2
+              -translate-y-1/2
+              w-1
+              h-8
+              rounded-r-full
+              bg-blue-600
+            "
+          />
+  
+        )}
+  
+        {/* Tooltip */}
+  
+        <div
+          className="
+            absolute
+            left-16
+            top-1/2
+            -translate-y-1/2
+            opacity-0
+            invisible
+            group-hover:opacity-100
+            group-hover:visible
+            transition-all
+            duration-200
+            pointer-events-none
+            z-50
+          "
+        >
+  
+          <div
+            className="
+              bg-white
+              border
+              border-slate-200
+              shadow-xl
+              rounded-xl
+              px-3
+              py-2
+              whitespace-nowrap
+            "
+          >
+  
+            <span
+              className={`
+                text-sm
+                font-medium
+  
+                ${
+                  danger
+                    ? "text-red-600"
+                    : "text-slate-700"
+                }
+              `}
+            >
+  
+              {label}
+  
+            </span>
+  
+          </div>
+  
+        </div>
+  
+      </div>
+  
+    );
+  
+  }
+
 }

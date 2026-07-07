@@ -8,6 +8,7 @@ import EmployeeLocationCard from "./components/EmployeeLocationCard";
 import TodosCard from "./components/TodosCard";
 import TodayWorkCard from "./components/TodayWorkCard";
 import MyExpensesCard from "./components/MyExpensesCard";
+import { useAuth } from "@/app/(auth)/context/AuthContext";
 
 export default function ManagerDashboard() {
 
@@ -15,16 +16,10 @@ export default function ManagerDashboard() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const [COMPANY_ID, setCompanyId] = useState(null);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const { company, loading,} = useAuth();
+  
+  const COMPANY_ID = company?.id;
 
-    const stored = localStorage.getItem("adminUser");
-    if (stored) {
-        const user = JSON.parse(stored);
-        setCompanyId(user.companyDocId);
-    }
-}, []);
 
 /* ================= SET CURRENT MONTH ================= */
 useEffect(() => {
@@ -41,9 +36,18 @@ useEffect(() => {
   setEndDate(format(last));
 }, []);
 
-/* ✅ ADD THIS HERE */
-if (!COMPANY_ID) {
-  return <div>Loading...</div>;
+if (loading || !COMPANY_ID) {
+
+  return (
+
+    <div className="flex items-center justify-center h-[70vh]">
+
+      Loading Dashboard...
+
+    </div>
+
+  );
+
 }
 
   return (

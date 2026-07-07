@@ -2,40 +2,60 @@
 
 import { useEffect, useState } from "react";
 import { Wallet, Briefcase, TrendingUp } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { collection, getDocs } from "firebase/firestore";
-import { useRouter } from "next/navigation";
 import { getProjects } from "@/app/allservice/projectService";
 import { getExpenses } from "@/app/allservice/expenseService";
 
 export default function SummaryCards({ startDate, endDate ,companyId }) {
-  const router = useRouter();
 
   /* ================= STATES ================= */
   const [expenses, setExpenses] = useState([]);
 
   /* ================= FETCH EXPENSES ================= */
   useEffect(() => {
+
     if (!companyId || !startDate || !endDate) return;
   
     const fetchExpenses = async () => {
-      const data = await getExpenses(companyId);
   
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+      try {
   
-      const filtered = data.filter((e) => {
-        if (!e.date) return false;
-        const d = new Date(e.date);
-        return d >= start && d <= end;
-      });
+        setLoading(true);
   
-      setExpenses(filtered);
+        const data = await getExpenses(companyId);
+  
+        const start = new Date(startDate);
+  
+        const end = new Date(endDate);
+  
+        end.setHours(23, 59, 59, 999);
+  
+        const filtered = data.filter((e) => {
+  
+          if (!e.date) return false;
+  
+          const d = new Date(e.date);
+  
+          return d >= start && d <= end;
+  
+        });
+  
+        setExpenses(filtered);
+  
+      } catch (error) {
+  
+        console.error(error);
+  
+      } finally {
+  
+        setLoading(false);
+  
+      }
+  
     };
   
     fetchExpenses();
-  }, [companyId, startDate, endDate]); // ✅ ALWAYS SAME
+  
+  }, [companyId, startDate, endDate]);
 
   /* ================= TOTAL CALCULATIONS ================= */
   const totalExpense = expenses.reduce((sum, e) => {
@@ -49,28 +69,40 @@ export default function SummaryCards({ startDate, endDate ,companyId }) {
     return sum;
   }, 0);
 
-  /* ================= CALCULATE FINANCIAL YEAR ================= */
-  const getCurrentFinancialYear = () => {
-    const now = new Date();
-    const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-
-    const startFY = new Date(`${year}-04-01`);
-    const endFY = new Date(`${year + 1}-03-31`);
-
-    return { startFY, endFY };
-  };
+  //// Project //////////////
 
   const [projectCount, setProjectCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchProjects = async () => { 
+
+    if (!companyId) return;
   
-      const projects = await getProjects(companyId);
-      setProjectCount(projects.length);
+    const fetchProjects = async () => {
+  
+      try {
+  
+        setLoading(true);
+  
+        const projects = await getProjects(companyId);
+  
+        setProjectCount(projects.length);
+  
+      } catch (error) {
+  
+        console.error(error);
+  
+      } finally {
+  
+        setLoading(false);
+  
+      }
+  
     };
   
     fetchProjects();
-  }, []);
+  
+  }, [companyId]);
 
 
   /* ================= CARD CONFIG ================= */
@@ -95,6 +127,32 @@ export default function SummaryCards({ startDate, endDate ,companyId }) {
       gradient: "from-emerald-400 to-teal-600",
     },
   ];
+
+  if (loading) {
+
+    return (
+  
+      <div className="grid grid-cols-3 gap-4">
+  
+        {[1,2,3].map((item) => (
+  
+          <div
+            key={item}
+            className="
+              h-36
+              rounded-2xl
+              bg-white
+              animate-pulse
+            "
+          />
+  
+        ))}
+  
+      </div>
+  
+    );
+  
+  }
 
   /* ================= UI ================= */
   return (

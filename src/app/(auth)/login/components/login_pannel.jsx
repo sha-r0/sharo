@@ -1,19 +1,141 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
 import EmployeeForm from "./employee_form";
 import AdminForm from "./admin_form";
-import LoginFooter from "./login_footer";
 
-import { ShieldCheck, User, Shield, ArrowRight, Check } from "lucide-react";
+import { login } from "../services/loginService";
+import { useAuth } from "../../context/AuthContext";
+
+import {
+  ShieldCheck,
+  User,
+  Shield,
+  ArrowRight,
+  Check,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 
 import { motion } from "framer-motion";
 
 
 export default function LoginPanel() {
-  const [active, setActive] = useState("employee");
-  const [remember, setRemember] = useState(true);
-  const loading = false;
+
+  const router = useRouter();
+
+  const {
+    firebaseUser,
+    company,
+    loading: authLoading,
+    refreshUser,
+  } = useAuth();
+
+  const [active, setActive] =
+    useState("admin");
+
+  const [remember, setRemember] =
+    useState(true);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [form, setForm] = useState({
+
+    companyId: "",
+
+    email: "",
+
+    password: "",
+
+    employeeId: "",
+
+  });
+
+  const handleLogin = async () => {
+
+    setError("");
+  
+    if (!form.companyId.trim()) {
+      setError("Please enter Company ID.");
+      return;
+    }
+  
+    if (!form.email.trim()) {
+      setError("Please enter Email.");
+      return;
+    }
+  
+    if (!form.password.trim()) {
+      setError("Please enter Password.");
+      return;
+    }
+  
+    try {
+  
+      setLoading(true);
+  
+      const result = await login({
+        companyId: form.companyId,
+        email: form.email,
+        password: form.password,
+        rememberMe: remember,
+      });
+  
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
+  
+      await refreshUser();
+  
+      router.replace(result.redirectTo);
+  
+    } catch (error) {
+  
+      console.error(error);
+  
+      setError(error.message || "Unable to sign in.");
+  
+    } finally {
+  
+      setLoading(false);
+  
+    }
+  
+  };
+
+  useEffect(() => {
+
+    if (loading) return;
+
+    if (authLoading) return;
+
+    if (!firebaseUser || !company) return;
+
+    if (company.workspaceCompleted) {
+
+      router.replace("/manager");
+
+    } else {
+
+      router.replace("/workspace-creating");
+
+    }
+
+  }, [
+    loading,
+    authLoading,
+    firebaseUser,
+    company,
+    router,
+  ]);
+
   const neo =
     "shadow-[0px_0.706592px_0.706592px_-0.666667px_rgba(0,0,0,0.08),0px_1.80656px_1.80656px_-1.33333px_rgba(0,0,0,0.08),0px_3.62176px_3.62176px_-2px_rgba(0,0,0,0.07),0px_6.8656px_6.8656px_-2.66667px_rgba(0,0,0,0.07),0px_13.6468px_13.6468px_-3.33333px_rgba(0,0,0,0.05),0px_30px_30px_-4px_rgba(0,0,0,0.02),inset_0px_3px_1px_0px_rgb(255,255,255)]";
 
@@ -71,6 +193,7 @@ export default function LoginPanel() {
 
         {/* Employee */}
         <button
+          disabled={loading}
           onClick={() => setActive("employee")}
           className="
           relative
@@ -107,6 +230,7 @@ export default function LoginPanel() {
 
         {/* Admin */}
         <button
+          disabled={loading}
           onClick={() => setActive("admin")}
           className="
           relative
@@ -144,10 +268,57 @@ export default function LoginPanel() {
 
       {/* Form */}
       <div className="mt-8">
+
+        {error && (
+
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4">
+
+            <div className="flex items-start gap-3">
+
+              <AlertCircle
+                size={20}
+                className="text-red-600 mt-0.5"
+              />
+
+              <div>
+
+                <h3 className="font-semibold text-red-700">
+
+                  Sign In Failed
+
+                </h3>
+
+                <p className="text-red-600 text-sm mt-1">
+
+                  {error}
+
+                </p>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        )}
+
         {active === "employee" ? (
-          <EmployeeForm />
+          <EmployeeForm
+
+            form={form}
+
+            setForm={setForm}
+
+            disabled={loading}
+
+          />
         ) : (
-          <AdminForm />
+          <AdminForm
+            form={form}
+            setForm={setForm}
+            setError={setError}
+            disabled={loading}
+          />
         )}
 
         <div className="mt-6 flex items-center justify-between">
@@ -156,6 +327,7 @@ export default function LoginPanel() {
 
           <button
             type="button"
+            disabled={loading}
             onClick={() => setRemember(!remember)}
             className="flex items-center gap-3"
           >
@@ -187,20 +359,22 @@ export default function LoginPanel() {
 
           <button
             type="button"
+            onClick={() => router.push("/forgot-password")}
             className="
-    text-sm
-    font-semibold
-    text-blue-600
-    hover:text-blue-700
-    transition
-  "
+        text-sm
+        font-semibold
+        text-blue-600
+        hover:text-blue-700
+        transition
+    "
           >
             Forgot Password?
           </button>
 
         </div>
         <button
-          type="submit"
+          type="button"
+          onClick={handleLogin}
           disabled={loading}
           className={`
         group
@@ -245,10 +419,18 @@ export default function LoginPanel() {
 
           <span className="relative flex items-center justify-center gap-3">
             {loading ? (
+
               <>
-                <Loader2 className="animate-spin" size={22} />
-                Signing In...
+
+                <Loader2
+                  className="animate-spin"
+                  size={22}
+                />
+
+                Authenticating...
+
               </>
+
             ) : (
               <>
                 Sign In
