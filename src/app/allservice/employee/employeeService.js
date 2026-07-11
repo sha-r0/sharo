@@ -596,6 +596,24 @@ class EmployeeService {
 
   }
 
+  /* ==========================================
+    Get Managers
+========================================== */
+
+async getManagers(companyId) {
+
+  const employees = await this.getEmployees(companyId);
+
+  return employees.filter(employee =>
+
+      employee.role === "Manager" &&
+
+      employee.status === "Active"
+
+  );
+
+}
+
 }
 
 export default new EmployeeService();
