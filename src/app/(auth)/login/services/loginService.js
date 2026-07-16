@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
+import { defaultRouteForAccess, resolveAccess } from "@/app/allservice/rbac/AuthorizationService";
 
 /* ==========================================================
    Login
@@ -136,6 +137,26 @@ export async function login({
 
     };
 
+    const token = await credential.user.getIdTokenResult(true);
+    const companyEmployeeId = token.claims.companyEmployeeId || user.companyEmployeeId;
+    let employee = null;
+    if (companyEmployeeId) {
+      const employeeSnap = await getDoc(doc(db, "Companies", user.companyId, "Usermanagement", companyEmployeeId));
+      if (employeeSnap.exists()) employee = { id: employeeSnap.id, ...employeeSnap.data() };
+    }
+    const roleId = employee?.access?.roleId || token.claims.roleId || user.role || "employee";
+    const roleSnap = await getDoc(doc(db, "Companies", user.companyId, "Roles", String(roleId).toLowerCase().replace(/[^a-z0-9]+/g, "_")));
+    const access = resolveAccess({ currentUser: { ...user, uid }, employee, company, role: roleSnap.exists() ? roleSnap.data() : null });
+
+    if (!access.isOwner && !employee) {
+      await signOut(auth);
+      return { success: false, message: "Your employee login is not linked to this company. Contact the Company Owner." };
+    }
+    if (!access.loginEnabled || ["inactive", "suspended", "locked", "pending"].includes(String(access.status).toLowerCase())) {
+      await signOut(auth);
+      return { success: false, message: `This account is ${access.status}. Contact the Company Owner.` };
+    }
+
     // ==========================================
     // Validate Company Code
     // ==========================================
@@ -171,10 +192,11 @@ export async function login({
       user,
 
       company,
+      access,
 
       redirectTo:
         company.workspaceCompleted
-          ? "/manager"
+          ? defaultRouteForAccess(access)
           : "/workspace-creating",
 
     };

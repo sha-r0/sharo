@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 
 import { useRouter } from "next/navigation";
+import PermissionGuard from "@/components/auth/PermissionGuard";
 
 export default function EmployeeToolbar({
 
@@ -241,6 +242,12 @@ export default function EmployeeToolbar({
 
                         </option>
 
+                        <option>Suspended</option>
+
+                        <option>Locked</option>
+
+                        <option>Pending</option>
+
                     </select>
 
                     {/* Reset */}
@@ -273,7 +280,7 @@ export default function EmployeeToolbar({
 
                 {/* RIGHT */}
 
-                <button
+                <PermissionGuard permission="employee.create"><button
 
                     onClick={()=>
 
@@ -308,7 +315,7 @@ export default function EmployeeToolbar({
 
                     Add Employee
 
-                </button>
+                </button></PermissionGuard>
 
             </div>
 

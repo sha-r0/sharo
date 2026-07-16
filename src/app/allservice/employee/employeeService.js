@@ -1,4 +1,4 @@
-import { doc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
 import employeeRepository from "./employeeRepository";
 
@@ -10,6 +10,8 @@ import { uploadEmployeeFile } from "./employee.storage";
 
 import { mapEmployee } from "./employeeMapper";
 import { employeeCollection } from "@/lib/firestore-firebase";
+import notificationService from "../notification/notificationService";
+import { auth, db } from "@/lib/firebase";
 
 class EmployeeService {
 
@@ -26,6 +28,15 @@ class EmployeeService {
   async create(companyId, form) {
 
     try {
+
+      const companySnapshot = await getDoc(doc(db, "Companies", companyId));
+      const company = companySnapshot.data() || {};
+      const existingEmployees = await this.repository.getAll(companyId);
+      const planLimits = { starter: 5, basic: 5, professional: 25, pro: 25, enterprise: Infinity };
+      const planLimit = planLimits[String(company.plan || "").toLowerCase()] ?? Infinity;
+      const configuredLimit = Number(company.employeeLimit || company.employeeCount || 0) || planLimit;
+      const employeeLimit = String(company.plan).toLowerCase() === "enterprise" ? Infinity : Math.min(configuredLimit, planLimit);
+      if (existingEmployees.filter((item) => String(item.employment?.status || "active").toLowerCase() !== "inactive").length >= employeeLimit) return { success: false, code: "EMPLOYEE_LIMIT_REACHED", message: `Your ${company.plan || "current"} plan employee limit has been reached. Upgrade the plan before adding another employee.` };
 
       /* ==============================
           Validate
@@ -219,6 +230,28 @@ class EmployeeService {
 
       );
 
+      if (form.loginEnabled !== false) {
+        try {
+          const token = await auth.currentUser?.getIdToken();
+          const response = await fetch("/api/rbac/users", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ employeeFirestoreId: firestoreId, email: form.email.trim().toLowerCase(), password: form.password, displayName: employee.personalInfo?.fullName, phoneNumber: form.phone, roleId: employee.access.roleId, permissions: employee.access.effectivePermissions, permissionOverrides: employee.access.permissionOverrides, requirePasswordChange: form.requirePasswordChange !== false }) });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error === "LIMIT_REACHED" ? "Subscription employee limit reached." : result.error || "Login account creation failed.");
+          await notificationService.create({ companyId, type: "account.created", module: "user-management", title: "ERP account created", message: "Your employee login account is ready. Sign in using your temporary password.", priority: "high", targetUsers: [firestoreId], actionRoute: "/manager", actionId: firestoreId, metadata: { employeeId, requirePasswordChange: form.requirePasswordChange !== false } }).catch((error) => console.warn("Account notification unavailable:", error));
+        } catch (accountError) {
+          await this.repository.delete(companyId, firestoreId);
+          throw accountError;
+        }
+      }
+
+      await notificationService.emitSafe("employee.created", {
+        companyId,
+        employeeName: employee.personalInfo?.fullName,
+        receiver: "company",
+        actionId: firestoreId,
+        actionRoute: `/manager/userManagement/${firestoreId}`,
+        metadata: { employeeId, employeeName: employee.personalInfo?.fullName },
+      });
+
       return {
 
         success: true,
@@ -399,6 +432,13 @@ class EmployeeService {
 
       );
 
+      if (form.authUid) {
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch("/api/rbac/users", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: "role", targetUid: form.authUid, employeeFirestoreId: firestoreId, roleId: employee.access.roleId, permissions: employee.access.effectivePermissions, permissionOverrides: employee.access.permissionOverrides }) });
+        if (!response.ok) throw new Error("Employee profile saved, but the login role could not be synchronized.");
+        await notificationService.create({ companyId, type: "employee.role-changed", module: "user-management", title: "Your ERP role changed", message: `Your role is now ${form.role}. Your menu and permissions were updated.`, priority: "high", targetUsers: [firestoreId], actionRoute: "/manager", actionId: firestoreId, metadata: { employeeId: form.employeeId, roleId: employee.access.roleId } }).catch((error) => console.warn("Role notification unavailable:", error));
+      }
+
       return {
 
         success: true,
@@ -458,7 +498,7 @@ class EmployeeService {
         employee.employment?.role || "",
 
       status:
-        employee.employment?.status || "",
+        employee.access?.status ? `${employee.access.status.charAt(0).toUpperCase()}${employee.access.status.slice(1)}` : employee.employment?.status || "",
 
       photoUrl:
         employee.documents?.photoUrl || "",
@@ -562,6 +602,11 @@ class EmployeeService {
 
     try {
 
+      const employeeBefore = await this.getEmployee(companyId, firestoreId);
+      const companySnapshot = await getDoc(doc(db, "Companies", companyId));
+      if (employeeBefore?.access?.authUid && employeeBefore.access.authUid === companySnapshot.data()?.ownerUid) throw new Error("The Company Owner cannot be deactivated.");
+      if (employeeBefore?.access?.authUid && employeeBefore.access.authUid === currentUser?.uid) throw new Error("You cannot deactivate your own account.");
+
       await this.repository.deactivate(
 
         companyId,
@@ -571,6 +616,23 @@ class EmployeeService {
         currentUser
 
       );
+
+      if (employeeBefore?.access?.authUid) {
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch("/api/rbac/users", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: "disable", targetUid: employeeBefore.access.authUid, employeeFirestoreId: firestoreId }) });
+        if (!response.ok) throw new Error("Employee was updated, but login deactivation failed.");
+      }
+
+      const employee = await this.getEmployee(companyId, firestoreId);
+      await notificationService.emitSafe("employee.deactivated", {
+        companyId,
+        employeeName: employee?.fullName || "Employee",
+        receiver: "company",
+        sender: currentUser ? { id: currentUser.id, uid: currentUser.uid, name: currentUser.name || currentUser.displayName, role: currentUser.role } : null,
+        actionId: firestoreId,
+        actionRoute: `/manager/userManagement/${firestoreId}`,
+        metadata: { employeeId: firestoreId, employeeName: employee?.fullName || "Employee" },
+      });
 
       return {
 

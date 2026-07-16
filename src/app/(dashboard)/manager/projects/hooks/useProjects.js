@@ -18,6 +18,8 @@ export default function useProjects() {
 
     const [saving, setSaving] = useState(false);
 
+    const [refreshing, setRefreshing] = useState(false);
+
     const [projects, setProjects] = useState([]);
 
     const [error, setError] = useState(null);
@@ -162,9 +164,17 @@ export default function useProjects() {
 
         if (!companyId) return;
 
-        const data = await projectService.getProjects(companyId);
-
-        setProjects(data);
+        try {
+            setRefreshing(true);
+            setError(null);
+            const data = await projectService.getProjects(companyId);
+            setProjects(data);
+        } catch (refreshError) {
+            console.error(refreshError);
+            setError(refreshError.message || "Could not refresh projects.");
+        } finally {
+            setRefreshing(false);
+        }
 
     }, [companyId]);
 
@@ -173,6 +183,8 @@ export default function useProjects() {
         loading,
 
         saving,
+
+        refreshing,
 
         error,
 

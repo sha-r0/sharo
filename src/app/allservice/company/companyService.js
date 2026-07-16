@@ -9,6 +9,7 @@ import {
 import { companyDoc } from "@/lib/firestore-firebase";
 
 import { mapCompany } from "./companyModel";
+import notificationService from "../notification/notificationService";
 
 /* ==========================================================
    Company Service
@@ -104,6 +105,13 @@ class CompanyService {
         data
 
       );
+
+      await notificationService.emitSafe("company.updated", {
+        companyId,
+        receiver: "company",
+        actionRoute: "/manager",
+        metadata: { updatedFields: Object.keys(data) },
+      });
 
       return true;
 

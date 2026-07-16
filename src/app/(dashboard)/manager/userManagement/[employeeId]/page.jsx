@@ -17,6 +17,7 @@ import BankSection from "./components/sections/BankSection";
 import AddressSection from "./components/sections/AddressSection";
 import DocumentsSection from "./components/sections/DocumentsSection";
 import DeactivateEmployeeDialog from "./components/DeactivateEmployeeDialog";
+import AccessSection from "./components/sections/AccessSection";
 
 export default function EmployeeDetailsPage() {
 
@@ -24,7 +25,7 @@ export default function EmployeeDetailsPage() {
 
     const { employeeId } = useParams();
 
-    const { company, currentUser } = useAuth();
+    const { company, currentUser, can } = useAuth();
 
     const [loading, setLoading] = useState(true);
 
@@ -168,9 +169,9 @@ export default function EmployeeDetailsPage() {
 
                 employee={employee}
 
-                onEdit={handleEdit}
+                onEdit={can("employee.edit") ? handleEdit : null}
 
-                onDeactivate={() => setShowDeactivate(true)}
+                onDeactivate={can("employee.manage") ? () => setShowDeactivate(true) : null}
 
             />
 
@@ -215,6 +216,8 @@ export default function EmployeeDetailsPage() {
                     employee={employee}
 
                 />
+
+                <AccessSection employee={employee} onChanged={loadEmployee} />
 
             </div>
 

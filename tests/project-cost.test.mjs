@@ -1,0 +1,8 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import ProjectCostService from "../src/app/(dashboard)/manager/projects/services/ProjectCostService.js";
+import { evaluateVendorPayment } from "../src/app/(dashboard)/manager/vendors/services/VendorPaymentPolicy.js";
+
+test("project actual cost reconciles employee, vendor and approved expenses",()=>{const result=ProjectCostService.calculate({project:{budget:100000,poAmount:150000,employees:[{employeeId:"E1",salary:20800}]},workLogs:[{employeeId:"E1",hours:10,date:"2026-07-16"}],vendorPayments:[{vendorId:"V1",amount:20000,status:"paid",date:"2026-07-16"}],expenses:[{amount:5000,status:"approved",date:"2026-07-16"},{amount:4000,status:"pending",date:"2026-07-16"}]});assert.equal(result.employeeCost,1000);assert.equal(result.vendorCost,20000);assert.equal(result.expenseCost,5000);assert.equal(result.actualCost,26000);assert.equal(result.remainingBudget,74000);assert.equal(result.expectedProfit,124000);});
+test("vendor payment mirrored into Expenses is not double counted",()=>{const result=ProjectCostService.calculate({project:{},workLogs:[],vendorPayments:[{amount:1000,status:"paid"}],expenses:[{amount:1000,status:"approved",vendorPaymentId:"PAY1"}]});assert.equal(result.actualCost,1000);assert.equal(result.expenseCost,0);});
+test("vendor policy blocks allocation overrun without manager approval",()=>{const blocked=evaluateVendorPayment({allocatedAmount:100,paidAmount:90,paymentAmount:20,managerApproved:false});assert.equal(blocked.allowed,false);const approved=evaluateVendorPayment({allocatedAmount:100,paidAmount:90,paymentAmount:20,managerApproved:true});assert.equal(approved.allowed,true);assert.equal(approved.paymentPercent,110);assert.equal(approved.exceeds,true);});

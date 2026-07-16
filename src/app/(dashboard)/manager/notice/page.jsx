@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import notificationService from "@/app/allservice/notification/notificationService";
 
 /* =========================
    MAIN COMPONENT
@@ -128,7 +129,7 @@ export default function NoticePage() {
                 fileUrl = await uploadPDF(file);
             }
 
-            await addDoc(
+            const noticeRef = await addDoc(
                 collection(db, "Companies", companyId, "Notices"),
                 {
                     title,
@@ -139,6 +140,12 @@ export default function NoticePage() {
                     createdAt: new Date().toISOString(),
                 }
             );
+
+            await notificationService.emitSafe("notice.created", {
+                companyId, message: description, receiver: "company", title,
+                actionId: noticeRef.id, actionRoute: "/manager/notice",
+                metadata: { noticeId: noticeRef.id, noticeTitle: title },
+            });
 
             alert("Notice Published ✅");
 

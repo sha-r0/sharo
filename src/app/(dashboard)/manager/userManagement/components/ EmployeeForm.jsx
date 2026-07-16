@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
@@ -20,6 +20,7 @@ import {
     EyeOff,
     Save,
     X,
+    ShieldCheck,
 } from "lucide-react";
 
 import Input from "./ui/Input";
@@ -29,18 +30,26 @@ import FileUpload from "./ui/FileUpload";
 import Textarea from "./ui/Textarea";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
 import employeeService from "@/app/allservice/employee/employeeService";
+import roleRepository from "@/app/allservice/rbac/roleRepository";
+import { PERMISSION_MODULES, permissionKey, permissionsForRole } from "@/app/allservice/rbac/permissionCatalog";
 
 export default function EmployeeForm({ mode = "create", employee = null, }) {
 
     const router = useRouter();
 
-    const { company, currentUser } = useAuth();
+    const { company, currentUser, can } = useAuth();
+
+    const canManageAccess = can("employee.manage");
 
     const [showPassword, setShowPassword] = useState(false);
 
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     const [loading, setLoading] = useState(false);
+
+    const [limitError, setLimitError] = useState("");
+
+    const [availableRoles, setAvailableRoles] = useState([]);
 
     const [form, setForm] = useState({
 
@@ -76,7 +85,21 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
         designation: "",
 
-        role: "Employee",
+        role: "employee",
+
+        loginEnabled: true,
+
+        requirePasswordChange: true,
+
+        accountStatus: "active",
+
+        authUid: null,
+
+        effectivePermissions: [],
+
+        permissionOverrides: { grant: [], deny: [] },
+
+        access: {},
 
         joiningDate: "",
 
@@ -232,7 +255,21 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
                 employee.employment?.designation || "",
 
             role:
-                employee.employment?.role || "Employee",
+                employee.access?.roleId || employee.employment?.role || "employee",
+
+            loginEnabled: employee.access?.loginEnabled !== false,
+
+            requirePasswordChange: employee.access?.requirePasswordChange !== false,
+
+            accountStatus: employee.access?.status || "active",
+
+            authUid: employee.access?.authUid || null,
+
+            effectivePermissions: employee.access?.effectivePermissions || [],
+
+            permissionOverrides: employee.access?.permissionOverrides || { grant: [], deny: [] },
+
+            access: employee.access || {},
 
             employeeType:
                 employee.employment?.employeeType || "Permanent",
@@ -315,8 +352,9 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
                Login
             =========================== */
 
-            password:
-                employee.login?.password || "",
+            password: "",
+
+            confirmPassword: "",
 
         });
 
@@ -327,6 +365,35 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
         employee,
 
     ]);
+
+    useEffect(() => {
+        if (!company?.id) return;
+        roleRepository.list(company.id).then((items) => setAvailableRoles(items.filter((item) => item.id !== "owner"))).catch(() => setAvailableRoles([]));
+    }, [company?.id]);
+
+    const rolePermissions = useMemo(() => availableRoles.find((item) => item.id === String(form.role).toLowerCase().replace(/[^a-z0-9]+/g, "_"))?.permissions || permissionsForRole(form.role), [availableRoles, form.role]);
+
+    const panelPermissions = useMemo(() => {
+        const granted = form.permissionOverrides?.grant || [], denied = form.permissionOverrides?.deny || [];
+        return [...new Set([...rolePermissions, ...granted])].filter((key) => !denied.includes(key));
+    }, [rolePermissions, form.permissionOverrides]);
+
+    function changeRole(value) {
+        const permissions = availableRoles.find((item) => item.id === value)?.permissions || permissionsForRole(value);
+        setForm((current) => ({ ...current, role: value, permissionOverrides: { grant: [], deny: [] }, effectivePermissions: permissions }));
+    }
+
+    function togglePanel(module) {
+        const key = permissionKey(module, "view"), inherited = rolePermissions.includes(key), enabled = panelPermissions.includes(key);
+        setForm((current) => {
+            const overrides = current.permissionOverrides || { grant: [], deny: [] };
+            const grant = overrides.grant.filter((item) => item !== key), deny = overrides.deny.filter((item) => item !== key);
+            if (enabled && inherited) deny.push(key);
+            if (!enabled && !inherited) grant.push(key);
+            const effectivePermissions = [...new Set([...rolePermissions, ...grant])].filter((item) => !deny.includes(item));
+            return { ...current, permissionOverrides: { grant, deny }, effectivePermissions };
+        });
+    }
 
     function updateField(path, value) {
 
@@ -416,6 +483,8 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
             if (!result.success) {
 
+                if (result.code === "EMPLOYEE_LIMIT_REACHED") setLimitError(result.message);
+
                 toast.error(
 
                     result.errors
@@ -467,6 +536,8 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
     return (
 
         <form onSubmit={handleSubmit} className="space-y-8">
+
+            {limitError && <div className="fixed inset-0 z-[120] grid place-items-center bg-slate-900/40 p-4 backdrop-blur-sm"><div className="max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl"><Building2 className="mx-auto text-blue-600" size={42}/><h2 className="mt-4 text-2xl font-bold">Employee limit reached</h2><p className="mt-2 text-sm leading-6 text-slate-500">{limitError}</p><div className="mt-6 flex justify-center gap-3"><button type="button" onClick={() => setLimitError("")} className="rounded-xl border px-5 py-2.5 font-bold">Close</button><button type="button" onClick={() => router.push("/manager/billing/settings")} className="rounded-xl bg-blue-600 px-5 py-2.5 font-bold text-white">Upgrade Plan</button></div></div></div>}
 
             {/* ====================================== BASIC INFORMATION ====================================== */}
 
@@ -523,14 +594,16 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
                     <PasswordInput
                         label="Password"
-                        required
+                        required={form.loginEnabled && !form.authUid}
+                        disabled={!form.loginEnabled || Boolean(form.authUid)}
                         value={form.password}
                         onChange={(value) => updateField("password", value)}
                     />
 
                     <PasswordInput
                         label="Confirm Password"
-                        required
+                        required={form.loginEnabled && !form.authUid}
+                        disabled={!form.loginEnabled || Boolean(form.authUid)}
                         value={form.confirmPassword}
                         onChange={(value) => updateField("confirmPassword", value)}
                     />
@@ -601,14 +674,19 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
                     <Select
                         label="Role"
                         required
+                        disabled={!canManageAccess}
                         value={form.role}
-                        options={[
-                            "Employee",
-                            "Manager",
-                            "HR",
-                            "Admin",
-                        ]}
-                        onChange={(value) => updateField("role", value)}
+                        options={availableRoles.map((item) => ({ value: item.id, label: item.name }))}
+                        onChange={changeRole}
+                    />
+
+                    <Select
+                        label="Account Status"
+                        required
+                        disabled={!canManageAccess}
+                        value={form.accountStatus}
+                        options={["active", "inactive", "suspended", "locked", "pending"]}
+                        onChange={(value) => updateField("accountStatus", value)}
                     />
 
                     {/* Employee Type */}
@@ -645,6 +723,18 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
                     />
 
                 </div>
+
+                <div className="mt-6 grid gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:grid-cols-2">
+                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700"><input type="checkbox" checked={form.loginEnabled} disabled={!canManageAccess} onChange={(event) => updateField("loginEnabled", event.target.checked)} className="h-4 w-4"/>Create Firebase login account</label>
+                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700"><input type="checkbox" checked={form.requirePasswordChange} disabled={!form.loginEnabled || !canManageAccess} onChange={(event) => updateField("requirePasswordChange", event.target.checked)} className="h-4 w-4"/>Require password change on first login</label>
+                </div>
+
+                {canManageAccess && <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                    <div className="flex items-center gap-3"><ShieldCheck className="text-blue-600" size={21}/><div><h3 className="font-bold text-slate-800">Panel Access</h3><p className="text-xs text-slate-500">Access inherited from the selected role. Changes below apply only to this employee.</p></div></div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                        {PERMISSION_MODULES.map((module) => { const key = permissionKey(module, "view"), enabled = panelPermissions.includes(key), inherited = rolePermissions.includes(key); return <label key={module} className={`flex cursor-pointer items-center gap-2 rounded-xl border p-3 text-xs font-bold capitalize transition ${enabled ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-500"}`}><input type="checkbox" checked={enabled} onChange={() => togglePanel(module)} disabled={!form.loginEnabled}/><span className="min-w-0 flex-1 truncate">{module}</span>{inherited && <span className="rounded bg-white px-1.5 py-0.5 text-[8px] uppercase text-slate-400">Role</span>}</label>; })}
+                    </div>
+                </div>}
 
             </div>
 

@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import notificationService from "@/app/allservice/notification/notificationService";
 
 export default class LeavePolicyService {
 
@@ -224,6 +225,11 @@ export default class LeavePolicyService {
 
             }
         );
+
+        await notificationService.emitSafe("holiday.added", {
+            companyId, holidayName: form.name.trim(), receiver: "company",
+            actionRoute: "/manager/Workforce/leave-policy", metadata: { holidayName: form.name.trim(), date: form.date },
+        });
 
     }
 

@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 import {
-  Bell,
   ChevronDown,
   Search,
   Plus,
@@ -20,6 +19,7 @@ import { signOut } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
+import NotificationBell from "../notifications/components/NotificationBell";
 
 // import AddExpenseForm from "@/components/AddExpenseForm";
 
@@ -253,36 +253,7 @@ export default function Navbar({ onExpenseAdded }) {
 
           {/* Notification */}
 
-          <button
-            className="
-                relative
-                w-11
-                h-11
-                rounded-xl
-                bg-[#F8FAFD]
-                border
-                border-slate-200
-                flex
-                items-center
-                justify-center
-              "
-          >
-
-            <Bell size={19} />
-
-            <span
-              className="
-                  absolute
-                  top-2
-                  right-2
-                  w-2
-                  h-2
-                  rounded-full
-                  bg-red-500
-                "
-            />
-
-          </button>
+          <NotificationBell />
 
           {/* User */}
 

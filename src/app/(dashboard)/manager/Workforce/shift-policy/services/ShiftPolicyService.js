@@ -10,6 +10,7 @@ import {
   query,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import notificationService from "@/app/allservice/notification/notificationService";
 
 export default class ShiftPolicyService {
   static collection(companyId) {
@@ -144,6 +145,10 @@ export default class ShiftPolicyService {
 
       updatedAt: Timestamp.now(),
     });
+    await notificationService.emitSafe("shift.updated", {
+      companyId, shiftName: form.name, receiver: "company",
+      actionRoute: "/manager/Workforce/shift-policy", metadata: { shiftName: form.name, operation: "created" },
+    });
   }
 
   static async update(companyId, id, form) {
@@ -251,6 +256,10 @@ export default class ShiftPolicyService {
         updatedAt: Timestamp.now(),
       }
     );
+    await notificationService.emitSafe("shift.updated", {
+      companyId, shiftName: form.name, receiver: "company", actionId: id,
+      actionRoute: "/manager/Workforce/shift-policy", metadata: { shiftId: id, shiftName: form.name, operation: "updated" },
+    });
   }
 
   static async delete(companyId, id) {

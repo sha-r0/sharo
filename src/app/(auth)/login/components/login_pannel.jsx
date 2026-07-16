@@ -8,6 +8,7 @@ import AdminForm from "./admin_form";
 
 import { login } from "../services/loginService";
 import { useAuth } from "../../context/AuthContext";
+import { defaultRouteForAccess } from "@/app/allservice/rbac/AuthorizationService";
 
 import {
   ShieldCheck,
@@ -31,6 +32,7 @@ export default function LoginPanel() {
     company,
     loading: authLoading,
     refreshUser,
+    access,
   } = useAuth();
 
   const [active, setActive] =
@@ -120,7 +122,7 @@ export default function LoginPanel() {
 
     if (company.workspaceCompleted) {
 
-      router.replace("/manager");
+      router.replace(defaultRouteForAccess(access));
 
     } else {
 
@@ -133,6 +135,7 @@ export default function LoginPanel() {
     authLoading,
     firebaseUser,
     company,
+    access,
     router,
   ]);
 

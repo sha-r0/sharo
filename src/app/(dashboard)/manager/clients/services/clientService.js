@@ -2,6 +2,7 @@ import clientRepository from "./clientRepository";
 import { validateClient } from "./clientValidator";
 import { generateClientId } from "./clientIdGenerator";
 import { mapClient } from "./clientMapper";
+import notificationService from "@/app/allservice/notification/notificationService";
 
 const clientService = {
 
@@ -32,6 +33,14 @@ const clientService = {
             client
 
         );
+
+        await notificationService.emitSafe("client.created", {
+            companyId,
+            clientName: client.clientName || form.clientName || form.name,
+            receiver: "company",
+            actionRoute: "/manager/clients",
+            metadata: { clientId, clientName: client.clientName || form.clientName || form.name },
+        });
 
         return {
 

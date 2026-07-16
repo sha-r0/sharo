@@ -74,6 +74,7 @@ export default function ProjectReviewStep({
     const po = Number(form.poAmount || 0);
 
     const expectedProfit = po - budget;
+    const vendorAllocation = form.vendors.reduce((sum, vendor) => sum + Number(vendor.allocatedAmount || 0), 0);
 
     return (
 
@@ -89,7 +90,7 @@ export default function ProjectReviewStep({
 
                 </h2>
 
-                <div className="grid grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
 
                     <Item
                         icon={FolderKanban}
@@ -129,7 +130,14 @@ export default function ProjectReviewStep({
 
                 </h2>
 
-                <div className="grid grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
+
+                    <div>
+
+                        <div className="text-sm text-slate-500">Vendor Allocation</div>
+                        <div className="mt-2 text-3xl font-bold text-indigo-600">₹{vendorAllocation.toLocaleString()}</div>
+
+                    </div>
 
                     <div>
 
@@ -204,6 +212,8 @@ export default function ProjectReviewStep({
                 </div>
 
             </section>
+
+            {form.vendors.length > 0 && <section className={`${neo} rounded-3xl bg-white p-8`}><div className="mb-6 flex items-center justify-between"><h2 className="text-xl font-bold">Assigned Vendors</h2><span className="rounded-full bg-indigo-100 px-4 py-2 font-semibold text-indigo-700">{form.vendors.length} Vendors</span></div><div className="space-y-3">{form.vendors.map((vendor)=><div key={vendor.vendorId} className="flex flex-col gap-2 rounded-2xl bg-[#F9FAFC] p-5 sm:flex-row sm:items-center sm:justify-between"><div><strong>{vendor.vendorName}</strong><p className="text-sm text-slate-500">{vendor.scope || "Scope not specified"}</p></div><div className="text-sm font-bold text-indigo-600">₹{Number(vendor.allocatedAmount||0).toLocaleString("en-IN")}</div></div>)}</div></section>}
 
             {/* Employees */}
 

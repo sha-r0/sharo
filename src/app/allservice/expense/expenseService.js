@@ -95,6 +95,7 @@ const expenseService = {
         status: "approved",
       }
     );
+
   },
 
   /* ==========================================
@@ -138,6 +139,7 @@ const expenseService = {
         status: "rejected",
       }
     );
+
   },
 
   /* ==========================================

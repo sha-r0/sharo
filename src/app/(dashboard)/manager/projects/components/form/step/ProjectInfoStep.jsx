@@ -132,7 +132,7 @@ export default function ProjectInfoStep({
 
 
 
-                <div className="grid grid-cols-2 gap-10">
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
 
 
 
@@ -258,6 +258,15 @@ export default function ProjectInfoStep({
 
 
 
+                        </div>
+
+                        <div>
+                            <Label icon={Briefcase}>Execution Model</Label>
+                            <select value={form.executionModel} onChange={(e) => updateField("executionModel", e.target.value)} className={input}>
+                                <option value="inhouse">In-house</option>
+                                <option value="outsourced">Outsourced</option>
+                                <option value="hybrid">Hybrid</option>
+                            </select>
                         </div>
 
 
@@ -512,7 +521,7 @@ export default function ProjectInfoStep({
 
 
 
-                <div className="grid grid-cols-2 gap-10">
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
 
 
 

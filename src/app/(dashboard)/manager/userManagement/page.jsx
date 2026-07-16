@@ -609,6 +609,7 @@ import employeeService from "@/app/allservice/employee/employeeService";
 import EmployeeStats from "./components/EmployeeStats";
 import EmployeeToolbar from "./components/EmployeeToolbar";
 import EmployeeList from "./components/EmployeeList";
+import RoleManagement from "./components/RoleManagement";
 
 export default function EmployeePage() {
 
@@ -627,6 +628,8 @@ export default function EmployeePage() {
     const [role, setRole] = useState("All");
 
     const [status, setStatus] = useState("All");
+
+    const [view, setView] = useState("employees");
 
     useEffect(() => {
 
@@ -790,7 +793,7 @@ export default function EmployeePage() {
 
             {/* Header */}
 
-            <div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 
                 <h1 className="text-3xl font-bold">
 
@@ -804,7 +807,10 @@ export default function EmployeePage() {
 
                 </p>
 
+                <div className="flex gap-2 rounded-2xl bg-white p-1.5"><button onClick={() => setView("employees")} className={`rounded-xl px-4 py-2 text-sm font-bold ${view === "employees" ? "bg-blue-600 text-white" : "text-slate-500"}`}>Employees</button><button onClick={() => setView("roles")} className={`rounded-xl px-4 py-2 text-sm font-bold ${view === "roles" ? "bg-blue-600 text-white" : "text-slate-500"}`}>Roles & Permissions</button></div>
             </div>
+
+            {view === "roles" ? <RoleManagement /> : <>
 
             {/* Stats */}
 
@@ -845,6 +851,8 @@ export default function EmployeePage() {
                 employees={filteredEmployees}
 
             />
+
+            </>}
 
         </div>
 

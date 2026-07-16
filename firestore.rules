@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function company(companyId) { return get(/databases/$(database)/documents/Companies/$(companyId)); }
+    function isOwner(companyId) { return signedIn() && company(companyId).data.ownerUid == request.auth.uid; }
+    function employeeId() { return request.auth.token.companyEmployeeId; }
+    function employee(companyId) { return get(/databases/$(database)/documents/Companies/$(companyId)/Usermanagement/$(employeeId())); }
+    function companyMember(companyId) { return signedIn() && (isOwner(companyId) || request.auth.token.companyId == companyId); }
+    function active(companyId) { return isOwner(companyId) || (companyMember(companyId) && employee(companyId).data.access.loginEnabled == true && employee(companyId).data.access.status == 'active'); }
+    function has(companyId, permission) { return isOwner(companyId) || (active(companyId) && permission in employee(companyId).data.access.effectivePermissions); }
+    function canWrite(companyId, module) { return has(companyId, module + '.manage') || (request.method == 'create' && has(companyId, module + '.create')) || (request.method == 'update' && has(companyId, module + '.edit')) || (request.method == 'delete' && has(companyId, module + '.delete')); }
+
+    match /Usermanagement/{userId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+    match /Companies/{companyId} {
+      allow read: if companyMember(companyId);
+      allow update: if has(companyId, 'company.manage');
+      allow create, delete: if false;
+
+      match /Usermanagement/{userId} {
+        allow read: if active(companyId);
+        allow create, delete: if has(companyId, 'employee.manage');
+        allow update: if has(companyId, 'employee.manage') || (has(companyId, 'employee.edit') && request.resource.data.access == resource.data.access) || (employeeId() == userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['access', 'updatedAt']) && request.resource.data.access.diff(resource.data.access).affectedKeys().hasOnly(['requirePasswordChange', 'policyAccepted', 'passwordChangedAt', 'lastLoginAt', 'lastDevice', 'lastBrowser', 'lastLocation']));
+      }
+      match /Roles/{roleId} { allow read: if active(companyId); allow write: if has(companyId, 'employee.manage') && roleId != 'owner'; }
+      match /Permissions/{permissionId} { allow read: if active(companyId); allow write: if has(companyId, 'employee.manage'); }
+      match /ActivityLogs/{logId} { allow read: if has(companyId, 'employee.manage'); allow create: if active(companyId) && request.resource.data.actorId == request.auth.uid; allow update, delete: if false; }
+
+      match /Attendance/{id} { allow read: if has(companyId, 'attendance.view'); allow write: if canWrite(companyId, 'attendance'); }
+      match /GPSPunches/{id} { allow read: if has(companyId, 'gps.view'); allow write: if canWrite(companyId, 'gps'); }
+      match /LeaveRequests/{id} { allow read: if has(companyId, 'leave.view'); allow write: if canWrite(companyId, 'leave'); }
+      match /LeaveTypes/{id} { allow read: if has(companyId, 'leave.view'); allow write: if has(companyId, 'leave.manage'); }
+      match /Holidays/{id} { allow read: if active(companyId); allow write: if has(companyId, 'leave.manage'); }
+      match /ShiftPolicies/{id} { allow read: if active(companyId); allow write: if has(companyId, 'settings.manage'); }
+      match /advance_requests/{id} { allow read: if has(companyId, 'advance.view'); allow write: if canWrite(companyId, 'advance'); }
+      match /Expenses/{id} { allow read: if has(companyId, 'expense.view'); allow write: if canWrite(companyId, 'expense'); }
+      match /Projectmanagement/{id} { allow read: if has(companyId, 'projects.view'); allow write: if canWrite(companyId, 'projects'); }
+      match /WorkLogs/{id} { allow read: if has(companyId, 'projects.view'); allow write: if canWrite(companyId, 'projects'); }
+      match /Clients/{id} { allow read: if has(companyId, 'clients.view'); allow write: if canWrite(companyId, 'clients'); }
+      match /Vendors/{id} { allow read: if has(companyId, 'vendors.view'); allow write: if canWrite(companyId, 'vendors'); }
+      match /VendorPayments/{id} { allow read: if has(companyId, 'vendors.view'); allow write: if canWrite(companyId, 'vendors'); }
+      match /Invoices/{id} { allow read: if has(companyId, 'invoices.view') || has(companyId, 'billing.view'); allow write: if canWrite(companyId, 'invoices') || canWrite(companyId, 'billing'); }
+      match /Payments/{id} { allow read: if has(companyId, 'billing.view'); allow write: if canWrite(companyId, 'billing'); }
+      match /Quotations/{id} { allow read: if has(companyId, 'quotation.view'); allow write: if canWrite(companyId, 'quotation'); }
+      match /Payroll/{id} { allow read: if has(companyId, 'payroll.view'); allow write: if canWrite(companyId, 'payroll'); }
+      match /Notifications/{id} { allow read: if has(companyId, 'notifications.view'); allow write: if has(companyId, 'notifications.manage'); }
+      match /UserNotifications/{userId}/{document=**} { allow read, write: if active(companyId) && (userId == request.auth.uid || has(companyId, 'notifications.manage')); }
+      match /{document=**} { allow read, write: if isOwner(companyId); }
+    }
+  }
+}

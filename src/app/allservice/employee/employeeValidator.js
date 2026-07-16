@@ -40,16 +40,16 @@ export function validateEmployee(form) {
     errors.dob = "Date of birth is required.";
   }
 
-  if (!form.password) {
+  if (form.loginEnabled !== false && !form.authUid && !form.password) {
     errors.password = "Password is required.";
   }
 
-  if (form.password.length < 6) {
+  if (form.loginEnabled !== false && !form.authUid && form.password.length < 8) {
     errors.password =
-      "Password must contain at least 6 characters.";
+      "Temporary password must contain at least 8 characters.";
   }
 
-  if (form.password !== form.confirmPassword) {
+  if (form.loginEnabled !== false && !form.authUid && form.password !== form.confirmPassword) {
     errors.confirmPassword =
       "Passwords do not match.";
   }
@@ -69,6 +69,10 @@ export function validateEmployee(form) {
   if (!form.joiningDate) {
     errors.joiningDate = "Joining date is required.";
   }
+
+  if (!form.role?.trim()) errors.role = "Role is required.";
+  if (!form.employeeType?.trim()) errors.employeeType = "Employment type is required.";
+  if (!form.accountStatus?.trim()) errors.accountStatus = "Account status is required.";
 
   /* ==========================================
      Salary

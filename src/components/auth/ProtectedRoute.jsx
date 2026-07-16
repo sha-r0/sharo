@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
+import { canAccessPath } from "@/app/allservice/rbac/AuthorizationService";
+import AccessDenied from "./AccessDenied";
 
 export default function ProtectedRoute({ children }) {
 
@@ -20,28 +22,9 @@ export default function ProtectedRoute({ children }) {
 
     loading,
 
+    access,
+
   } = useAuth();
-
-  // ===========================================
-  // Development Mode
-  // ===========================================
-
-  const devMode =
-    process.env.NEXT_PUBLIC_DEV_MODE === "true";
-
-  if (
-
-    devMode &&
-
-    typeof window !== "undefined" &&
-
-    window.location.hostname === "localhost"
-
-  ) {
-
-    return children;
-
-  }
 
   // ===========================================
   // Authentication & Routing
@@ -166,6 +149,10 @@ export default function ProtectedRoute({ children }) {
     return null;
 
   }
+
+  if (access && (!access.loginEnabled || ["inactive", "suspended", "locked", "pending"].includes(String(access.status).toLowerCase()))) return <AccessDenied />;
+
+  if (access && !canAccessPath(access, pathname)) return <AccessDenied />;
 
   // ===========================================
   // Workspace Incomplete

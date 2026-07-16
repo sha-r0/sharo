@@ -328,7 +328,7 @@ export default function EmployeeHeader({
 
                         <div className="flex flex-col sm:flex-row xl:flex-col gap-3">
 
-                            <button
+                            {onEdit && <button
 
                                 onClick={onEdit}
 
@@ -353,9 +353,9 @@ export default function EmployeeHeader({
 
                                 Edit Employee
 
-                            </button>
+                            </button>}
 
-                            {employee.status !== "Inactive" && (
+                            {employee.status !== "Inactive" && onDeactivate && (
 
                                 <button
 

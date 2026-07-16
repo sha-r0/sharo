@@ -145,7 +145,7 @@ export function mapEmployee({
 
       employeeId,
 
-      password: form.password,
+      temporaryPasswordSet: Boolean(form.password),
 
       lastLogin:
 
@@ -153,6 +153,18 @@ export function mapEmployee({
 
         null,
 
+    },
+
+    access: {
+      ...(form.access || {}),
+      authUid: form.authUid || null,
+      loginEnabled: form.loginEnabled !== false,
+      roleId: String(form.role || "employee").toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+      status: form.accountStatus || "active",
+      requirePasswordChange: form.requirePasswordChange !== false,
+      policyAccepted: false,
+      permissionOverrides: form.permissionOverrides || { grant: [], deny: [] },
+      effectivePermissions: form.effectivePermissions || [],
     },
 
     /* ==========================================

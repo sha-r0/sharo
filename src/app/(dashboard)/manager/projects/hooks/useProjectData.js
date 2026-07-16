@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import employeeService from "@/app/allservice/employee/employeeService";
 import clientService from "../../clients/services/clientService";
+import vendorRepository from "../../vendors/services/VendorRepository";
 
 export default function useProjectData(companyId) {
 
@@ -14,6 +15,7 @@ export default function useProjectData(companyId) {
     const [employees, setEmployees] = useState([]);
 
     const [managers, setManagers] = useState([]);
+    const [vendors, setVendors] = useState([]);
     const [error, setError] = useState(null);
 
     const load = useCallback(async () => {
@@ -37,6 +39,7 @@ export default function useProjectData(companyId) {
                 employeeData,
 
                 managerData,
+                vendorData,
 
             ] = await Promise.all([
 
@@ -45,6 +48,7 @@ export default function useProjectData(companyId) {
                 employeeService.getEmployees(companyId),
 
                 employeeService.getManagers(companyId),
+                vendorRepository.getAll(companyId),
 
             ]);
 
@@ -53,6 +57,7 @@ export default function useProjectData(companyId) {
             setEmployees(employeeData);
 
             setManagers(managerData);
+            setVendors(vendorData.filter((item) => String(item.status || "active").toLowerCase() === "active"));
 
         }
 
@@ -89,6 +94,7 @@ export default function useProjectData(companyId) {
         employees,
     
         managers,
+        vendors,
     
         refresh: load,
 

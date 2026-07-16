@@ -1,252 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
+import toast from "react-hot-toast";
+import AdvanceService from "../services/AdvanceService";
 
-export default function AddAdvanceModal({ projects = [], employees = [], existing = null, onClose }) {
-    const [projectId, setProjectId] = useState(projects[0]?.id || "");
-    const [employeeId, setEmployeeId] = useState(employees[0]?.id || "");
-    const [amount, setAmount] = useState("");
-    const [paymentType, setPaymentType] = useState("Cash");
-    const [description, setDescription] = useState("");
-    const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-    const [submitting, setSubmitting] = useState(false);
-    const [category, setCategory] = useState("Personal Advance");
+const dateValue = (value) => { const date = typeof value?.toDate === "function" ? value.toDate() : value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : ""; };
 
-    const [companyId, setCompanyId] = useState(null);
-
-    useEffect(() => {
-        const stored = localStorage.getItem("adminUser");
-
-        if (stored) {
-            const user = JSON.parse(stored);
-            setCompanyId(user.companyDocId);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!projectId && projects.length) setProjectId(projects[0].id);
-    }, [projects]);
-
-    useEffect(() => {
-        if (!employeeId && employees.length) setEmployeeId(employees[0].id);
-    }, [employees]);
-
-    // Load existing when editing
-    useEffect(() => {
-        if (existing) {
-            setProjectId(existing.projectId || "");
-            setEmployeeId(existing.employeeId || "");
-            setAmount(
-                existing.amount
-                    ? String(existing.amount)
-                    : existing.amount != null
-                        ? String(existing.amount)
-                        : ""
-            );
-            setPaymentType(existing.paymentType || "Cash");
-            setDescription(existing.description || "");
-            setDate(existing.date || new Date().toISOString().split("T")[0]);
-            setCategory(existing.category || "Personal Advance");
-        }
-    }, [existing]);
-
-    const handleSubmit = async () => {
-        if (!companyId) {
-            alert("Company not found. Please login again.");
-            return;
-        }
-        if (!employeeId || !amount) {
-            alert("Please fill employee and amount.");
-            return;
-        }
-
-        setSubmitting(true);
-
-        try {
-            const employeeObj = employees.find((e) => e.id === employeeId) || {};
-            const projectObj = projects.find((p) => p.id === projectId) || {};
-
-            let payload;
-
-            if (category === "Company Advance") {
-                // ✅ Company advance — closed in same month
-                payload = {
-                    projectId: projectObj.id || "",
-                    projectName: projectObj.name || "",
-                    employeeId: employeeObj.id || "",
-                    employeeName: employeeObj.name || "",
-                    amount: Number(amount),
-                    paymentType,
-                    category,
-                    description: description || "",
-                    date,
-                    status: "closed",
-                    createdAt: existing?.createdAt || new Date(),
-                };
-            } else {
-                // ✅ PERSONAL ADVANCE — SIMPLE ADDITIVE MODEL (YOUR REQUIREMENT)
-                payload = {
-                    projectId: projectObj.id || "",
-                    projectName: projectObj.name || "",
-                    employeeId: employeeObj.id || "",
-                    employeeName: employeeObj.name || "",
-                    amount: Number(amount),
-                    paymentType,
-                    category,
-                    description: description || "",
-                    date,
-                    createdAt: existing?.createdAt || new Date(),
-                };
-            }
-
-            if (existing && existing.id) {
-                await updateDoc(
-                    doc(db, "Companies", companyId, "Advances", existing.id),
-                    payload
-                );
-                alert("Advance updated");
-            } else {
-                await addDoc(
-                    collection(db, "Companies", companyId, "Advances"),
-                    payload
-                );
-                alert("Advance added");
-            }
-
-            onClose && onClose();
-        } catch (err) {
-            console.error("Failed to save advance", err);
-            alert("Failed to save advance. Check console.");
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/70 backdrop-blur-md p-4">
-
-            <div className="
-      max-w-md w-full rounded-2xl p-6 relative
-      bg-white
-      border border-gray-200
-      shadow-xl
-      text-gray-800
-    ">
-
-                <button
-                    className="absolute top-4 right-4 text-gray-500 hover:text-gray-800"
-                    onClick={onClose}
-                >
-                    <X size={20} />
-                </button>
-
-                <h3 className="text-lg font-semibold mb-4 text-gray-800">
-                    {existing ? "Edit Advance" : "Add Advance"}
-                </h3>
-
-                <div className="space-y-3">
-
-                    {/* Employee */}
-                    <div>
-                        <label className="text-xs text-gray-600">Employee</label>
-                        <select
-                            value={employeeId}
-                            onChange={(e) => setEmployeeId(e.target.value)}
-                            className="w-full p-2 rounded-lg mt-1 bg-white border border-gray-300 text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                        >
-                            {employees.map((u) => (
-                                <option key={u.id} value={u.id}>{u.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Amount */}
-                    <div>
-                        <label className="text-xs text-gray-600">Amount</label>
-                        <input
-                            type="number"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            className="w-full p-2 rounded-lg mt-1 bg-white border border-gray-300 text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="Enter amount"
-                        />
-                    </div>
-
-                    {/* Payment Type */}
-                    <div>
-                        <label className="text-xs text-gray-600">Payment Type</label>
-                        <select
-                            value={paymentType}
-                            onChange={(e) => setPaymentType(e.target.value)}
-                            className="w-full p-2 rounded-lg mt-1 bg-white border border-gray-300 text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                        >
-                            <option value="Cash">Cash</option>
-                            <option value="IDFC Bank">Bank</option>
-                            <option value="Personal">Personal</option>
-                        </select>
-                    </div>
-
-                    {/* Category */}
-                    <div>
-                        <label className="text-xs text-gray-600">Advance Category</label>
-                        <select
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
-                            className="w-full p-2 rounded-lg mt-1 bg-white border border-gray-300 text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                        >
-                            <option value="Personal Advance">Personal Advance</option>
-                            <option value="Company Advance">Company Advance</option>
-                        </select>
-                    </div>
-
-                    {/* Date */}
-                    <div>
-                        <label className="text-xs text-gray-600">Date</label>
-                        <input
-                            type="date"
-                            value={date}
-                            onChange={(e) => setDate(e.target.value)}
-                            className="w-full p-2 rounded-lg mt-1 bg-white border border-gray-300 text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
-                    </div>
-
-                    {/* Note */}
-                    <div>
-                        <label className="text-xs text-gray-600">Note</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            rows={3}
-                            className="w-full p-2 rounded-lg mt-1 bg-white border border-gray-300 text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="Optional note"
-                        />
-                    </div>
-
-                    {/* Buttons */}
-                    <div className="flex gap-2 justify-end mt-2">
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
-                        >
-                            Cancel
-                        </button>
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={submitting}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60 transition"
-                        >
-                            {submitting
-                                ? (existing ? "Updating..." : "Adding...")
-                                : (existing ? "Update" : "Submit")}
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-    );
+export default function AddAdvanceModal({ companyId, projects = [], employees = [], existing, onClose }) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ employeeFirestoreId: "", advanceType: "Personal", amount: "", monthlyDeduction: "", firstDeductionDate: "", reason: "", projectId: "", purpose: "", requiredDate: "", description: "", priority: "Normal", managerRemarks: "" });
+  useEffect(() => { if (existing) setForm({ ...form, ...existing, amount: String(existing.amount || ""), monthlyDeduction: String(existing.monthlyDeduction || ""), firstDeductionDate: dateValue(existing.firstDeductionDate), requiredDate: dateValue(existing.requiredDate) }); }, [existing]);
+  const employee = useMemo(() => employees.find((item) => item.id === form.employeeFirestoreId), [employees, form.employeeFirestoreId]);
+  const project = useMemo(() => projects.find((item) => item.id === form.projectId), [projects, form.projectId]);
+  const amount = Number(form.amount || 0), deduction = Number(form.monthlyDeduction || 0);
+  const months = form.advanceType === "Personal" && deduction > 0 ? Math.ceil(amount / deduction) : 0;
+  const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = async () => {
+    if (!form.employeeFirestoreId || amount <= 0) return toast.error("Select an employee and enter a valid amount.");
+    if (form.advanceType === "Personal" && (deduction <= 0 || deduction > amount || !form.firstDeductionDate)) return toast.error("Enter a valid monthly deduction and first deduction date.");
+    if (form.advanceType === "Company" && (!form.projectId || !form.purpose.trim())) return toast.error("Select the project and enter the company-work purpose.");
+    setSaving(true);
+    try {
+      await AdvanceService.save(companyId, { ...form, advanceType: form.advanceType, employeeFirestoreId: employee.id, employeeId: employee.employeeId, employeeName: employee.employeeName, employeePhotoUrl: employee.employeePhotoUrl, department: employee.department, designation: employee.designation, projectName: project?.projectName || project?.name || "", amount, monthlyDeduction: deduction, months, repaymentMethod: form.advanceType === "Personal" ? "Salary Deduction" : "Expense Settlement", remainingAmount: existing?.remainingAmount ?? amount, settledAmount: existing?.settledAmount || 0, firstDeductionDate: form.firstDeductionDate ? new Date(form.firstDeductionDate) : null, expectedCompletion: form.firstDeductionDate && months ? new Date(new Date(form.firstDeductionDate).setMonth(new Date(form.firstDeductionDate).getMonth() + months - 1)) : null, requiredDate: form.requiredDate ? new Date(form.requiredDate) : null, status: existing?.status || "Approved", approvedAt: existing?.approvedAt || new Date(), approvedBy: existing?.approvedBy || "Manager" }, existing?.id);
+      toast.success(existing ? "Advance updated." : "Advance added to employee."); onClose(true);
+    } catch (error) { console.error(error); toast.error("Unable to save advance."); } finally { setSaving(false); }
+  };
+  return <div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-slate-900/35 p-4 backdrop-blur-sm"><div className="my-6 w-full max-w-3xl rounded-3xl bg-[#F9FAFC] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><h2 className="text-2xl font-bold text-slate-800">{existing ? "Edit advance" : "Add employee advance"}</h2><p className="text-sm text-slate-500">Personal salary advance or company work advance</p></div><button onClick={() => onClose(false)} className="rounded-xl p-2 hover:bg-slate-100"><X/></button></div><div className="mt-6 grid gap-4 md:grid-cols-2"><Select label="Employee *" value={form.employeeFirestoreId} onChange={(e) => update("employeeFirestoreId", e.target.value)} options={[["","Select employee"], ...employees.map((item) => [item.id, `${item.employeeName} (${item.employeeId})`])]}/><Select label="Advance type *" value={form.advanceType} onChange={(e) => update("advanceType", e.target.value)} options={[["Personal","Personal advance"],["Company","Company work advance"]]}/><Field label="Amount *" type="number" min="1" value={form.amount} onChange={(e) => update("amount", e.target.value)}/><Select label="Priority" value={form.priority} onChange={(e) => update("priority", e.target.value)} options={[["Normal","Normal"],["High","High"],["Emergency","Emergency"]]}/>{form.advanceType === "Personal" ? <><Field label="Monthly salary deduction *" type="number" min="1" value={form.monthlyDeduction} onChange={(e) => update("monthlyDeduction", e.target.value)}/><Field label="First deduction date *" type="date" value={form.firstDeductionDate} onChange={(e) => update("firstDeductionDate", e.target.value)}/><Field label="Calculated repayment months" value={months || "—"} readOnly/><Field label="Reason" value={form.reason} onChange={(e) => update("reason", e.target.value)}/></> : <><Select label="Project *" value={form.projectId} onChange={(e) => update("projectId", e.target.value)} options={[["","Select project"], ...projects.map((item) => [item.id, item.projectName || item.name || "Unnamed project"])]}/><Field label="Required date" type="date" value={form.requiredDate} onChange={(e) => update("requiredDate", e.target.value)}/><Field label="Work purpose *" value={form.purpose} onChange={(e) => update("purpose", e.target.value)}/><Field label="Description" value={form.description} onChange={(e) => update("description", e.target.value)}/></>}</div><label className="mt-4 block"><span className="mb-2 block text-sm font-bold">Manager remarks</span><textarea rows={3} value={form.managerRemarks} onChange={(e) => update("managerRemarks", e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white p-3 outline-none focus:border-blue-500"/></label><div className="mt-6 flex justify-end gap-3"><button onClick={() => onClose(false)} className="rounded-xl border px-5 py-2.5 font-bold">Cancel</button><button onClick={submit} disabled={saving} className="rounded-xl bg-blue-600 px-5 py-2.5 font-bold text-white disabled:opacity-50">{saving ? "Saving..." : existing ? "Update" : "Add advance"}</button></div></div></div>;
 }
+function Field({ label, ...props }) { return <label><span className="mb-2 block text-sm font-bold text-slate-700">{label}</span><input {...props} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-blue-500"/></label>; }
+function Select({ label, options, ...props }) { return <label><span className="mb-2 block text-sm font-bold text-slate-700">{label}</span><select {...props} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-blue-500">{options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>; }

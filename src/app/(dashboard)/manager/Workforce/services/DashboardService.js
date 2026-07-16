@@ -10,7 +10,7 @@ import {
   } from "firebase/firestore";
   import { db } from "@/lib/firebase";
   
-  export default class AttendanceService {
+  export default class DashboardService {
     static collection(companyId) {
       return collection(
         db,

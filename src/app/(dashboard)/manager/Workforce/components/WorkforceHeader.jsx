@@ -9,6 +9,7 @@ import {
     ScanFace,
     MapPinned,
     FileBarChart2,
+    Banknote as BanknoteIndianRupee,
 } from "lucide-react";
 
 const neo =
@@ -18,6 +19,13 @@ export default function WorkforceHeader() {
     const router = useRouter();
 
     const actions = [
+        {
+            label: "Payroll",
+            icon: BanknoteIndianRupee,
+            href: "/manager/Workforce/payroll",
+            bg: "bg-blue-50",
+            color: "text-blue-600",
+        },
         {
             label: "Shift Policy",
             icon: CalendarClock,
@@ -32,34 +40,34 @@ export default function WorkforceHeader() {
             bg: "bg-emerald-50",
             color: "text-emerald-600",
         },
-        {
-            label: "Employee",
-            icon: UserPlus,
-            href: "/dashboard/employees",
-            bg: "bg-blue-50",
-            color: "text-blue-600",
-        },
+        // {
+        //     label: "Employee",
+        //     icon: UserPlus,
+        //     href: "/dashboard/employees",
+        //     bg: "bg-blue-50",
+        //     color: "text-blue-600",
+        // },
         {
             label: "Attendance",
             icon: ScanFace,
-            href: "/dashboard/workforce/attendance",
+            href: "/manager/Workforce/attendance",
             bg: "bg-orange-50",
             color: "text-orange-600",
         },
         {
             label: "GPS Approval",
             icon: MapPinned,
-            href: "/dashboard/workforce/gps",
+            href: "/manager/Workforce/gps-approval",
             bg: "bg-cyan-50",
             color: "text-cyan-600",
         },
-        {
-            label: "Reports",
-            icon: FileBarChart2,
-            href: "/dashboard/workforce/reports",
-            bg: "bg-pink-50",
-            color: "text-pink-600",
-        },
+        // {
+        //     label: "Reports",
+        //     icon: FileBarChart2,
+        //     href: "/dashboard/workforce/reports",
+        //     bg: "bg-pink-50",
+        //     color: "text-pink-600",
+        // },
     ];
 
     return (

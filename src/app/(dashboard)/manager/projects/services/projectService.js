@@ -1,4 +1,4 @@
-import { doc } from "firebase/firestore";
+import { doc, serverTimestamp } from "firebase/firestore";
 
 import { projectCollection } from "@/lib/firestore-firebase";
 
@@ -153,7 +153,7 @@ class ProjectService {
 
             firestoreId,
 
-            data
+            { ...data, updatedAt: serverTimestamp() }
 
         );
 

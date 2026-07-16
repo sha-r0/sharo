@@ -41,17 +41,17 @@ export default function ProjectEmployeeStep({
 
         if (!emp) return;
 
-        if (
-            form.employees.some(
-                e => e.employeeId === emp.id
-            )
-        ) {
+        if (form.employees.some(
+            e => e.firestoreId === emp.id || e.employeeId === emp.employeeId
+        )) {
             return;
         }
 
         addEmployee({
 
-            employeeId: emp.id,
+            firestoreId: emp.id,
+
+            employeeId: emp.employeeId || emp.id,
 
             fullName: emp.fullName,
 
@@ -79,7 +79,7 @@ export default function ProjectEmployeeStep({
 
             <div className={` px-7 py-2`}>
 
-                <div className="flex items-center justify-between mb-6">
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
                     <div>
 
@@ -111,7 +111,7 @@ export default function ProjectEmployeeStep({
 
                         }}
 
-                        className={`${input} w-72`}
+                        className={`${input} w-full sm:w-72`}
 
                     >
 
@@ -188,7 +188,7 @@ export default function ProjectEmployeeStep({
 
                                 >
 
-                                    <div className="grid grid-cols-6 gap-6 items-center">
+                                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-6 lg:items-center">
 
                                         <div>
 
@@ -316,7 +316,7 @@ export default function ProjectEmployeeStep({
 
             <div className={`${neo} rounded-3xl bg-white p-7`}>
 
-                <div className="grid grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
 
                     <div>
 

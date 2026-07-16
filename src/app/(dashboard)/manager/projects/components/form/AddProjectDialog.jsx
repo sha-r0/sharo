@@ -4,13 +4,12 @@ import { useState } from "react";
 import { X, FolderKanban } from "lucide-react";
 
 import useProjectForm from "../../hooks/useProjectForm";
-import useProjectData from "../../hooks/useProjectData";
 
 import ProjectStepper from "./ProjectStepper";
 import ProjectInfoStep from "./step/ProjectInfoStep";
 import ProjectEmployeeStep from "./step/ProjectEmployeeStep";
 import ProjectReviewStep from "./step/ProjectReviewStep";
-import { useAuth } from "@/app/(auth)/context/AuthContext";
+import ProjectVendorStep from "./step/ProjectVendorStep";
 
 const neoShadow =
     "shadow-[0px_0.706592px_0.706592px_-0.666667px_rgba(0,0,0,0.08),0px_1.80656px_1.80656px_-1.33333px_rgba(0,0,0,0.08),0px_3.62176px_3.62176px_-2px_rgba(0,0,0,0.07),0px_6.8656px_6.8656px_-2.66667px_rgba(0,0,0,0.07),0px_13.6468px_13.6468px_-3.33333px_rgba(0,0,0,0.05),0px_30px_30px_-4px_rgba(0,0,0,0.02),inset_0px_3px_1px_0px_rgb(255,255,255)]";
@@ -23,9 +22,18 @@ export default function AddProjectDialog({
 
     onSave,
 
-}) {
+    project = null,
 
-    const { company } = useAuth();
+    clients = [],
+
+    managers = [],
+
+    employees = [],
+    vendors = [],
+
+    loadingData = false,
+
+}) {
 
     const [currentStep, setCurrentStep] = useState(1);
     const [saving, setSaving] = useState(false);
@@ -42,23 +50,15 @@ export default function AddProjectDialog({
 
         updateEmployee,
 
+        addVendor,
+
+        removeVendor,
+
+        updateVendor,
+
         resetForm,
 
-    } = useProjectForm();
-
-    const {
-
-        loading,
-
-        clients,
-
-        managers,
-
-        employees,
-
-        refresh,
-
-    } = useProjectData(company?.id);
+    } = useProjectForm(project);
 
     if (!open) return null;
 
@@ -74,7 +74,19 @@ export default function AddProjectDialog({
 
     async function handleNext() {
 
-        if (currentStep < 3) {
+        if (currentStep === 1) {
+            if (!form.projectName.trim()) return alert("Project name is required.");
+            if (!form.clientId) return alert("Please select a client.");
+            if (!form.startDate || !form.endDate) return alert("Start and end dates are required.");
+            if (form.endDate < form.startDate) return alert("End date cannot be before the start date.");
+            if (Number(form.budget || 0) < 0 || Number(form.poAmount || 0) < 0) return alert("Financial values cannot be negative.");
+        }
+
+        if (currentStep === 3 && ["outsourced", "hybrid"].includes(form.executionModel) && !form.vendors.length) return alert("This execution model requires at least one vendor.");
+        if (currentStep === 3 && form.vendors.some((item) => Number(item.allocatedAmount || 0) <= 0)) return alert("Every assigned vendor requires an allocated amount.");
+        if (currentStep === 3 && form.vendors.some((item) => Number(item.allocatedAmount || 0) < Number(item.paidAmount || 0))) return alert("Vendor allocation cannot be reduced below the amount already paid.");
+
+        if (currentStep < 4) {
 
             setCurrentStep(currentStep + 1);
 
@@ -88,7 +100,7 @@ export default function AddProjectDialog({
 
             const result = await onSave(form);
 
-            if (result.success) {
+            if (result?.success) {
 
                 handleClose();
 
@@ -128,15 +140,17 @@ export default function AddProjectDialog({
 
     return (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-2 sm:p-6">
 
             <div
                 className={`
                     ${neoShadow}
                     w-full
                     max-w-6xl
-                    max-h-[90vh]
-                    rounded-[32px]
+                    max-h-[96vh]
+                    rounded-2xl
+                    sm:max-h-[90vh]
+                    sm:rounded-[32px]
                     bg-[#F9FAFC]
                     overflow-hidden
                     flex
@@ -146,11 +160,11 @@ export default function AddProjectDialog({
 
                 {/* Header */}
 
-                <div className="flex items-center justify-between border-b border-slate-200 px-8 py-6">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 sm:px-8 sm:py-6">
 
                     <div className="flex items-center gap-4">
 
-                        <div className="h-14 w-14 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white">
+                        <div className="hidden h-14 w-14 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 items-center justify-center text-white sm:flex">
 
                             <FolderKanban size={28} />
 
@@ -158,15 +172,15 @@ export default function AddProjectDialog({
 
                         <div>
 
-                            <h2 className="text-3xl font-bold text-slate-800">
+                            <h2 className="text-xl font-bold text-slate-800 sm:text-3xl">
 
-                                New Project
+                                {project ? "Edit Project" : "New Project"}
 
                             </h2>
 
                             <p className="mt-1 text-slate-500">
 
-                                Create and configure a new project
+                                {project ? "Update project information and assignments" : "Create and configure a new project"}
 
                             </p>
 
@@ -190,7 +204,7 @@ export default function AddProjectDialog({
 
                 {/* Stepper */}
 
-                <div className="px-8 pt-8">
+                <div className="px-3 pt-5 sm:px-8 sm:pt-8">
 
                     <ProjectStepper
 
@@ -202,26 +216,19 @@ export default function AddProjectDialog({
 
                 {/* Body */}
 
-                <div className="flex-1 overflow-y-auto px-8 py-8">
+                <div className="flex-1 overflow-y-auto px-2 py-5 sm:px-8 sm:py-8">
 
                     {
 
-                        loading ? (
+                        loadingData ? (
 
-                            <div className="flex h-80 items-center justify-center">
-
-                                <div className="text-center">
-
-                                    <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-
-                                    <p className="mt-4 text-slate-500">
-
-                                        Loading project data...
-
-                                    </p>
-
+                            <div className="space-y-5 py-5" aria-label="Loading project data">
+                                <div className="h-7 w-52 animate-pulse rounded-lg bg-slate-200" />
+                                <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                                    {Array.from({ length: 6 }).map((_, index) => (
+                                        <div key={index} className="h-12 animate-pulse rounded-2xl bg-slate-200" />
+                                    ))}
                                 </div>
-
                             </div>
 
                         ) : (
@@ -263,6 +270,12 @@ export default function AddProjectDialog({
 
                                 {currentStep === 3 && (
 
+                                    <ProjectVendorStep form={form} vendors={vendors} addVendor={addVendor} removeVendor={removeVendor} updateVendor={updateVendor} />
+
+                                )}
+
+                                {currentStep === 4 && (
+
                                     <ProjectReviewStep
 
                                         form={form}
@@ -281,7 +294,7 @@ export default function AddProjectDialog({
 
                 {/* Footer */}
 
-                <div className="flex items-center justify-between border-t border-slate-200 px-8 py-6">
+                <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-4 sm:px-8 sm:py-6">
 
                     <button
                         disabled={saving}
@@ -324,11 +337,11 @@ export default function AddProjectDialog({
 
                             saving
 
-                                ? "Creating..."
+                                ? (project ? "Updating..." : "Creating...")
 
-                                : currentStep === 3
+                                : currentStep === 4
 
-                                    ? "Create Project"
+                                    ? (project ? "Update Project" : "Create Project")
 
                                     : "Next →"
 

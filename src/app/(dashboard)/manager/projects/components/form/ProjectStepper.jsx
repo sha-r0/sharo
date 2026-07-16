@@ -5,6 +5,7 @@ import {
     FolderKanban,
     Users,
     ClipboardCheck,
+    Building2,
 } from "lucide-react";
 
 const steps = [
@@ -23,6 +24,12 @@ const steps = [
 
     {
         id: 3,
+        title: "Vendors",
+        icon: Building2,
+    },
+
+    {
+        id: 4,
         title: "Review",
         icon: ClipboardCheck,
     },
@@ -119,12 +126,14 @@ export default function ProjectStepper({
 
                         {index !== steps.length - 1 && (
 
-                            <div className="mx-6 mb-8">
+                            <div className="mx-2 mb-8 sm:mx-6">
 
                                 <div
                                     className={`
                                     h-1
-                                    w-36
+                                    w-8
+                                    sm:w-20
+                                    lg:w-36
                                     rounded-full
                                     transition-all
 
