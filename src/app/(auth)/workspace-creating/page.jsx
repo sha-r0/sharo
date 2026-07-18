@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import WelcomeStep from "./components/WelcomeStep";
 import CompanyProfileStep from "./components/CompanyProfileStep";
-import WorkingHoursStep from "./components/WorkingHoursStep";
 import WorkspaceCreatingStep from "./components/WorkspaceCreatingStep";
 
 import { useAuth } from "../context/AuthContext";
@@ -199,18 +197,6 @@ export default function WorkspaceCreatingPage() {
       )}
 
       {step === 3 && (
-
-        <WorkingHoursStep
-
-          onBack={previousStep}
-
-          onNext={saveWorkingHours}
-
-        />
-
-      )}
-
-      {step === 4 && (
 
         <WorkspaceCreatingStep
 

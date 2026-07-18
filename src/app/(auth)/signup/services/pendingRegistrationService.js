@@ -22,6 +22,7 @@ export async function savePendingRegistration(orderId, data) {
         adminPhone: data.adminPhone,
         password: data.password,
         corporateId: data.corporateId,
+        role: "owner",
       },
 
       subscription: data.subscription,

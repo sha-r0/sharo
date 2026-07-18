@@ -103,7 +103,7 @@ export async function completeRegistration(orderId) {
 
             ownerPhone: data.admin.adminPhone,
 
-            role: "manager",
+            role: "owner",
 
             plan: data.subscription.plan,
 
@@ -167,7 +167,7 @@ export async function completeRegistration(orderId) {
 
             designation: "Owner",
 
-            role: "manager",
+            role: "owner",
 
             isPrimary: true,
 
@@ -200,7 +200,7 @@ export async function completeRegistration(orderId) {
 
             companyId: companyRef.id,
           
-            role: "manager",
+            role: "owner",
           
           });
 

@@ -2,7 +2,6 @@ import LoginPanel from "./components/login_pannel";
 import HeroSection from "./components/hero_section";
 import LoginFooter from "./components/login_footer";
 
-
 export const metadata = {
   title: {
     default: "Authentication",
@@ -20,39 +19,60 @@ export default function AuthLayout({ children }) {
 
   return (
     <main className="min-h-screen bg-[#eef2f7]">
-      <div className="max-w-7xl mx-auto min-h-screen px-6 py-10">
-
-        <div className="grid lg:grid-cols-[1.15fr_480px] gap-16 items-center min-h-[calc(100vh-80px)]">
-
-          {/* LEFT */}
-          <section className="flex flex-col justify-between h-full">
-
+      <div
+        className="
+          mx-auto
+          flex
+          min-h-screen
+          w-full
+          max-w-7xl
+          items-center
+          justify-center
+          px-4
+          py-6
+          sm:px-6
+          sm:py-8
+          lg:py-10
+        "
+      >
+        <div
+          className="
+            grid
+            w-full
+            grid-cols-1
+            items-center
+            gap-8
+            lg:min-h-[calc(100vh-80px)]
+            lg:grid-cols-[1.15fr_480px]
+            lg:gap-16
+          "
+        >
+          {/* LEFT - hidden on mobile and tablet */}
+          <section className="hidden h-full flex-col justify-between lg:flex">
             <HeroSection />
-
             <LoginFooter />
-
           </section>
 
           {/* RIGHT */}
-          <section className="flex justify-center lg:justify-end">
-
+          <section className="flex w-full justify-center lg:justify-end">
             <div
               className={`
                 w-full
                 max-w-[460px]
+                rounded-[24px]
                 bg-[#f5f5f5]
-                rounded-[36px]
-                p-8
+                p-5
+                sm:rounded-[30px]
+                sm:p-6
+                md:p-8
+                lg:rounded-[36px]
                 ${neoShadow}
               `}
             >
               <LoginPanel />
             </div>
-
           </section>
-
         </div>
-
       </div>
     </main>
   );

@@ -63,48 +63,6 @@ export default function HeroSection() {
 
       </p>
 
-      {/* CTA Buttons */}
-
-      <div className="mt-10 flex items-center gap-5">
-
-        <button
-          className="
-          px-8
-          py-4
-          rounded-2xl
-          bg-gradient-to-r
-          from-blue-600
-          to-blue-700
-          text-white
-          font-semibold
-          shadow-[0_18px_35px_rgba(37,99,235,.35)]
-          hover:-translate-y-1
-          transition-all
-        "
-        >
-          Get Started
-        </button>
-
-        <button
-          className={`
-          px-8
-          py-4
-          rounded-2xl
-          bg-[#f5f5f5]
-          border
-          border-white/80
-          text-slate-700
-          font-semibold
-          ${neo}
-          hover:text-blue-600
-          transition-all
-        `}
-        >
-          Learn More
-        </button>
-
-      </div>
-
     </section>
   );
 }

@@ -23,7 +23,7 @@ export default function SignupStep2({ next, back, data: prevData }) {
     adminPhone: "",
     password: "",
     confirmPassword: "",
-    role: "manager",
+    role: "owner",
   });
 
   useEffect(() => {
