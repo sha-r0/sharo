@@ -28,6 +28,7 @@ function Chip({ icon: Icon, text, color = "text-slate-600" }) {
     );
 }
 
+
 export default function ClientRow({
 
     client,
@@ -39,6 +40,9 @@ export default function ClientRow({
     onDelete,
 
 }) {
+
+    const isActive =
+        String(client.status || "").toLowerCase() === "active";
 
     return (
 
@@ -93,13 +97,12 @@ export default function ClientRow({
                 <div className="flex items-center gap-2">
 
                     <span
-                        className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                            client.status === "Active"
+                        className={`rounded-full px-4 py-2 text-sm font-semibold ${isActive
                                 ? "bg-green-100 text-green-700"
                                 : "bg-red-100 text-red-700"
-                        }`}
+                            }`}
                     >
-                        {client.status}
+                        {client.status || "Inactive"}
                     </span>
 
                     <ActionButton

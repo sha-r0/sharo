@@ -2,84 +2,98 @@ import clientRepository from "./clientRepository";
 import { validateClient } from "./clientValidator";
 import { generateClientId } from "./clientIdGenerator";
 import { mapClient } from "./clientMapper";
+
 import notificationService from "@/app/allservice/notification/notificationService";
 
 const clientService = {
+  async create(companyId, form) {
+    const validation = validateClient(form);
 
-    async create(companyId, form) {
+    if (!validation.valid) {
+      return validation;
+    }
 
-        const validation = validateClient(form);
+    const clientId = await generateClientId(companyId);
+    const client = mapClient(form, clientId);
 
-        if (!validation.valid) {
+    await clientRepository.save(companyId, client);
 
-            return validation;
+    await notificationService.emitSafe("client.created", {
+      companyId,
+      clientName:
+        client.clientName ||
+        form.clientName ||
+        form.name,
+      receiver: "company",
+      actionRoute: "/manager/clients",
+      metadata: {
+        clientId,
+        clientName:
+          client.clientName ||
+          form.clientName ||
+          form.name,
+      },
+    });
 
-        }
+    return {
+      success: true,
+      message: "Client created successfully.",
+    };
+  },
 
-        const clientId = await generateClientId(companyId);
+  async getClients(companyId) {
+    return clientRepository.getAll(companyId);
+  },
 
-        const client = mapClient(
+  async updateClient(companyId, id, form) {
+    const validation = validateClient(form);
+  
+    if (!validation.valid) {
+      return validation;
+    }
+  
+    const updateData = {
+      clientName: form.clientName.trim(),
+      companyName: form.companyName.trim(),
+      contactPerson: form.contactPerson.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim().toLowerCase(),
+      gstNo: form.gstNo.trim().toUpperCase(),
+      panNo: form.panNo.trim().toUpperCase(),
+  
+      address: {
+        line1: form.address.line1.trim(),
+        city: form.address.city.trim(),
+        state: form.address.state.trim(),
+        country: form.address.country.trim(),
+        pincode: form.address.pincode.trim(),
+      },
+  
+      notes: form.notes.trim(),
+      status: form.status,
+      updatedAt: new Date(),
+    };
+  
+    await clientRepository.update(
+      companyId,
+      id,
+      updateData,
+    );
+  
+    return {
+      success: true,
+      message: "Client updated successfully.",
+    };
+  },
 
-            form,
+  async deleteClient(companyId, id) {
+    await clientRepository.remove(companyId, id);
 
-            clientId
-
-        );
-
-        await clientRepository.save(
-
-            companyId,
-
-            client
-
-        );
-
-        await notificationService.emitSafe("client.created", {
-            companyId,
-            clientName: client.clientName || form.clientName || form.name,
-            receiver: "company",
-            actionRoute: "/manager/clients",
-            metadata: { clientId, clientName: client.clientName || form.clientName || form.name },
-        });
-
-        return {
-
-            success: true,
-
-        };
-
-    },
-
-    async getClients(companyId) {
-        return await clientRepository.getAll(companyId);
-    },
-
-    async updateClient(companyId, id, data) {
-
-        return clientRepository.update(
-
-            companyId,
-
-            id,
-
-            data
-
-        );
-
-    },
-
-    async deleteClient(companyId, id) {
-
-        return clientRepository.remove(
-
-            companyId,
-
-            id
-
-        );
-
-    },
-
+    return {
+      success: true,
+      message: "Client deleted successfully.",
+    };
+  },
 };
 
 export default clientService;

@@ -14,7 +14,7 @@ import BillPreviewModal from "./components/BillPreviewModal";
 
 export default function ExpenseApprovalPage() {
 
-    const { company } = useAuth();
+    const { company, currentUser, employee, } = useAuth();
 
     function formatDate(date) {
         const year = date.getFullYear();
@@ -242,43 +242,64 @@ export default function ExpenseApprovalPage() {
     }
 
     async function updateExpenseAmount(amount) {
+        if (!company?.id || !selectedExpense?.id) {
+            alert("Expense information is unavailable.");
+            return;
+        }
 
         try {
-
             setUpdatingAmount(true);
 
+            const wasApproved =
+                String(selectedExpense.status || "")
+                    .trim()
+                    .toLowerCase() === "approved";
+
             await expenseService.updateAmount(
-
                 company.id,
-
                 selectedExpense,
+                amount,
+                {
+                    editedAfterApproval: wasApproved,
 
-                amount
+                    editor: {
+                        uid:
+                            currentUser?.uid ||
+                            employee?.authUid ||
+                            "",
 
+                        name:
+                            currentUser?.fullName ||
+                            currentUser?.name ||
+                            employee?.personalInfo?.fullName ||
+                            company?.ownerName ||
+                            "Admin",
+
+                        role:
+                            currentUser?.role ||
+                            employee?.access?.roleId ||
+                            "admin",
+                    },
+                },
             );
 
             setEditOpen(false);
-
             setSelectedExpense(null);
 
             await loadData();
+        } catch (error) {
+            console.error(
+                "Failed to update expense amount:",
+                error,
+            );
 
-        }
-
-        catch (error) {
-
-            console.error(error);
-
-            alert("Failed to update amount.");
-
-        }
-
-        finally {
-
+            alert(
+                error?.message ||
+                "Failed to update expense amount.",
+            );
+        } finally {
             setUpdatingAmount(false);
-
         }
-
     }
 
     async function handleApprove(expense) {
@@ -286,7 +307,25 @@ export default function ExpenseApprovalPage() {
 
             await expenseService.approveExpense(
                 company.id,
-                expense
+                expense,
+                {
+                    uid:
+                        currentUser?.uid ||
+                        employee?.authUid ||
+                        "",
+
+                    name:
+                        currentUser?.fullName ||
+                        currentUser?.name ||
+                        employee?.personalInfo?.fullName ||
+                        company?.ownerName ||
+                        "Admin",
+
+                    role:
+                        currentUser?.role ||
+                        employee?.access?.roleId ||
+                        "admin",
+                },
             );
 
             await loadData();

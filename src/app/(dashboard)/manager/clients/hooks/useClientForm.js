@@ -1,125 +1,84 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-export default function useClientForm() {
+const initialForm = {
+  clientName: "",
+  companyName: "",
+  contactPerson: "",
+  phone: "",
+  email: "",
+  gstNo: "",
+  panNo: "",
 
-    const [form, setForm] = useState({
+  address: {
+    line1: "",
+    city: "",
+    state: "",
+    country: "India",
+    pincode: "",
+  },
 
-        clientName: "",
+  notes: "",
+  status: "Active",
+};
 
-        companyName: "",
+export default function useClientForm(client = null) {
+  const [form, setForm] = useState(initialForm);
 
-        contactPerson: "",
+  useEffect(() => {
+    if (!client) {
+      setForm(initialForm);
+      return;
+    }
 
-        phone: "",
+    setForm({
+      clientName: client.clientName || "",
+      companyName: client.companyName || "",
+      contactPerson: client.contactPerson || "",
+      phone: client.phone || "",
+      email: client.email || "",
+      gstNo: client.gstNo || "",
+      panNo: client.panNo || "",
 
-        email: "",
+      address: {
+        line1: client.address?.line1 || "",
+        city: client.address?.city || "",
+        state: client.address?.state || "",
+        country: client.address?.country || "India",
+        pincode: client.address?.pincode || "",
+      },
 
-        gstNo: "",
-
-        panNo: "",
-
-        address: {
-
-            line1: "",
-
-            city: "",
-
-            state: "",
-
-            country: "India",
-
-            pincode: "",
-
-        },
-
-        notes: "",
-
-        status: "Active",
-
+      notes: client.notes || "",
+      status: client.status || "Active",
     });
+  }, [client]);
 
-    function updateField(name, value) {
+  function updateField(name, value) {
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  }
 
-        setForm(prev => ({
+  function updateAddress(name, value) {
+    setForm((previous) => ({
+      ...previous,
+      address: {
+        ...previous.address,
+        [name]: value,
+      },
+    }));
+  }
 
-            ...prev,
+  function resetForm() {
+    setForm(initialForm);
+  }
 
-            [name]: value,
-
-        }));
-
-    }
-
-    function updateAddress(name, value) {
-
-        setForm(prev => ({
-
-            ...prev,
-
-            address: {
-
-                ...prev.address,
-
-                [name]: value,
-
-            },
-
-        }));
-
-    }
-
-    function resetForm() {
-
-        setForm({
-
-            clientName: "",
-
-            companyName: "",
-
-            contactPerson: "",
-
-            phone: "",
-
-            email: "",
-
-            gstNo: "",
-
-            panNo: "",
-
-            address: {
-
-                line1: "",
-
-                city: "",
-
-                state: "",
-
-                country: "India",
-
-                pincode: "",
-
-            },
-
-            notes: "",
-
-            status: "Active",
-
-        });
-
-    }
-
-    return {
-
-        form,
-
-        updateField,
-
-        updateAddress,
-
-        resetForm,
-
-    };
-
+  return {
+    form,
+    updateField,
+    updateAddress,
+    resetForm,
+  };
 }

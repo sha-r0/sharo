@@ -11,15 +11,15 @@ import {
 } from "lucide-react";
 import { EmptyState, MiniMetric, ProgressRow, SectionCard, StatCard, neo } from "@/app/(dashboard)/manager/dashboard/DashboardWidgets";
 
-const BarChart = dynamic(() => import("@/app/(dashboard)/manager/dashboard/DashboardWidgets").then((module) => module.BarChart), { loading: () => <div className="h-52 animate-pulse rounded-2xl bg-slate-100"/> });
-const LineChart = dynamic(() => import("@/app/(dashboard)/manager/dashboard/DashboardWidgets").then((module) => module.LineChart), { loading: () => <div className="h-52 animate-pulse rounded-2xl bg-slate-100"/> });
+const BarChart = dynamic(() => import("@/app/(dashboard)/manager/dashboard/DashboardWidgets").then((module) => module.BarChart), { loading: () => <div className="h-52 animate-pulse rounded-2xl bg-slate-100" /> });
+const LineChart = dynamic(() => import("@/app/(dashboard)/manager/dashboard/DashboardWidgets").then((module) => module.LineChart), { loading: () => <div className="h-52 animate-pulse rounded-2xl bg-slate-100" /> });
 const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 const percent = (value) => `${Number(value || 0).toFixed(0)}%`;
 const date = (value) => value ? new Date(value?.toDate?.() || value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "Insufficient data";
 const severity = { critical: "border-red-200 bg-red-50 text-red-700", high: "border-orange-200 bg-orange-50 text-orange-700", medium: "border-amber-200 bg-amber-50 text-amber-700", low: "border-blue-200 bg-blue-50 text-blue-700" };
 
 export function ProjectIntelligenceSkeleton() {
-  return <div className="animate-pulse space-y-6 px-2 py-2 sm:px-6"><div className="h-44 rounded-3xl bg-white/70"/><div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{Array.from({length:8},(_,i)=><div key={i} className="h-28 rounded-3xl bg-white/70"/>)}</div><div className="grid gap-6 lg:grid-cols-3"><div className="h-80 rounded-3xl bg-white/70 lg:col-span-2"/><div className="h-80 rounded-3xl bg-white/70"/></div></div>;
+  return <div className="animate-pulse space-y-6 px-2 py-2 sm:px-6"><div className="h-44 rounded-3xl bg-white/70" /><div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{Array.from({ length: 8 }, (_, i) => <div key={i} className="h-28 rounded-3xl bg-white/70" />)}</div><div className="grid gap-6 lg:grid-cols-3"><div className="h-80 rounded-3xl bg-white/70 lg:col-span-2" /><div className="h-80 rounded-3xl bg-white/70" /></div></div>;
 }
 
 export default function ProjectIntelligenceDashboard({ intelligence, refreshing, error, onRefresh }) {
@@ -34,7 +34,7 @@ export default function ProjectIntelligenceDashboard({ intelligence, refreshing,
       ...a.payments.history.map((item) => ({ type: "Payment", title: item.invoiceNumber || "Payment", detail: money(item.amount) })),
       ...(a.client ? [{ type: "Client", title: a.client.clientName || a.client.companyName, detail: a.client.contactPerson }] : []),
       ...a.vendors.list.map((item) => ({ type: "Vendor", title: item.vendorName || item.name, detail: item.contactPerson })),
-    ].filter((item) => `${item.type} ${item.title} ${item.detail}`.toLowerCase().includes(text)).slice(0,10);
+    ].filter((item) => `${item.type} ${item.title} ${item.detail}`.toLowerCase().includes(text)).slice(0, 10);
   }, [search, intelligence, a, project]);
 
   const predictions = [
@@ -46,38 +46,222 @@ export default function ProjectIntelligenceDashboard({ intelligence, refreshing,
     ["Failure probability", percent(p.failureProbability), AlertTriangle],
   ];
   const summary = [
-    ["Health score", health.score, Activity, health.score < 60 ? "red" : health.score < 80 ? "amber" : "green", "percent"],
-    ["Completion", project.progress || 0, Gauge, "blue", "percent"], ["Budget used", a.finance.budgetUsed, Wallet, "amber", "percent"],
+    ["Monthly cost", a.finance.monthlyCost, TrendingDown, "red", "currency"],
     ["Remaining budget", a.finance.remainingBudget, BadgeIndianRupee, a.finance.remainingBudget < 0 ? "red" : "green", "currency"],
-    ["Today's cost", a.finance.todayCost, CircleDollarSign, "violet", "currency"], ["Monthly cost", a.finance.monthlyCost, TrendingDown, "red", "currency"],
-    ["Received", a.finance.received, CheckCircle2, "green", "currency"], ["Pending payment", a.finance.pendingPayment, Clock3, "amber", "currency"],
+    ["Pending payment", a.finance.pendingPayment, Clock3, "amber", "currency"],
+    ["Received", a.finance.received, CheckCircle2, "green", "currency"],
   ];
-  const panels = [["overview","Overview"],["employees","Employees"],["vendors","Vendors"],["work","Work Logs"],["expenses","Expenses"],["vendor-payments","Vendor Payments"],["client-payments","Client Payments"],["documents","Documents"],["activity","Activity"],["analytics","Analytics"],["timeline","Timeline"]];
+  const panels = [["overview", "Overview"], ["employees", "Employees"], ["vendors", "Vendors"], ["work", "Work Logs"], ["expenses", "Expenses"], ["vendor-payments", "Vendor Payments"], ["client-payments", "Client Payments"], ["documents", "Documents"], ["activity", "Activity"], ["analytics", "Analytics"], ["timeline", "Timeline"]];
 
   return <div className="space-y-6 px-2 py-2 sm:px-4 lg:px-6">
-    <button onClick={() => router.back()} className="flex items-center gap-2 text-sm font-bold text-blue-600"><ArrowLeft size={17}/>Back to projects</button>
-    <header className={`${neo} relative z-30 rounded-3xl bg-white p-5 sm:p-7`}><div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"><div className="flex min-w-0 items-center gap-4"><span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white"><FolderKanban size={26}/></span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="truncate text-2xl font-bold text-slate-900 sm:text-3xl">{project.projectName}</h1><span className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${severity[health.riskLevel]}`}>{health.riskLevel} risk</span></div><p className="mt-1 text-sm text-slate-500">{project.projectId} • {project.clientName || "No client"} • {project.status || "Pending"}</p></div></div><div className="flex gap-2"><div className="relative w-full sm:w-80"><Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"/><input value={search} onChange={(event)=>setSearch(event.target.value)} placeholder="Search project intelligence..." className="h-11 w-full rounded-xl border border-slate-200 bg-[#F9FAFC] pl-11 pr-3 text-sm outline-none focus:border-blue-400"/>{search && <div className="absolute left-0 right-0 top-13 overflow-hidden rounded-2xl border border-slate-100 bg-white p-2 shadow-2xl">{searchResults.length ? searchResults.map((item,index)=><div key={`${item.type}-${index}`} className="rounded-xl px-3 py-2 hover:bg-slate-50"><p className="truncate text-sm font-bold text-slate-700">{item.title}</p><p className="truncate text-xs text-slate-400">{item.type} • {item.detail || "Project record"}</p></div>) : <p className="p-4 text-center text-sm text-slate-500">No matching project data</p>}</div>}</div><button onClick={onRefresh} disabled={refreshing} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white"><RefreshCw size={17} className={refreshing?"animate-spin":""}/></button></div></div>
-      <div className="mt-6 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2 lg:grid-cols-5"><ProgressRow label="Budget health" value={health.budget}/><ProgressRow label="Schedule health" value={health.schedule} color="bg-indigo-500"/><ProgressRow label="Profitability" value={health.profitability} color="bg-emerald-500"/><ProgressRow label="Productivity" value={health.productivity} color="bg-cyan-500"/><ProgressRow label="Payment health" value={health.payment} color="bg-violet-500"/></div>
+    <button onClick={() => router.back()} className="flex items-center gap-2 text-sm font-bold text-blue-600"><ArrowLeft size={17} />Back to projects</button>
+    <header
+      className={`${neo} relative z-30 rounded-3xl bg-white p-5 sm:p-7`}
+    >
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        {/* Project information */}
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
+            <FolderKanban size={26} />
+          </span>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-2xl font-bold text-slate-900 sm:text-3xl">
+                {project.projectName}
+              </h1>
+
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-bold capitalize ${severity[health.riskLevel] ||
+                  severity.low
+                  }`}
+              >
+                {health.riskLevel || "low"} risk
+              </span>
+            </div>
+
+            <p className="mt-1 text-sm text-slate-500">
+              {project.projectId || "No project ID"} •{" "}
+              {project.clientName || "No client"} •{" "}
+              {project.status || "Pending"}
+            </p>
+          </div>
+        </div>
+
+        {/* Search and refresh */}
+        <div className="flex w-full gap-2 xl:w-auto">
+          <div className="relative w-full sm:w-80">
+            <Search
+              size={17}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+
+            <input
+              value={search}
+              onChange={(event) =>
+                setSearch(event.target.value)
+              }
+              placeholder="Search project intelligence..."
+              className="h-11 w-full rounded-xl border border-slate-200 bg-[#F9FAFC] pl-11 pr-3 text-sm outline-none focus:border-blue-400"
+            />
+
+            {search && (
+              <div className="absolute left-0 right-0 top-[52px] z-50 overflow-hidden rounded-2xl border border-slate-100 bg-white p-2 shadow-2xl">
+                {searchResults.length ? (
+                  searchResults.map((item, index) => (
+                    <div
+                      key={`${item.type}-${index}`}
+                      className="rounded-xl px-3 py-2 hover:bg-slate-50"
+                    >
+                      <p className="truncate text-sm font-bold text-slate-700">
+                        {item.title}
+                      </p>
+
+                      <p className="truncate text-xs text-slate-400">
+                        {item.type} •{" "}
+                        {item.detail || "Project record"}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="p-4 text-center text-sm text-slate-500">
+                    No matching project data
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label="Refresh project intelligence"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw
+              size={17}
+              className={
+                refreshing ? "animate-spin" : ""
+              }
+            />
+          </button>
+        </div>
+      </div>
     </header>
     {error && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-700">{error}</div>}
-    {alerts[0]?.severity === "critical" && <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700"><AlertTriangle className="mt-0.5 shrink-0" size={19}/><div><p className="font-bold">{alerts[0].title}</p><p className="text-sm">{alerts[0].message}</p></div></div>}
-    <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">{summary.map(([title,value,Icon,tone,format])=><StatCard key={title} title={title} value={value} icon={Icon} tone={tone} format={format}/>)}</section>
-    <nav className={`${neo} flex gap-2 overflow-x-auto rounded-2xl p-2`}>{panels.map(([id,label])=><button key={id} onClick={()=>setPanel(id)} className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold ${panel===id?"bg-blue-600 text-white":"text-slate-600 hover:bg-white"}`}>{label}</button>)}</nav>
+    {alerts[0]?.severity === "critical" && <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700"><AlertTriangle className="mt-0.5 shrink-0" size={19} /><div><p className="font-bold">{alerts[0].title}</p><p className="text-sm">{alerts[0].message}</p></div></div>}
+    <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">{summary.map(([title, value, Icon, tone, format]) => <StatCard key={title} title={title} value={value} icon={Icon} tone={tone} format={format} />)}</section>
+    <nav className={`${neo} flex gap-2 overflow-x-auto rounded-2xl p-2`}>{panels.map(([id, label]) => <button key={id} onClick={() => setPanel(id)} className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold ${panel === id ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`}>{label}</button>)}</nav>
 
-    {panel === "overview" && <div className="space-y-6"><div className="grid gap-6 xl:grid-cols-3"><SectionCard title="Project health intelligence" subtitle={`${health.label} • ${health.score}/100`} className="xl:col-span-2"><div className="grid gap-4 sm:grid-cols-2"><MiniMetric label="Profit" value={a.finance.profit} format="currency" tone={a.finance.profit>=0?"text-emerald-600":"text-red-600"}/><MiniMetric label="Profit margin" value={a.finance.profitPercent} format="percent"/><MiniMetric label="Average productivity" value={a.employees.averageProductivity} format="percent"/><MiniMetric label="Attendance" value={a.employees.attendancePercent} format="percent"/></div></SectionCard><SectionCard title="Smart alerts" subtitle={`${alerts.length} active signal(s)`}><div className="max-h-72 space-y-2 overflow-y-auto">{alerts.map((alert)=><div key={alert.id} className={`rounded-2xl border p-3 ${severity[alert.severity]}`}><div className="flex items-center justify-between gap-2"><strong className="text-sm">{alert.title}</strong><span className="text-[9px] font-bold uppercase">{alert.severity}</span></div><p className="mt-1 text-xs leading-5 opacity-80">{alert.message}</p></div>)}</div></SectionCard></div><div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Expense trend" subtitle="Actual daily project spend"><LineChart data={a.charts.expenses} color="#7c3aed"/></SectionCard><SectionCard title="Employee performance" subtitle="Productivity score by employee"><BarChart data={a.charts.employee} color="#2563eb" valueFormat={percent}/></SectionCard></div><SectionCard title="Deterministic predictions" subtitle={`Confidence ${p.confidence.toFixed(0)}% • Based on current project signals`}><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{predictions.map(([label,value,Icon])=><div key={label} className="rounded-2xl border border-slate-100 bg-white p-4"><div className="flex items-center gap-2 text-slate-500"><Icon size={16}/><span className="text-xs font-semibold">{label}</span></div><p className="mt-2 truncate text-lg font-bold text-slate-800">{value}</p></div>)}</div></SectionCard></div>}
+    {panel === "overview" && <div className="space-y-6"><div className="grid gap-6 xl:grid-cols-3"><SectionCard title="Project health intelligence" subtitle={`${health.label} • ${health.score}/100`} className="xl:col-span-2"><div className="grid gap-4 sm:grid-cols-2"><MiniMetric label="Profit" value={a.finance.profit} format="currency" tone={a.finance.profit >= 0 ? "text-emerald-600" : "text-red-600"} /><MiniMetric label="Profit margin" value={a.finance.profitPercent} format="percent" /><MiniMetric label="Average productivity" value={a.employees.averageProductivity} format="percent" /><MiniMetric label="Attendance" value={a.employees.attendancePercent} format="percent" /></div></SectionCard><SectionCard title="Smart alerts" subtitle={`${alerts.length} active signal(s)`}><div className="max-h-72 space-y-2 overflow-y-auto">{alerts.map((alert) => <div key={alert.id} className={`rounded-2xl border p-3 ${severity[alert.severity]}`}><div className="flex items-center justify-between gap-2"><strong className="text-sm">{alert.title}</strong><span className="text-[9px] font-bold uppercase">{alert.severity}</span></div><p className="mt-1 text-xs leading-5 opacity-80">{alert.message}</p></div>)}</div></SectionCard></div><div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Expense trend" subtitle="Actual daily project spend"><LineChart data={a.charts.expenses} color="#7c3aed" /></SectionCard><SectionCard title="Employee performance" subtitle="Productivity score by employee"><BarChart data={a.charts.employee} color="#2563eb" valueFormat={percent} /></SectionCard></div><SectionCard title="Deterministic predictions" subtitle={`Confidence ${p.confidence.toFixed(0)}% • Based on current project signals`}><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{predictions.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-slate-100 bg-white p-4"><div className="flex items-center gap-2 text-slate-500"><Icon size={16} /><span className="text-xs font-semibold">{label}</span></div><p className="mt-2 truncate text-lg font-bold text-slate-800">{value}</p></div>)}</div></SectionCard></div>}
 
-    {panel === "analytics" && <div className="space-y-6"><section className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MiniMetric label="Employee cost" value={a.finance.employeeCost} format="currency"/><MiniMetric label="Vendor cost" value={a.finance.vendorCost} format="currency"/><MiniMetric label="Expense cost" value={a.finance.expenseCost} format="currency"/><MiniMetric label="Total project cost" value={a.finance.totalCost} format="currency"/><MiniMetric label="Remaining budget" value={a.finance.remainingBudget} format="currency" tone={a.finance.remainingBudget<0?"text-red-600":"text-emerald-600"}/><MiniMetric label="Expected profit" value={a.finance.expectedProfit} format="currency"/><MiniMetric label="Budget used" value={a.finance.budgetUsed} format="percent"/><MiniMetric label="Average employee cost/hour" value={a.finance.averageCostPerHour} format="currency"/></section><div className="grid gap-6 lg:grid-cols-3"><SectionCard title="Project cost mix"><BarChart data={a.charts.costMix}/></SectionCard><SectionCard title="Profit trend"><LineChart data={a.charts.profit} color="#10b981"/></SectionCard><SectionCard title="Vendor payment trend"><LineChart data={a.charts.vendorPayments} color="#7c3aed"/></SectionCard></div><SectionCard title="Department cost"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(a.finance.departmentCost||{}).map(([label,value])=><MiniMetric key={label} label={label} value={value} format="currency"/>)}</div></SectionCard></div>}
-    {panel === "employees" && <div className="space-y-6"><section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">{[["Assigned",a.employees.assigned],["Working",a.employees.working],["Idle",a.employees.idle],["Absent",a.employees.absent],["On leave",a.employees.onLeave],["Late",a.employees.late],["Employee hours",a.finance.employeeHours],["Employee cost",a.finance.employeeCost]].map(([label,value],index)=><MiniMetric key={label} label={label} value={value} format={index===6?"hours":index===7?"currency":undefined}/>)}</section><SectionCard title="Employee analytics" subtitle={`Top performer: ${a.employees.top?.fullName||"Insufficient data"}`}>{a.employees.list.length?<div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left text-xs uppercase tracking-wider text-slate-400"><th className="p-3">Employee</th><th>Designation</th><th>State</th><th>Hours</th><th>Attendance</th><th>Productivity</th></tr></thead><tbody>{a.employees.list.map((item)=><tr key={item.firestoreId||item.employeeId} className="border-b border-slate-100"><td className="p-3 font-bold text-slate-700">{item.fullName}</td><td>{item.designation||"—"}</td><td className="capitalize">{item.status}</td><td>{item.hours.toFixed(1)}h</td><td>{percent(item.attendance)}</td><td className="min-w-40 pr-3"><ProgressRow label="" value={item.productivity}/></td></tr>)}</tbody></table></div>:<EmptyState label="No assigned employees"/>}</SectionCard></div>}
-    {panel === "work" && <div className="grid gap-6 lg:grid-cols-3"><SectionCard title="Live work status"><div className="grid grid-cols-2 gap-3"><MiniMetric label="Working" value={a.work.working}/><MiniMetric label="Paused" value={a.work.paused}/><MiniMetric label="Today hours" value={a.work.todayHours} format="hours"/><MiniMetric label="Total hours" value={a.work.totalHours} format="hours"/><MiniMetric label="Completed tasks" value={a.work.completedTasks}/><MiniMetric label="Running tasks" value={a.work.runningTasks}/></div></SectionCard><SectionCard title="Realtime work logs" subtitle="Latest employee project work" className="lg:col-span-2">{a.work.logs.length?<DataList items={a.work.logs.slice(0,20)} title={(item)=>item.title||item.description||item.employeeName||"Work log"} detail={(item)=>`${item.status||"Recorded"} • ${item.hoursWorked||item.totalHours||0}h`}/>:<EmptyState label="No project work logs"/>}</SectionCard></div>}
-    {panel === "timeline" && <SectionCard title="Project timeline" subtitle={`${date(project.startDate)} → ${date(project.endDate)}`}>{a.timeline.length?<div className="space-y-3">{a.timeline.map((item)=><div key={item.id} className="flex gap-4 rounded-2xl border border-slate-100 bg-white p-4"><span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${String(item.status).toLowerCase()==="completed"?"bg-emerald-500":item.dueDate&&new Date(item.dueDate)<new Date()?"bg-red-500":"bg-blue-500"}`}/><div><p className="font-bold text-slate-700">{item.title||item.name||"Milestone"}</p><p className="text-sm text-slate-500">{date(item.dueDate||item.date)} • {item.status||"Pending"}</p></div></div>)}</div>:<EmptyState label="No project milestones found"/>}</SectionCard>}
-    {panel === "vendors" && <SectionCard title="Assigned vendors" subtitle={`Allocated ${money(a.vendors.allocated)} • Paid ${money(a.vendors.paid)}`}>{a.vendors.list.length?<div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead><tr className="border-b text-left text-xs uppercase text-slate-400"><th className="p-3">Vendor</th><th>Contract</th><th>Paid</th><th>Remaining</th><th>Payment</th><th>Progress</th><th>Status</th><th>Contact</th></tr></thead><tbody>{a.vendors.list.map((item)=><tr key={item.vendorId} className="border-b"><td className="p-3"><button onClick={()=>router.push(`/manager/vendors/${item.firestoreId||item.vendorId}`)} className="font-bold text-blue-600">{item.vendorName}</button></td><td>{money(item.allocatedAmount)}</td><td>{money(item.paidAmount)}</td><td>{money(item.remainingAmount)}</td><td>{percent(item.paymentPercent)}</td><td>{percent(item.progress)}</td><td className="capitalize">{item.status}</td><td>{item.contactPerson||item.phone||"—"}</td></tr>)}</tbody></table></div>:<EmptyState label="No vendors assigned"/>}</SectionCard>}
-    {panel === "expenses" && <SectionCard title="Project expenses" subtitle={`Approved expense cost ${money(a.finance.expenseCost)}`}>{intelligence.expenses.length?<DataList items={intelligence.expenses} title={(item)=>item.description||item.category||"Expense"} detail={(item)=>`${item.status||"Recorded"} • ${money(item.amount)}`}/>:<EmptyState label="No project expenses"/>}</SectionCard>}
-    {panel === "vendor-payments" && <SectionCard title="Vendor payments" subtitle={`Total paid ${money(a.vendors.paid)}`}>{a.vendors.payments.length?<DataList items={a.vendors.payments} title={(item)=>item.vendorName||"Vendor payment"} detail={(item)=>`${item.referenceNumber||item.status||"Payment"} • ${money(item.amount)}`}/>:<EmptyState label="No vendor payments"/>}</SectionCard>}
-    {panel === "client-payments" && <div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Client information">{a.client?<div className="grid grid-cols-2 gap-3"><Info label="Client" value={a.client.clientName||a.client.companyName}/><Info label="Contact" value={a.client.contactPerson}/><Info label="Phone" value={a.client.phone}/><Info label="Email" value={a.client.email}/><Info label="Outstanding" value={money(a.finance.outstanding)}/><Info label="Received" value={money(a.finance.received)}/></div>:<EmptyState label="No linked client record"/>}</SectionCard><SectionCard title="Client payment history">{a.payments.history.length?<DataList items={a.payments.history} title={(item)=>item.referenceNumber||item.invoiceNumber||"Client payment"} detail={(item)=>`${item.status||"Received"} • ${money(item.amount)}`}/>:<EmptyState label="No client payments"/>}</SectionCard></div>}
-    {panel === "documents" && <div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Project documents" subtitle="Drawings, contracts, BOQ, invoices, photos and reports">{a.documents.length?<DataList items={a.documents} title={(item)=>item.name||item.fileName||"Document"} detail={(item)=>item.type||item.category||"Project file"}/>:<EmptyState label="No project documents found"/>}</SectionCard><SectionCard title="Project map & GPS" subtitle="Location and employee punch status"><div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center"><MapPin className="mx-auto text-blue-500" size={30}/><p className="mt-3 font-bold text-slate-700">{typeof a.map.location==="string"?a.map.location:"No project coordinates"}</p><p className="mt-1 text-sm text-slate-500">{a.map.gps.length} GPS record(s) • Radius {a.map.radius||"—"}m</p></div></SectionCard></div>}
-    {panel === "activity" && <SectionCard title="Activity timeline" subtitle="Work, expenses, payments and project events">{a.activity.length?<DataList items={a.activity.slice(0,40)} title={(item)=>item.title} detail={(item)=>`${item.detail||"Activity"} • ${date(item.date)}`}/>:<EmptyState label="No project activity found"/>}</SectionCard>}
+    {panel === "analytics" && <div className="space-y-6"><section className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MiniMetric label="Employee cost" value={a.finance.employeeCost} format="currency" /><MiniMetric label="Vendor cost" value={a.finance.vendorCost} format="currency" /><MiniMetric label="Expense cost" value={a.finance.expenseCost} format="currency" /><MiniMetric label="Total project cost" value={a.finance.totalCost} format="currency" /><MiniMetric label="Remaining budget" value={a.finance.remainingBudget} format="currency" tone={a.finance.remainingBudget < 0 ? "text-red-600" : "text-emerald-600"} /><MiniMetric label="Expected profit" value={a.finance.expectedProfit} format="currency" /><MiniMetric label="Budget used" value={a.finance.budgetUsed} format="percent" /><MiniMetric label="Average employee cost/hour" value={a.finance.averageCostPerHour} format="currency" /></section><div className="grid gap-6 lg:grid-cols-3"><SectionCard title="Project cost mix"><BarChart data={a.charts.costMix} /></SectionCard><SectionCard title="Profit trend"><LineChart data={a.charts.profit} color="#10b981" /></SectionCard><SectionCard title="Vendor payment trend"><LineChart data={a.charts.vendorPayments} color="#7c3aed" /></SectionCard></div><SectionCard title="Department cost"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(a.finance.departmentCost || {}).map(([label, value]) => <MiniMetric key={label} label={label} value={value} format="currency" />)}</div></SectionCard></div>}
+    {panel === "employees" && <div className="space-y-6"><section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">{[["Assigned", a.employees.assigned], ["Working", a.employees.working], ["Idle", a.employees.idle], ["Absent", a.employees.absent], ["On leave", a.employees.onLeave], ["Late", a.employees.late], ["Employee hours", a.finance.employeeHours], ["Employee cost", a.finance.employeeCost]].map(([label, value], index) => <MiniMetric key={label} label={label} value={value} format={index === 6 ? "hours" : index === 7 ? "currency" : undefined} />)}</section><SectionCard title="Employee analytics" subtitle={`Top performer: ${a.employees.top?.fullName || "Insufficient data"}`}>{a.employees.list.length ? <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left text-xs uppercase tracking-wider text-slate-400"><th className="p-3">Employee</th><th>Designation</th><th>State</th><th>Hours</th><th>Attendance</th><th>Productivity</th></tr></thead><tbody>{a.employees.list.map((item) => <tr key={item.firestoreId || item.employeeId} className="border-b border-slate-100"><td className="p-3 font-bold text-slate-700">{item.fullName}</td><td>{item.designation || "—"}</td><td className="capitalize">{item.status}</td><td>{item.hours.toFixed(1)}h</td><td>{percent(item.attendance)}</td><td className="min-w-40 pr-3"><ProgressRow label="" value={item.productivity} /></td></tr>)}</tbody></table></div> : <EmptyState label="No assigned employees" />}</SectionCard></div>}
+    {panel === "work" && <div className="grid gap-6 lg:grid-cols-3"><SectionCard title="Live work status"><div className="grid grid-cols-2 gap-3"><MiniMetric label="Working" value={a.work.working} /><MiniMetric label="Paused" value={a.work.paused} /><MiniMetric label="Today hours" value={a.work.todayHours} format="hours" /><MiniMetric label="Total hours" value={a.work.totalHours} format="hours" /><MiniMetric label="Completed tasks" value={a.work.completedTasks} /><MiniMetric label="Running tasks" value={a.work.runningTasks} /></div></SectionCard><SectionCard title="Realtime work logs" subtitle="Latest employee project work" className="lg:col-span-2">{a.work.logs.length ? <DataList items={a.work.logs.slice(0, 20)} title={(item) => item.title || item.description || item.employeeName || "Work log"} detail={(item) => `${item.status || "Recorded"} • ${item.hoursWorked || item.totalHours || 0}h`} /> : <EmptyState label="No project work logs" />}</SectionCard></div>}
+    {panel === "timeline" && <SectionCard title="Project timeline" subtitle={`${date(project.startDate)} → ${date(project.endDate)}`}>{a.timeline.length ? <div className="space-y-3">{a.timeline.map((item) => <div key={item.id} className="flex gap-4 rounded-2xl border border-slate-100 bg-white p-4"><span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${String(item.status).toLowerCase() === "completed" ? "bg-emerald-500" : item.dueDate && new Date(item.dueDate) < new Date() ? "bg-red-500" : "bg-blue-500"}`} /><div><p className="font-bold text-slate-700">{item.title || item.name || "Milestone"}</p><p className="text-sm text-slate-500">{date(item.dueDate || item.date)} • {item.status || "Pending"}</p></div></div>)}</div> : <EmptyState label="No project milestones found" />}</SectionCard>}
+    {panel === "vendors" && <SectionCard title="Assigned vendors" subtitle={`Allocated ${money(a.vendors.allocated)} • Paid ${money(a.vendors.paid)}`}>{a.vendors.list.length ? <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead><tr className="border-b text-left text-xs uppercase text-slate-400"><th className="p-3">Vendor</th><th>Contract</th><th>Paid</th><th>Remaining</th><th>Payment</th><th>Progress</th><th>Status</th><th>Contact</th></tr></thead><tbody>{a.vendors.list.map((item) => <tr key={item.vendorId} className="border-b"><td className="p-3"><button onClick={() => router.push(`/manager/vendors/${item.firestoreId || item.vendorId}`)} className="font-bold text-blue-600">{item.vendorName}</button></td><td>{money(item.allocatedAmount)}</td><td>{money(item.paidAmount)}</td><td>{money(item.remainingAmount)}</td><td>{percent(item.paymentPercent)}</td><td>{percent(item.progress)}</td><td className="capitalize">{item.status}</td><td>{item.contactPerson || item.phone || "—"}</td></tr>)}</tbody></table></div> : <EmptyState label="No vendors assigned" />}</SectionCard>}
+    {panel === "expenses" && (
+      <SectionCard
+        title="Project expenses"
+        subtitle={`Approved expense cost ${money(
+          a.finance.expenseCost
+        )}`}
+      >
+        {intelligence.expenses.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[850px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wider text-slate-400">
+                  <th className="p-3">Employee</th>
+                  <th className="p-3">Category</th>
+                  <th className="p-3">Description</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Amount</th>
+                  <th className="p-3">Date</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {intelligence.expenses.map(
+                  (item, index) => {
+                    const status = String(
+                      item.status || "pending"
+                    )
+                      .trim()
+                      .toLowerCase();
+
+                    const statusClass =
+                      status === "approved"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : status === "rejected"
+                          ? "bg-red-50 text-red-700"
+                          : "bg-amber-50 text-amber-700";
+
+                    return (
+                      <tr
+                        key={item.id || index}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <td className="p-3">
+                          <div>
+                            <p className="font-bold text-slate-700">
+                              {item.employeeName ||
+                                "Unknown employee"}
+                            </p>
+
+                            <p className="text-xs text-slate-400">
+                              {item.employeeId || "—"}
+                            </p>
+                          </div>
+                        </td>
+
+                        <td className="p-3 font-medium text-slate-700">
+                          {item.category || "—"}
+                        </td>
+
+                        <td className="max-w-[260px] p-3">
+                          <p className="truncate text-slate-600">
+                            {item.description || "—"}
+                          </p>
+                        </td>
+
+                        <td className="p-3">
+                          <span
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-bold capitalize ${statusClass}`}
+                          >
+                            {status}
+                          </span>
+                        </td>
+
+                        <td className="p-3 text-right font-bold text-slate-800">
+                          {money(item.amount)}
+                        </td>
+
+                        <td className="p-3 text-slate-600">
+                          {date(
+                            item.createdAt ||
+                            item.date
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  }
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState label="No project expenses" />
+        )}
+      </SectionCard>
+    )}
+    {panel === "vendor-payments" && <SectionCard title="Vendor payments" subtitle={`Total paid ${money(a.vendors.paid)}`}>{a.vendors.payments.length ? <DataList items={a.vendors.payments} title={(item) => item.vendorName || "Vendor payment"} detail={(item) => `${item.referenceNumber || item.status || "Payment"} • ${money(item.amount)}`} /> : <EmptyState label="No vendor payments" />}</SectionCard>}
+    {panel === "client-payments" && <div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Client information">{a.client ? <div className="grid grid-cols-2 gap-3"><Info label="Client" value={a.client.clientName || a.client.companyName} /><Info label="Contact" value={a.client.contactPerson} /><Info label="Phone" value={a.client.phone} /><Info label="Email" value={a.client.email} /><Info label="Outstanding" value={money(a.finance.outstanding)} /><Info label="Received" value={money(a.finance.received)} /></div> : <EmptyState label="No linked client record" />}</SectionCard><SectionCard title="Client payment history">{a.payments.history.length ? <DataList items={a.payments.history} title={(item) => item.referenceNumber || item.invoiceNumber || "Client payment"} detail={(item) => `${item.status || "Received"} • ${money(item.amount)}`} /> : <EmptyState label="No client payments" />}</SectionCard></div>}
+    {panel === "documents" && <div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Project documents" subtitle="Drawings, contracts, BOQ, invoices, photos and reports">{a.documents.length ? <DataList items={a.documents} title={(item) => item.name || item.fileName || "Document"} detail={(item) => item.type || item.category || "Project file"} /> : <EmptyState label="No project documents found" />}</SectionCard><SectionCard title="Project map & GPS" subtitle="Location and employee punch status"><div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center"><MapPin className="mx-auto text-blue-500" size={30} /><p className="mt-3 font-bold text-slate-700">{typeof a.map.location === "string" ? a.map.location : "No project coordinates"}</p><p className="mt-1 text-sm text-slate-500">{a.map.gps.length} GPS record(s) • Radius {a.map.radius || "—"}m</p></div></SectionCard></div>}
+    {panel === "activity" && <SectionCard title="Activity timeline" subtitle="Work, expenses, payments and project events">{a.activity.length ? <DataList items={a.activity.slice(0, 40)} title={(item) => item.title} detail={(item) => `${item.detail || "Activity"} • ${date(item.date)}`} /> : <EmptyState label="No project activity found" />}</SectionCard>}
   </div>;
 }
 
-function DataList({items,title,detail}) { return <div className="max-h-[520px] space-y-2 overflow-y-auto">{items.map((item,index)=><div key={item.id||index} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><FileText size={16}/></span><span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-700">{title(item)}</span><span className="block truncate text-xs text-slate-400">{detail(item)}</span></span></div>)}</div>; }
-function Info({label,value}) { return <div className="rounded-2xl border border-slate-100 bg-white p-4"><p className="text-xs font-semibold text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-700">{value||"—"}</p></div>; }
+function DataList({ items, title, detail }) { return <div className="max-h-[520px] space-y-2 overflow-y-auto">{items.map((item, index) => <div key={item.id || index} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><FileText size={16} /></span><span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-700">{title(item)}</span><span className="block truncate text-xs text-slate-400">{detail(item)}</span></span></div>)}</div>; }
+function Info({ label, value }) { return <div className="rounded-2xl border border-slate-100 bg-white p-4"><p className="text-xs font-semibold text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-700">{value || "—"}</p></div>; }

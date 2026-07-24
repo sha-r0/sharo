@@ -239,17 +239,16 @@ export default function Dashboard() {
         <div className="space-y-8">
 
             <DashboardHeader
-
                 onNew={() =>
-
                     router.push(
-
                         "/manager/quotation-builder/new"
-
                     )
-
                 }
-
+                onEditTemplate={() =>
+                    router.push(
+                        "/manager/quotation-builder/setup?mode=edit"
+                    )
+                }
             />
 
             <DashboardFilters

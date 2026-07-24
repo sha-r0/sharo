@@ -24,6 +24,8 @@ export default function SignatureStep({
 
     saving = false,
 
+    isEditMode = false,
+
 }) {
 
     function update(key, value) {
@@ -286,28 +288,16 @@ export default function SignatureStep({
 
                         </button>
 
-                        <button
-
-                            disabled={saving}
-
+                        <button className="bg-blue-700 text-white font-semibold rounded-2xl px-6 py-3 flex items-center gap-2"
+                            type="button"
                             onClick={finish}
-
-                            className="rounded-2xl bg-green-600 px-8 py-3 font-semibold text-white"
-
+                            disabled={saving}
                         >
-
-                            {
-
-                                saving ?
-
-                                    "Saving..."
-
-                                    :
-
-                                    "Finish Setup"
-
-                            }
-
+                            {saving
+                                ? "Saving..."
+                                : isEditMode
+                                    ? "Update Template"
+                                    : "Finish Setup"}
                         </button>
 
                     </div>

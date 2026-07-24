@@ -275,7 +275,7 @@ export default function ProjectInfoStep({
 
 
 
-                            <Label icon={User}>
+                            {/* <Label icon={User}>
 
                                 Project Manager
 
@@ -347,7 +347,7 @@ export default function ProjectInfoStep({
 
 
 
-                            </select>
+                            </select> */}
 
 
 

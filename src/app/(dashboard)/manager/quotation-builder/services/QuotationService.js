@@ -1,16 +1,17 @@
 import {
     collection,
+    deleteDoc,
     doc,
     getDoc,
     getDocs,
-    query,
-    orderBy,
+    increment,
     limit,
-    updateDoc,
-    deleteDoc,
+    orderBy,
+    query,
+    runTransaction,
     serverTimestamp,
     setDoc,
-    increment,
+    updateDoc,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
@@ -19,10 +20,37 @@ import notificationService from "@/app/allservice/notification/notificationServi
 export default class QuotationService {
 
     //////////////////////////////////////////////////////
+    // Validation
+    //////////////////////////////////////////////////////
+
+    static validateCompanyId(companyId) {
+        if (!companyId || typeof companyId !== "string") {
+            throw new Error("Company ID is required.");
+        }
+    }
+
+    static validateQuotationId(quotationId) {
+        if (!quotationId || typeof quotationId !== "string") {
+            throw new Error("Quotation ID is required.");
+        }
+    }
+
+    //////////////////////////////////////////////////////
     // References
     //////////////////////////////////////////////////////
 
+    static companyRef(companyId) {
+        this.validateCompanyId(companyId);
+
+        return doc(
+            db,
+            "Companies",
+            companyId
+        );
+    }
+
     static settingsRef(companyId) {
+        this.validateCompanyId(companyId);
 
         return doc(
             db,
@@ -31,10 +59,10 @@ export default class QuotationService {
             "QuotationSettings",
             "default"
         );
-
     }
 
     static quotationsRef(companyId) {
+        this.validateCompanyId(companyId);
 
         return collection(
             db,
@@ -42,27 +70,121 @@ export default class QuotationService {
             companyId,
             "Quotations"
         );
+    }
 
+    static quotationRef(companyId, quotationId) {
+        this.validateCompanyId(companyId);
+        this.validateQuotationId(quotationId);
+
+        return doc(
+            db,
+            "Companies",
+            companyId,
+            "Quotations",
+            quotationId
+        );
+    }
+
+    static clientsRef(companyId) {
+        this.validateCompanyId(companyId);
+
+        return collection(
+            db,
+            "Companies",
+            companyId,
+            "Clients"
+        );
     }
 
     //////////////////////////////////////////////////////
-    // Clients
+    // Company
     //////////////////////////////////////////////////////
 
-    static clientsRef(companyId) {
-
-        return collection(
-
-            db,
-
-            "Companies",
-
-            companyId,
-
-            "Clients"
-
+    static async getCompany(companyId) {
+        const snapshot = await getDoc(
+            this.companyRef(companyId)
         );
 
+        if (!snapshot.exists()) {
+            return null;
+        }
+
+        return {
+            id: snapshot.id,
+            ...snapshot.data(),
+        };
+    }
+
+    //////////////////////////////////////////////////////
+    // Quotation Settings
+    //////////////////////////////////////////////////////
+
+    static async getSettings(companyId) {
+        const snapshot = await getDoc(
+            this.settingsRef(companyId)
+        );
+
+        if (!snapshot.exists()) {
+            return null;
+        }
+
+        return {
+            id: snapshot.id,
+            ...snapshot.data(),
+        };
+    }
+
+    /**
+     * Creates quotation settings for first-time setup
+     * or updates existing template settings.
+     *
+     * merge: true preserves:
+     * - nextQuotationNumber
+     * - quotationPrefix
+     * - createdAt
+     * - any future fields not included in the form
+     */
+    static async saveSettings(companyId, settingsData) {
+        this.validateCompanyId(companyId);
+
+        if (!settingsData || typeof settingsData !== "object") {
+            throw new Error("Quotation settings are required.");
+        }
+
+        const settingsReference =
+            this.settingsRef(companyId);
+
+        const existingSnapshot =
+            await getDoc(settingsReference);
+
+        const payload = {
+            ...settingsData,
+            updatedAt: serverTimestamp(),
+        };
+
+        if (!existingSnapshot.exists()) {
+            payload.createdAt = serverTimestamp();
+
+            payload.quotationPrefix =
+                settingsData.quotationPrefix || "QT";
+
+            payload.nextQuotationNumber =
+                Number(
+                    settingsData.nextQuotationNumber || 1
+                );
+        }
+
+        await setDoc(
+            settingsReference,
+            payload,
+            {
+                merge: true,
+            }
+        );
+
+        return {
+            success: true,
+        };
     }
 
     //////////////////////////////////////////////////////
@@ -70,221 +192,147 @@ export default class QuotationService {
     //////////////////////////////////////////////////////
 
     static async getDashboard(companyId) {
+        this.validateCompanyId(companyId);
 
         try {
+            const [
+                companySnapshot,
+                settingsSnapshot,
+                quotationSnapshot,
+                clientSnapshot,
+            ] = await Promise.all([
+                getDoc(
+                    this.companyRef(companyId)
+                ),
 
-            //////////////////////////////////////////////////////
-            // Company
-            //////////////////////////////////////////////////////
+                getDoc(
+                    this.settingsRef(companyId)
+                ),
 
-            const companyRef = doc(
+                getDocs(
+                    query(
+                        this.quotationsRef(companyId),
+                        orderBy("createdAt", "desc"),
+                        limit(50)
+                    )
+                ),
 
-                db,
+                getDocs(
+                    query(
+                        this.clientsRef(companyId),
+                        orderBy("companyName")
+                    )
+                ),
+            ]);
 
-                "Companies",
+            const company = companySnapshot.exists()
+                ? {
+                    id: companySnapshot.id,
+                    ...companySnapshot.data(),
+                }
+                : null;
 
-                companyId
+            const settings = settingsSnapshot.exists()
+                ? {
+                    id: settingsSnapshot.id,
+                    ...settingsSnapshot.data(),
+                }
+                : null;
 
-            );
+            const quotations =
+                quotationSnapshot.docs.map(
+                    (quotationDocument) => ({
+                        id: quotationDocument.id,
+                        ...quotationDocument.data(),
+                    })
+                );
 
-            const companySnap = await getDoc(companyRef);
+            const clients =
+                clientSnapshot.docs.map(
+                    (clientDocument) => ({
+                        id: clientDocument.id,
+                        ...clientDocument.data(),
+                    })
+                );
 
-            //////////////////////////////////////////////////////
-            // Settings
-            //////////////////////////////////////////////////////
+            const summary = quotations.reduce(
+                (result, quotation) => {
+                    result.total += 1;
 
-            const settingsSnap = await getDoc(
+                    const normalizedStatus = String(
+                        quotation.status || "Draft"
+                    )
+                        .trim()
+                        .toLowerCase();
 
-                this.settingsRef(companyId)
-
-            );
-
-            //////////////////////////////////////////////////////
-            // Quotations
-            //////////////////////////////////////////////////////
-
-            const quotationSnap = await getDocs(
-
-                query(
-
-                    this.quotationsRef(companyId),
-
-                    orderBy("createdAt", "desc"),
-
-                    limit(50)
-
-                )
-
-            );
-
-            const quotations = quotationSnap.docs.map((doc) => ({
-
-                id: doc.id,
-
-                ...doc.data(),
-
-            }));
-
-            //////////////////////////////////////////////////////
-            // Clients
-            //////////////////////////////////////////////////////
-
-            const clientSnap = await getDocs(
-
-                query(
-
-                    this.clientsRef(companyId),
-
-                    orderBy("companyName")
-
-                )
-
-            );
-
-            const clients = clientSnap.docs.map((doc) => ({
-
-                id: doc.id,
-
-                ...doc.data(),
-
-            }));
-
-            //////////////////////////////////////////////////////
-            // Summary
-            //////////////////////////////////////////////////////
-
-            const summary = {
-
-                total: quotations.length,
-
-                draft: quotations.filter(
-
-                    x => x.status === "Draft"
-
-                ).length,
-
-                sent: quotations.filter(
-
-                    x => x.status === "Sent"
-
-                ).length,
-
-                approved: quotations.filter(
-
-                    x => x.status === "Approved"
-
-                ).length,
-
-                rejected: quotations.filter(
-
-                    x => x.status === "Rejected"
-
-                ).length,
-
-            };
-
-            //////////////////////////////////////////////////////
-
-            return {
-
-                company: companySnap.exists()
-
-                    ? {
-
-                        id: companySnap.id,
-
-                        ...companySnap.data(),
-
+                    if (normalizedStatus === "draft") {
+                        result.draft += 1;
                     }
 
-                    : null,
+                    if (normalizedStatus === "sent") {
+                        result.sent += 1;
+                    }
 
-                settings: settingsSnap.exists()
+                    if (normalizedStatus === "approved") {
+                        result.approved += 1;
+                    }
 
-                    ? settingsSnap.data()
+                    if (normalizedStatus === "rejected") {
+                        result.rejected += 1;
+                    }
 
-                    : null,
-
-                settingsExists: settingsSnap.exists(),
-
-                quotations,
-
-                clients,
-
-                summary,
-
-            };
-
-        }
-
-        catch (error) {
-
-            console.error(error);
+                    return result;
+                },
+                {
+                    total: 0,
+                    draft: 0,
+                    sent: 0,
+                    approved: 0,
+                    rejected: 0,
+                }
+            );
 
             return {
-
-                company: null,
-
-                settings: null,
-
-                settingsExists: false,
-
-                quotations: [],
-
-                clients: [],
-
-                summary: {
-
-                    total: 0,
-
-                    draft: 0,
-
-                    sent: 0,
-
-                    approved: 0,
-
-                    rejected: 0,
-
-                },
-
+                company,
+                settings,
+                settingsExists: Boolean(settings),
+                quotations,
+                clients,
+                summary,
             };
+        } catch (error) {
+            console.error(
+                "Failed to load quotation dashboard:",
+                error
+            );
 
+            throw error;
         }
-
     }
 
     //////////////////////////////////////////////////////
     // Get One Quotation
     //////////////////////////////////////////////////////
 
-    static async getQuotation(companyId, quotationId) {
-
-        const ref = doc(
-
-            db,
-
-            "Companies",
-
-            companyId,
-
-            "Quotations",
-
-            quotationId
-
+    static async getQuotation(
+        companyId,
+        quotationId
+    ) {
+        const snapshot = await getDoc(
+            this.quotationRef(
+                companyId,
+                quotationId
+            )
         );
 
-        const snap = await getDoc(ref);
-
-        if (!snap.exists()) return null;
+        if (!snapshot.exists()) {
+            return null;
+        }
 
         return {
-
-            id: snap.id,
-
-            ...snap.data(),
-
+            id: snapshot.id,
+            ...snapshot.data(),
         };
-
     }
 
     //////////////////////////////////////////////////////
@@ -292,190 +340,333 @@ export default class QuotationService {
     //////////////////////////////////////////////////////
 
     static async generateQuotationNumber(companyId) {
-
-        const snap = await getDoc(
-
-            this.settingsRef(companyId)
-
+        const settings = await this.getSettings(
+            companyId
         );
 
-        if (!snap.exists()) {
-
+        if (!settings) {
             return "QT-0001";
-
         }
 
-        const settings = snap.data();
+        const prefix = String(
+            settings.quotationPrefix || "QT"
+        )
+            .trim()
+            .toUpperCase();
 
-        const prefix =
+        const nextNumber = Number(
+            settings.nextQuotationNumber || 1
+        );
 
-            settings.quotationPrefix || "QT";
+        const year = new Date()
+            .getFullYear()
+            .toString()
+            .slice(-2);
 
-        const number =
-
-            settings.nextQuotationNumber || 1;
-
-        const year =
-
-            new Date()
-
-                .getFullYear()
-
-                .toString()
-
-                .slice(-2);
-
-        return `${prefix}-${year}-${String(number).padStart(4, "0")}`;
-
+        return `${prefix}-${year}-${String(
+            nextNumber
+        ).padStart(4, "0")}`;
     }
 
     //////////////////////////////////////////////////////
-    // Create
+    // Create Quotation
     //////////////////////////////////////////////////////
 
     static async createQuotation(
-
         companyId,
-
         data
-
     ) {
+        this.validateCompanyId(companyId);
 
-        const quotationRef = doc(
+        if (!data || typeof data !== "object") {
+            throw new Error(
+                "Quotation data is required."
+            );
+        }
 
+        if (!data.quotationNumber) {
+            throw new Error(
+                "Quotation number is required."
+            );
+        }
+
+        if (!data.clientName) {
+            throw new Error(
+                "Client name is required."
+            );
+        }
+
+        const quotationReference = doc(
             this.quotationsRef(companyId)
-
         );
 
-        await setDoc(
+        const settingsReference =
+            this.settingsRef(companyId);
 
-            quotationRef,
+        await runTransaction(
+            db,
+            async (transaction) => {
+                const settingsSnapshot =
+                    await transaction.get(
+                        settingsReference
+                    );
 
-            {
+                if (!settingsSnapshot.exists()) {
+                    throw new Error(
+                        "Quotation setup is incomplete."
+                    );
+                }
 
-                id: quotationRef.id,
+                transaction.set(
+                    quotationReference,
+                    {
+                        id: quotationReference.id,
+                        ...data,
 
-                ...data,
+                        status:
+                            data.status || "Draft",
 
-                createdAt: serverTimestamp(),
+                        createdAt:
+                            serverTimestamp(),
 
-                updatedAt: serverTimestamp(),
+                        updatedAt:
+                            serverTimestamp(),
+                    }
+                );
 
+                transaction.update(
+                    settingsReference,
+                    {
+                        nextQuotationNumber:
+                            increment(1),
+
+                        updatedAt:
+                            serverTimestamp(),
+                    }
+                );
             }
-
         );
 
-        await updateDoc(
+        try {
+            await notificationService.emitSafe(
+                "quotation.created",
+                {
+                    companyId,
 
-            this.settingsRef(companyId),
+                    quotationNumber:
+                        data.quotationNumber,
 
-            {
+                    targetRole: "manager",
 
-                nextQuotationNumber: increment(1),
+                    actionId:
+                        quotationReference.id,
 
-            }
+                    actionRoute:
+                        "/manager/quotation-builder",
 
-        );
+                    metadata: {
+                        quotationId:
+                            quotationReference.id,
 
-        await notificationService.emitSafe("quotation.created", {
-            companyId,
-            quotationNumber: data.quotationNumber,
-            targetRole: "manager",
-            actionId: quotationRef.id,
-            actionRoute: "/manager/quotation-builder",
-            metadata: { quotationId: quotationRef.id, quotationNumber: data.quotationNumber || null, clientName: data.clientName || null },
-        });
+                        quotationNumber:
+                            data.quotationNumber || null,
 
-        return quotationRef.id;
+                        clientName:
+                            data.clientName || null,
+                    },
+                }
+            );
+        } catch (notificationError) {
+            console.error(
+                "Quotation created, but notification failed:",
+                notificationError
+            );
+        }
 
+        return quotationReference.id;
     }
 
     //////////////////////////////////////////////////////
-    // Update
+    // Update Quotation
     //////////////////////////////////////////////////////
 
     static async updateQuotation(
-
         companyId,
-
         quotationId,
-
         data
-
     ) {
+        this.validateCompanyId(companyId);
+        this.validateQuotationId(quotationId);
 
-        const previous = await this.getQuotation(companyId, quotationId);
-
-        await updateDoc(
-
-            doc(
-
-                db,
-
-                "Companies",
-
-                companyId,
-
-                "Quotations",
-
-                quotationId
-
-            ),
-
-            {
-
-                ...data,
-
-                updatedAt: serverTimestamp(),
-
-            }
-
-        );
-
-        const nextStatus = String(data.status || "").toLowerCase();
-        if (["approved", "rejected"].includes(nextStatus) && nextStatus !== String(previous?.status || "").toLowerCase()) {
-            await notificationService.emitSafe(`quotation.${nextStatus}`, {
-                companyId,
-                quotationNumber: data.quotationNumber || previous?.quotationNumber,
-                targetRole: "manager",
-                actionId: quotationId,
-                actionRoute: "/manager/quotation-builder",
-                metadata: { quotationId, quotationNumber: data.quotationNumber || previous?.quotationNumber || null },
-            });
+        if (!data || typeof data !== "object") {
+            throw new Error(
+                "Quotation update data is required."
+            );
         }
 
+        const previousQuotation =
+            await this.getQuotation(
+                companyId,
+                quotationId
+            );
+
+        if (!previousQuotation) {
+            throw new Error(
+                "Quotation not found."
+            );
+        }
+
+        const quotationReference =
+            this.quotationRef(
+                companyId,
+                quotationId
+            );
+
+        await updateDoc(
+            quotationReference,
+            {
+                ...data,
+                updatedAt: serverTimestamp(),
+            }
+        );
+
+        const previousStatus = String(
+            previousQuotation.status || ""
+        )
+            .trim()
+            .toLowerCase();
+
+        const nextStatus = String(
+            data.status ??
+            previousQuotation.status ??
+            ""
+        )
+            .trim()
+            .toLowerCase();
+
+        const decisionChanged =
+            ["approved", "rejected"].includes(
+                nextStatus
+            ) &&
+            nextStatus !== previousStatus;
+
+        if (decisionChanged) {
+            try {
+                await notificationService.emitSafe(
+                    `quotation.${nextStatus}`,
+                    {
+                        companyId,
+
+                        quotationNumber:
+                            data.quotationNumber ||
+                            previousQuotation.quotationNumber,
+
+                        targetRole: "manager",
+
+                        actionId: quotationId,
+
+                        actionRoute:
+                            "/manager/quotation-builder",
+
+                        metadata: {
+                            quotationId,
+
+                            quotationNumber:
+                                data.quotationNumber ||
+                                previousQuotation.quotationNumber ||
+                                null,
+
+                            clientName:
+                                data.clientName ||
+                                previousQuotation.clientName ||
+                                null,
+
+                            status: nextStatus,
+                        },
+                    }
+                );
+            } catch (notificationError) {
+                console.error(
+                    "Quotation updated, but notification failed:",
+                    notificationError
+                );
+            }
+        }
+
+        return {
+            success: true,
+        };
     }
 
     //////////////////////////////////////////////////////
-    // Delete
+    // Update Quotation Status
+    //////////////////////////////////////////////////////
+
+    static async updateQuotationStatus(
+        companyId,
+        quotationId,
+        status
+    ) {
+        const allowedStatuses = [
+            "Draft",
+            "Sent",
+            "Approved",
+            "Rejected",
+        ];
+
+        const normalizedStatus =
+            allowedStatuses.find(
+                (item) =>
+                    item.toLowerCase() ===
+                    String(status)
+                        .trim()
+                        .toLowerCase()
+            );
+
+        if (!normalizedStatus) {
+            throw new Error(
+                "Invalid quotation status."
+            );
+        }
+
+        return this.updateQuotation(
+            companyId,
+            quotationId,
+            {
+                status: normalizedStatus,
+            }
+        );
+    }
+
+    //////////////////////////////////////////////////////
+    // Delete Quotation
     //////////////////////////////////////////////////////
 
     static async deleteQuotation(
-
         companyId,
-
         quotationId
-
     ) {
+        const quotation =
+            await this.getQuotation(
+                companyId,
+                quotationId
+            );
+
+        if (!quotation) {
+            throw new Error(
+                "Quotation not found."
+            );
+        }
 
         await deleteDoc(
-
-            doc(
-
-                db,
-
-                "Companies",
-
+            this.quotationRef(
                 companyId,
-
-                "Quotations",
-
                 quotationId
-
             )
-
         );
 
+        return {
+            success: true,
+        };
     }
-
 }

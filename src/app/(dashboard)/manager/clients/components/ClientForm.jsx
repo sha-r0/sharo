@@ -385,6 +385,33 @@ export default function ClientForm({
             </section>
 
             {/* =============================================== */}
+            {/* Status */}
+            {/* =============================================== */}
+
+            <section className={sectionClass}>
+                <h3 className="mb-5 text-lg font-semibold text-slate-800">
+                    Client Status
+                </h3>
+
+                <div className="max-w-sm">
+                    <label className="mb-2 block text-sm font-medium">
+                        Status
+                    </label>
+
+                    <select
+                        value={form.status}
+                        onChange={(e) =>
+                            updateField("status", e.target.value)
+                        }
+                        className={inputClass}
+                    >
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+            </section>
+
+            {/* =============================================== */}
             {/* Notes */}
             {/* =============================================== */}
 
