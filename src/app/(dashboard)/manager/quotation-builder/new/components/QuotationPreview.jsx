@@ -15,6 +15,7 @@ import {
 import QRCode from "qrcode";
 
 import QuotationCalculationService from "../../services/QuotationCalculationService";
+import QuotationExportService from "../../services/QuotationExportService";
 
 const money = (value) =>
     Number(value || 0).toLocaleString("en-IN", {
@@ -151,6 +152,24 @@ export default function QuotationPreview({
             .catch(() => { if (active) setWebsiteQr(""); });
         return () => { active = false; };
     }, [companyWebsiteUrl]);
+
+    useEffect(() => {
+        let active = true;
+        let restorePreparedImages = () => {};
+        const preview = document.getElementById("quotation-preview");
+
+        QuotationExportService.prepareDocument(preview).then((restore) => {
+            if (active) restorePreparedImages = restore;
+            else restore();
+        }).catch((error) => {
+            console.warn("Quotation print assets could not be preloaded:", error);
+        });
+
+        return () => {
+            active = false;
+            restorePreparedImages();
+        };
+    }, [companyLogo, websiteQr, signature.preparedBySignature, signature.signature, signature.seal]);
 
     return (
         <div className="flex justify-center py-4">
@@ -417,10 +436,19 @@ export default function QuotationPreview({
                     #quotation-print-root .quotation-document {
                         width: 210mm !important;
                         max-width: none !important;
+                        max-height: none !important;
                         min-height: auto !important;
                         margin: 0 !important;
+                        border-radius: 0 !important;
                         box-shadow: none !important;
                         overflow: visible !important;
+                        transform: none !important;
+                        zoom: 1 !important;
+                        print-color-adjust: exact !important;
+                        -webkit-print-color-adjust: exact !important;
+                    }
+
+                    #quotation-print-root .quotation-document * {
                         print-color-adjust: exact !important;
                         -webkit-print-color-adjust: exact !important;
                     }
@@ -433,7 +461,7 @@ export default function QuotationPreview({
 
                     #quotation-print-root .quotation-header {
                         display: grid !important;
-                        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) !important;
+                        grid-template-columns: 60% 40% !important;
                         gap: 0 !important;
                         align-items: start !important;
                     }
