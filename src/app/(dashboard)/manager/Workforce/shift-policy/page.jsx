@@ -88,6 +88,55 @@ const defaultForm = {
   overtimeRound: "30",
 };
 
+const createDefaultForm = () => ({ ...defaultForm, weekNumbers: [] });
+
+function shiftToForm(shift = {}) {
+  const basic = shift.basic ?? shift;
+  const timing = shift.timing ?? shift;
+  const breakPolicy = shift.break ?? shift;
+  const weeklyOff = shift.weeklyOff ?? {};
+  const attendance = shift.attendance ?? {};
+  const gps = shift.gps ?? {};
+  const payroll = shift.payroll ?? {};
+
+  return {
+    name: basic.name ?? basic.shiftName ?? "",
+    code: basic.code ?? basic.shiftCode ?? "",
+    description: basic.description ?? "",
+    status: basic.status ?? (shift.active === false ? "inactive" : "active"),
+    isNightShift: basic.isNightShift ?? basic.nightShift ?? false,
+    startTime: timing.startTime ?? "",
+    endTime: timing.endTime ?? "",
+    workingHours: timing.workingHours ?? "",
+    hasBreak: breakPolicy.enabled ?? breakPolicy.hasBreak ?? true,
+    breakStart: breakPolicy.startTime ?? breakPolicy.breakStart ?? "",
+    breakEnd: breakPolicy.endTime ?? breakPolicy.breakEnd ?? "",
+    breakDuration: breakPolicy.duration ?? breakPolicy.breakDuration ?? "",
+    weeklyOff1: weeklyOff.primary ?? shift.weeklyOff1 ?? "",
+    weeklyOff2: weeklyOff.secondary ?? shift.weeklyOff2 ?? "",
+    weekNumbers: [...(weeklyOff.weeks ?? shift.weekNumbers ?? [])],
+    lateGrace: String(attendance.lateGrace ?? shift.lateGrace ?? 15),
+    earlyGrace: String(attendance.earlyGrace ?? shift.earlyGrace ?? 10),
+    minimumWorkingHours: attendance.minimumWorkingHours ?? shift.minimumWorkingHours ?? "08:30",
+    halfDayHours: attendance.halfDayHours ?? shift.halfDayHours ?? "04:30",
+    absentHours: attendance.absentHours ?? shift.absentHours ?? "02:00",
+    missingCheckout: attendance.missingCheckout ?? shift.missingCheckout ?? "manager",
+    enableAutoCheckout: attendance.enableAutoCheckout ?? shift.enableAutoCheckout ?? true,
+    autoCheckoutTime: attendance.autoCheckoutTime ?? shift.autoCheckoutTime ?? "19:30",
+    maximumWorkingHours: attendance.maximumWorkingHours ?? shift.maximumWorkingHours ?? "16:00",
+    officeName: gps.officeName ?? shift.officeName ?? "",
+    locationMethod: gps.locationMethod ?? shift.locationMethod ?? "current",
+    latitude: gps.latitude != null ? String(gps.latitude) : String(shift.latitude ?? ""),
+    longitude: gps.longitude != null ? String(gps.longitude) : String(shift.longitude ?? ""),
+    attendanceRadius: String(gps.attendanceRadius ?? shift.attendanceRadius ?? 50),
+    gpsRequired: gps.gpsRequired ?? shift.gpsRequired ?? true,
+    outsideRadiusAction: gps.outsideRadiusAction ?? shift.outsideRadiusAction ?? "approval",
+    allowOvertime: payroll.allowOvertime ?? shift.allowOvertime ?? true,
+    overtimeAfter: payroll.overtimeAfter ?? shift.overtimeAfter ?? "08:30",
+    overtimeRound: String(payroll.overtimeRound ?? shift.overtimeRound ?? 30),
+  };
+}
+
 export default function ShiftPolicyPage() {
   const { company } = useAuth();
 
@@ -99,13 +148,20 @@ export default function ShiftPolicyPage() {
 
   const [editShift, setEditShift] = useState(null);
 
-  const [form, setForm] = useState(defaultForm);
+  const [dialogMode, setDialogMode] = useState("create");
+
+  const [form, setForm] = useState(createDefaultForm);
 
   useEffect(() => {
     if (company?.id) {
       loadShifts();
     }
   }, [company?.id]);
+
+  useEffect(() => {
+    if (!openDialog) return;
+    setForm(dialogMode === "create" ? createDefaultForm() : shiftToForm(editShift));
+  }, [openDialog, dialogMode, editShift]);
 
   ///////////////////////////////////////////////////////
 
@@ -126,169 +182,19 @@ export default function ShiftPolicyPage() {
   ///////////////////////////////////////////////////////
 
   function handleAdd() {
-
+    setDialogMode("create");
     setEditShift(null);
-
-    setForm({
-      ...defaultForm,
-    });
-
+    setForm(createDefaultForm());
     setOpenDialog(true);
-
   }
 
   ///////////////////////////////////////////////////////
 
   function handleEdit(shift) {
-
+    setDialogMode("edit");
     setEditShift(shift);
-
-    setForm({
-
-      // ================= BASIC =================
-
-      name: shift.basic?.name || "",
-
-      code: shift.basic?.code || "",
-
-      description:
-        shift.basic?.description || "",
-
-      status:
-        shift.basic?.status || "active",
-
-      isNightShift:
-        shift.basic?.isNightShift || false,
-
-      // ================= TIMING =================
-
-      startTime:
-        shift.timing?.startTime || "",
-
-      endTime:
-        shift.timing?.endTime || "",
-
-      workingHours:
-        shift.timing?.workingHours || "",
-
-      // ================= BREAK =================
-
-      hasBreak:
-        shift.break?.enabled ?? true,
-
-      breakStart:
-        shift.break?.startTime || "",
-
-      breakEnd:
-        shift.break?.endTime || "",
-
-      breakDuration:
-        shift.break?.duration || "",
-
-      // ================= WEEKLY OFF =================
-
-      weeklyOff1:
-        shift.weeklyOff?.primary || "",
-
-      weeklyOff2:
-        shift.weeklyOff?.secondary || "",
-
-      weekNumbers:
-        shift.weeklyOff?.weeks || [],
-
-      // ================= ATTENDANCE =================
-
-      lateGrace:
-        String(
-          shift.attendance?.lateGrace ?? 15
-        ),
-
-      earlyGrace:
-        String(
-          shift.attendance?.earlyGrace ?? 10
-        ),
-
-      minimumWorkingHours:
-        shift.attendance?.minimumWorkingHours ||
-        "08:30",
-
-      halfDayHours:
-        shift.attendance?.halfDayHours ||
-        "04:30",
-
-      absentHours:
-        shift.attendance?.absentHours ||
-        "02:00",
-
-      missingCheckout:
-        shift.attendance?.missingCheckout ||
-        "manager",
-
-      enableAutoCheckout:
-        shift.attendance?.enableAutoCheckout ??
-        true,
-
-      autoCheckoutTime:
-        shift.attendance?.autoCheckoutTime ||
-        "19:30",
-
-      maximumWorkingHours:
-        shift.attendance?.maximumWorkingHours ||
-        "16:00",
-
-      // ================= GPS =================
-
-      officeName:
-        shift.gps?.officeName || "",
-
-      locationMethod:
-        shift.gps?.locationMethod ||
-        "current",
-
-      latitude:
-        shift.gps?.latitude != null
-          ? String(shift.gps.latitude)
-          : "",
-
-      longitude:
-        shift.gps?.longitude != null
-          ? String(shift.gps.longitude)
-          : "",
-
-      attendanceRadius:
-        shift.gps?.attendanceRadius != null
-          ? String(
-            shift.gps.attendanceRadius
-          )
-          : "50",
-
-      gpsRequired:
-        shift.gps?.gpsRequired ?? true,
-
-      outsideRadiusAction:
-        shift.gps?.outsideRadiusAction ||
-        "approval",
-
-      // ================= PAYROLL =================
-
-      allowOvertime:
-        shift.payroll?.allowOvertime ??
-        true,
-
-      overtimeAfter:
-        shift.payroll?.overtimeAfter ||
-        "08:30",
-
-      overtimeRound:
-        String(
-          shift.payroll?.overtimeRound ??
-          30
-        ),
-
-    });
-
+    setForm(shiftToForm(shift));
     setOpenDialog(true);
-
   }
 
   ///////////////////////////////////////////////////////
@@ -326,7 +232,10 @@ export default function ShiftPolicyPage() {
   ///////////////////////////////////////////////////////
 
   function handleView(shift) {
-    handleEdit(shift);
+    setDialogMode("view");
+    setEditShift(shift);
+    setForm(shiftToForm(shift));
+    setOpenDialog(true);
   }
 
   ///////////////////////////////////////////////////////
@@ -349,7 +258,7 @@ export default function ShiftPolicyPage() {
 
       }
 
-      if (editShift) {
+      if (dialogMode === "edit" && editShift) {
 
         await ShiftPolicyService.update(
           company.id,
@@ -370,7 +279,7 @@ export default function ShiftPolicyPage() {
 
       setEditShift(null);
 
-      setForm(defaultForm);
+      setForm(createDefaultForm());
 
       await loadShifts();
 
@@ -438,56 +347,7 @@ export default function ShiftPolicyPage() {
 
               key={shift.id}
 
-              shift={{
-
-                id: shift.id,
-
-                name:
-                  shift.basic?.name,
-
-                code:
-                  shift.basic?.code,
-
-                description:
-                  shift.basic?.description,
-
-                status:
-                  shift.basic?.status,
-
-                isNightShift:
-                  shift.basic?.isNightShift,
-
-                startTime:
-                  shift.timing?.startTime,
-
-                endTime:
-                  shift.timing?.endTime,
-
-                workingHours:
-                  shift.timing?.workingHours,
-
-                breakStart:
-                  shift.break?.startTime,
-
-                breakEnd:
-                  shift.break?.endTime,
-
-                breakDuration:
-                  shift.break?.duration,
-
-                weeklyOff:
-                  shift.weeklyOff,
-
-                attendance:
-                  shift.attendance,
-
-                gps:
-                  shift.gps,
-
-                payroll:
-                  shift.payroll,
-
-              }}
+              shift={shift}
 
               onView={handleView}
 
@@ -505,11 +365,15 @@ export default function ShiftPolicyPage() {
 
       <ShiftDialog
         open={openDialog}
-        onClose={() => setOpenDialog(false)}
+        onClose={() => {
+          setOpenDialog(false);
+          setEditShift(null);
+        }}
         form={form}
         setForm={setForm}
         onSave={handleSave}
-        editMode={!!editShift}
+        mode={dialogMode}
+        shift={editShift}
       />
 
     </div>

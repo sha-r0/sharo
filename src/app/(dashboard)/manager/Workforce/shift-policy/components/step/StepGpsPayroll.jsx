@@ -9,6 +9,7 @@ import FormSwitch from "../common/FormSwitch";
 export default function StepGpsPayroll({
   form,
   setForm,
+  readOnly = false,
 }) {
 
   function change(e) {
@@ -51,7 +52,7 @@ export default function StepGpsPayroll({
 
   return (
 
-    <div className="space-y-8">
+    <fieldset disabled={readOnly} className="space-y-4">
 
       {/* ================= OFFICE LOCATION ================= */}
 
@@ -98,17 +99,17 @@ export default function StepGpsPayroll({
 
         {form.locationMethod === "current" ? (
 
-          <div className="mt-6">
+          <div className="mt-4">
 
             <button
               type="button"
               onClick={getCurrentLocation}
-              className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700"
+              className="h-11 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
             >
               📍 Get Current Location
             </button>
 
-            <div className="mt-5 grid grid-cols-2 gap-5">
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
 
               <FormInput
                 label="Latitude"
@@ -128,7 +129,7 @@ export default function StepGpsPayroll({
 
         ) : (
 
-          <div className="mt-5 grid grid-cols-2 gap-5">
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
 
             <FormInput
               label="Latitude"
@@ -157,7 +158,7 @@ export default function StepGpsPayroll({
         subtitle="Configure GPS attendance validation."
       >
 
-        <div className="space-y-5">
+        <div className="space-y-4">
 
           <FormSwitch
             label="GPS Attendance Required"
@@ -204,7 +205,7 @@ export default function StepGpsPayroll({
         subtitle="Configure overtime policy."
       >
 
-        <div className="mb-6">
+        <div className="mb-4">
 
           <FormSwitch
             label="Allow Overtime"
@@ -258,7 +259,7 @@ export default function StepGpsPayroll({
 
       </FormSection>
 
-    </div>
+    </fieldset>
 
   );
 

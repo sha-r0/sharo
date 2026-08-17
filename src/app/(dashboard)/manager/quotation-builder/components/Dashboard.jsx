@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/app/(auth)/context/AuthContext";
@@ -21,6 +21,8 @@ export default function Dashboard() {
     const today = new Date();
 
     const [loading, setLoading] = useState(true);
+
+    const loadRequest = useRef(0);
 
     const [dashboard, setDashboard] = useState({
 
@@ -56,6 +58,8 @@ export default function Dashboard() {
 
     const [status, setStatus] = useState("All");
 
+    const [viewMode, setViewMode] = useState("all");
+
     const [month, setMonth] = useState(
 
         `${today.getFullYear()}-${String(
@@ -76,9 +80,11 @@ export default function Dashboard() {
 
         loadDashboard();
 
-    }, [company]);
+    }, [company, viewMode, month]);
 
     async function loadDashboard() {
+
+        const request = ++loadRequest.current;
 
         try {
 
@@ -86,11 +92,17 @@ export default function Dashboard() {
 
             const data = await QuotationService.getDashboard(
 
-                company.id
+                company.id,
+
+                { viewMode, month }
 
             );
 
-            setDashboard(data);
+            if (request === loadRequest.current) {
+
+                setDashboard(data);
+
+            }
 
         }
 
@@ -102,7 +114,11 @@ export default function Dashboard() {
 
         finally {
 
-            setLoading(false);
+            if (request === loadRequest.current) {
+
+                setLoading(false);
+
+            }
 
         }
 
@@ -168,35 +184,11 @@ export default function Dashboard() {
 
                 : item.status === status;
 
-        ////////////////////////////////////////////
-        // Month
-        ////////////////////////////////////////////
-
-        let matchMonth = true;
-
-        if (item.createdAt?.toDate) {
-
-            const d = item.createdAt.toDate();
-
-            const value =
-
-                `${d.getFullYear()}-${String(
-
-                    d.getMonth() + 1
-
-                ).padStart(2, "0")}`;
-
-            matchMonth = value === month;
-
-        }
-
         return (
 
             matchSearch &&
 
-            matchStatus &&
-
-            matchMonth
+            matchStatus
 
         );
 
@@ -257,6 +249,10 @@ export default function Dashboard() {
 
                 setSearch={setSearch}
 
+                viewMode={viewMode}
+
+                setViewMode={setViewMode}
+
                 month={month}
 
                 setMonth={setMonth}
@@ -284,6 +280,12 @@ export default function Dashboard() {
                 onDownload={(row) => router.push(`/manager/quotation-builder/new?id=${row.id}&mode=view&download=1`)}
 
                 onDelete={deleteQuotation}
+
+                emptyMessage={
+                    viewMode === "month"
+                        ? `No quotations found for ${new Date(`${month}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}.`
+                        : "No quotations yet."
+                }
 
             />
 

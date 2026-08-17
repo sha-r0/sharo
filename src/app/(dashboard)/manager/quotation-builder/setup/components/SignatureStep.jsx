@@ -7,6 +7,7 @@ import {
     BadgeCheck,
     ArrowLeft,
     CheckCircle2,
+    Trash2,
 } from "lucide-react";
 
 const neo =
@@ -40,24 +41,6 @@ export default function SignatureStep({
 
     }
 
-    function previewImage(file, field) {
-
-        if (!file) return;
-
-        const url = URL.createObjectURL(file);
-
-        setForm(prev => ({
-
-            ...prev,
-
-            [field]: url,
-
-            [`${field}File`]: file,
-
-        }));
-
-    }
-
     return (
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
@@ -76,7 +59,7 @@ export default function SignatureStep({
 
                     <p className="mt-2 text-slate-500">
 
-                        Configure your default signature and company seal.
+                        Configure Prepared By, authorized signature and company seal.
 
                     </p>
 
@@ -131,6 +114,54 @@ export default function SignatureStep({
                     </div>
 
                     {/* Signature */}
+
+                    <div className="mt-8">
+
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <label className="font-semibold">Prepared By Signature</label>
+                                <p className="mt-1 text-sm text-slate-500">Upload the signature displayed in the Prepared By section of quotations.</p>
+                            </div>
+                            {form.preparedBySignature && (
+                                <button
+                                    type="button"
+                                    onClick={() => setForm((previous) => ({ ...previous, preparedBySignature: "", preparedBySignatureFile: null, preparedBySignatureRemoved: true }))}
+                                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                                >
+                                    <Trash2 size={16} /> Remove
+                                </button>
+                            )}
+                        </div>
+
+                        <label className="mt-3 flex h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white hover:border-indigo-500">
+                            {form.preparedBySignature ? (
+                                <>
+                                    <img src={form.preparedBySignature} alt="Prepared By signature preview" onError={(event) => { event.currentTarget.style.display = "none"; }} className="max-h-24 max-w-48 object-contain" />
+                                    <span className="mt-2 text-sm font-semibold text-indigo-600">Change signature</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Upload size={40} />
+                                    <span className="mt-3">Upload Prepared By Signature</span>
+                                    <span className="mt-1 text-xs text-slate-500">PNG, JPG, JPEG or WEBP · Max 5 MB</span>
+                                </>
+                            )}
+                            <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp"
+                                hidden
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setForm((previous) => ({ ...previous, preparedBySignature: URL.createObjectURL(file), preparedBySignatureFile: file, preparedBySignatureRemoved: false }));
+                                    e.target.value = "";
+                                }}
+                            />
+                        </label>
+
+                    </div>
+
+                    {/* Authorized Signature */}
 
                     <div className="mt-8">
 

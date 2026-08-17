@@ -286,6 +286,13 @@ export default class QuotationSetupService {
 
             signatureFile: null,
 
+            preparedBySignature:
+                signature.preparedBySignature || "",
+
+            preparedBySignatureFile: null,
+
+            preparedBySignatureRemoved: false,
+
             signatory:
                 signature.signatory ||
                 company.ownerName ||
@@ -354,6 +361,7 @@ export default class QuotationSetupService {
             uploadedLogo,
             uploadedQrCode,
             uploadedSignature,
+            uploadedPreparedBySignature,
             uploadedSeal,
         ] = await Promise.all([
             form.logoFile
@@ -390,6 +398,20 @@ export default class QuotationSetupService {
                     form.signature ||
                     existingSignature.signature ||
                     ""
+                ),
+
+            form.preparedBySignatureFile
+                ? this.uploadImage(
+                    companyId,
+                    form.preparedBySignatureFile,
+                    "prepared-by-signature"
+                )
+                : Promise.resolve(
+                    form.preparedBySignatureRemoved
+                        ? ""
+                        : form.preparedBySignature ||
+                          existingSignature.preparedBySignature ||
+                          ""
                 ),
 
             form.sealFile
@@ -519,6 +541,9 @@ export default class QuotationSetupService {
                 signature:
                     uploadedSignature,
 
+                preparedBySignature:
+                    uploadedPreparedBySignature,
+
                 seal:
                     uploadedSeal,
             },
@@ -638,6 +663,17 @@ export default class QuotationSetupService {
         }
 
         if (
+            (form.preparedBySignatureFile || form.preparedBySignatureRemoved) &&
+            existingSignature.preparedBySignature &&
+            existingSignature.preparedBySignature !==
+            uploadedPreparedBySignature
+        ) {
+            oldImageUrls.push(
+                existingSignature.preparedBySignature
+            );
+        }
+
+        if (
             form.sealFile &&
             existingSignature.seal &&
             existingSignature.seal !==
@@ -677,6 +713,8 @@ export default class QuotationSetupService {
                     ...payload.signature,
                     signature:
                         uploadedSignature,
+                    preparedBySignature:
+                        uploadedPreparedBySignature,
                     seal: uploadedSeal,
                 },
             },

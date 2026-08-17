@@ -8,10 +8,11 @@ export default function FormSelect({
   className = "",
   ...props
 }) {
+  const selectId = props.id || props.name;
   return (
     <div>
       {label && (
-        <label className="mb-2 block text-sm font-medium text-slate-700">
+        <label htmlFor={selectId} className="mb-1.5 block text-sm font-semibold text-slate-700">
           {label}
           {required && (
             <span className="text-red-500 ml-1">*</span>
@@ -21,8 +22,9 @@ export default function FormSelect({
 
       <select
         {...props}
+        id={selectId}
         value={value ?? ""}
-        className={`w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 ${className}`}
+        className={`h-12 w-full rounded-[10px] border border-slate-300 bg-white px-3.5 text-sm text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 ${className}`}
       >
         {children}
       </select>

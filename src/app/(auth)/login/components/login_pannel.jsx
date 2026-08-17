@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import EmployeeForm from "./employee_form";
 import AdminForm from "./admin_form";
 
-import { login } from "../services/loginService";
+import { login, loginEmployee } from "../services/loginService";
 import { useAuth } from "../../context/AuthContext";
 import { defaultRouteForAccess } from "@/app/allservice/rbac/AuthorizationService";
 
@@ -51,6 +51,8 @@ export default function LoginPanel() {
 
     companyId: "",
 
+    corporateId: "",
+
     email: "",
 
     password: "",
@@ -63,15 +65,10 @@ export default function LoginPanel() {
 
     setError("");
   
-    if (!form.companyId.trim()) {
-      setError("Please enter Company ID.");
-      return;
-    }
-  
-    if (!form.email.trim()) {
-      setError("Please enter Email.");
-      return;
-    }
+    if (active === "employee" && !form.corporateId.trim()) return setError("Please enter Corporate ID.");
+    if (active === "employee" && !form.employeeId.trim()) return setError("Please enter Employee ID.");
+    if (active === "admin" && !form.companyId.trim()) return setError("Please enter Company ID.");
+    if (active === "admin" && !form.email.trim()) return setError("Please enter Email.");
   
     if (!form.password.trim()) {
       setError("Please enter Password.");
@@ -82,12 +79,9 @@ export default function LoginPanel() {
   
       setLoading(true);
   
-      const result = await login({
-        companyId: form.companyId,
-        email: form.email,
-        password: form.password,
-        rememberMe: remember,
-      });
+      const result = active === "employee"
+        ? await loginEmployee({ corporateId: form.corporateId, employeeId: form.employeeId, password: form.password, rememberMe: remember })
+        : await login({ companyId: form.companyId, email: form.email, password: form.password, rememberMe: remember });
   
       if (!result.success) {
         setError(result.message);

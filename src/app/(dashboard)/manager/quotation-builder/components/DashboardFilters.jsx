@@ -11,6 +11,10 @@ export default function DashboardFilters({
 
     setSearch,
 
+    viewMode,
+
+    setViewMode,
+
     month,
 
     setMonth,
@@ -26,6 +30,8 @@ export default function DashboardFilters({
         setSearch("");
 
         setStatus("All");
+
+        setViewMode("all");
 
         const today = new Date();
 
@@ -44,6 +50,22 @@ export default function DashboardFilters({
     return (
 
         <div className={`${neo} rounded-3xl bg-white p-6`}>
+
+            <div className="mb-5 flex w-full rounded-2xl bg-slate-100 p-1 sm:w-fit">
+
+                {[{ value: "all", label: "All Quotations" }, { value: "month", label: "Month-wise" }].map((option) => (
+                    <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setViewMode(option.value)}
+                        aria-pressed={viewMode === option.value}
+                        className={`flex-1 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:flex-none ${viewMode === option.value ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                        {option.label}
+                    </button>
+                ))}
+
+            </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
 
@@ -81,7 +103,7 @@ export default function DashboardFilters({
 
                 {/* Month */}
 
-                <div className="relative lg:col-span-3">
+                {viewMode === "month" && <div className="relative lg:col-span-3">
 
                     <CalendarDays
 
@@ -107,11 +129,11 @@ export default function DashboardFilters({
 
                     />
 
-                </div>
+                </div>}
 
                 {/* Status */}
 
-                <div className="lg:col-span-2">
+                <div className={viewMode === "month" ? "lg:col-span-2" : "lg:col-span-5"}>
 
                     <select
 

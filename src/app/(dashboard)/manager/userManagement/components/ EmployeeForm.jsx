@@ -37,7 +37,7 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
     const router = useRouter();
 
-    const { company, currentUser, can } = useAuth();
+    const { company, currentUser, can, roleLevel } = useAuth();
 
     const canManageAccess = can("employee.manage");
 
@@ -100,6 +100,8 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
         permissionOverrides: { grant: [], deny: [] },
 
         access: {},
+
+        reporting: { teamId: null, teamLeadId: null, reportsTo: null },
 
         joiningDate: "",
 
@@ -263,13 +265,15 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
             accountStatus: employee.access?.status || "active",
 
-            authUid: employee.access?.authUid || null,
+            authUid: employee.access?.authUid || employee.authUid || null,
 
             effectivePermissions: employee.access?.effectivePermissions || [],
 
             permissionOverrides: employee.access?.permissionOverrides || { grant: [], deny: [] },
 
             access: employee.access || {},
+
+            reporting: employee.reporting || { teamId: employee.employment?.teamId || null, teamLeadId: employee.employment?.teamLeadId || null, reportsTo: employee.employment?.reportsTo || null },
 
             employeeType:
                 employee.employment?.employeeType || "Permanent",
@@ -368,8 +372,8 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
     useEffect(() => {
         if (!company?.id) return;
-        roleRepository.list(company.id).then((items) => setAvailableRoles(items.filter((item) => item.id !== "owner"))).catch(() => setAvailableRoles([]));
-    }, [company?.id]);
+        roleRepository.list(company.id).then((items) => setAvailableRoles(items.filter((item) => item.id !== "owner" && (can("employee.manage") ? Number(item.level || 10) < Number(roleLevel || 0) : item.id === form.role)))).catch(() => setAvailableRoles([]));
+    }, [company?.id, roleLevel]);
 
     const rolePermissions = useMemo(() => availableRoles.find((item) => item.id === String(form.role).toLowerCase().replace(/[^a-z0-9]+/g, "_"))?.permissions || permissionsForRole(form.role), [availableRoles, form.role]);
 
@@ -444,10 +448,11 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
         }
 
         setLoading(true);
+        let loadingToast;
 
         try {
 
-            const loadingToast = toast.loading(
+            loadingToast = toast.loading(
                 "Creating employee..."
             );
 

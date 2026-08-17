@@ -46,7 +46,9 @@ class NotificationRepository {
   }
 
   async initializeUserStates(companyId, notificationId, recipients) {
-    const uniqueIds = [...new Set(recipients.map((user) => String(user.firestoreId || user.id || user.uid)).filter(Boolean))];
+    const uniqueIds = [...new Set(recipients.map((user) => String(
+      user.access?.authUid || user.authUid || user.uid || user.firestoreId || user.id || ""
+    )).filter(Boolean))];
     for (let offset = 0; offset < uniqueIds.length; offset += 450) {
       const batch = this.db.batch();
       uniqueIds.slice(offset, offset + 450).forEach((userId) => {

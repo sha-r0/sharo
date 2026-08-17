@@ -78,7 +78,7 @@ export const metadata = {
     shortcut: "/favicon.ico",
   },
 
-  manifest: "/site.webmanifest",
+  manifest: "/manifest.webmanifest",
 
   openGraph: {
     title: "SHARO",

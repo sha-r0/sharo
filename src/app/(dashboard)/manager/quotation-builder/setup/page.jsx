@@ -71,6 +71,10 @@ const INITIAL_FORM = {
     signature: "",
     signatureFile: null,
 
+    preparedBySignature: "",
+    preparedBySignatureFile: null,
+    preparedBySignatureRemoved: false,
+
     signatory: "",
     designation: "",
 

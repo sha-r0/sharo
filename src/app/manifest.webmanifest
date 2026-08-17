@@ -1,0 +1,16 @@
+{
+  "name": "SHARO",
+  "short_name": "SHARO",
+  "description": "Business management platform for engineering, construction and growing companies.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef2f7",
+  "theme_color": "#071330",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

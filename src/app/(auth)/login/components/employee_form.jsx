@@ -23,11 +23,11 @@ export default function EmployeeForm({ form, setForm, disabled }) {
       transition={{ duration: 0.35 }}
       className="space-y-6 mt-8"
     >
-      {/* Company ID */}
+      {/* Corporate ID */}
 
       <div>
         <label className="mb-2 block text-sm font-semibold text-slate-700">
-          Company ID
+          Corporate ID
         </label>
 
         <div
@@ -46,20 +46,20 @@ export default function EmployeeForm({ form, setForm, disabled }) {
 
           <input
             type="text"
-            value={form.companyId}
+            value={form.corporateId}
             disabled={disabled}
-            onChange={(event) => setForm((current) => ({ ...current, companyId: event.target.value }))}
-            placeholder="Enter Company ID"
+            onChange={(event) => setForm((current) => ({ ...current, corporateId: event.target.value }))}
+            placeholder="Enter Corporate ID"
             className="w-full bg-transparent outline-none text-slate-700 placeholder:text-slate-400"
           />
         </div>
       </div>
 
-      {/* Employee Email */}
+      {/* Employee ID */}
 
       <div>
         <label className="mb-2 block text-sm font-semibold text-slate-700">
-          Work Email
+          Employee ID
         </label>
 
         <div
@@ -77,11 +77,12 @@ export default function EmployeeForm({ form, setForm, disabled }) {
           <User size={20} className="text-blue-600" />
 
           <input
-            type="email"
-            value={form.email}
+            type="text"
+            inputMode="text"
+            value={form.employeeId}
             disabled={disabled}
-            onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-            placeholder="Enter work email"
+            onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}
+            placeholder="Enter Employee ID"
             className="w-full bg-transparent outline-none text-slate-700 placeholder:text-slate-400"
           />
         </div>

@@ -1,12 +1,14 @@
-import { ALL_PERMISSIONS, permissionForPath, permissionsForRole, normalizeRoleId } from "./permissionCatalog";
+import { ALL_PERMISSIONS, DEFAULT_ROLE_LEVELS, calculateEffectivePermissions, permissionForPath, permissionsForRole, normalizeRoleId } from "./permissionCatalog";
+import { resolveEmployeeLoginEnabled, resolveEmployeeRoleId, resolveEmployeeStatus, resolvePermissionOverrides } from "./employeeAuth";
 export function resolveAccess({ currentUser, employee, company, role }) {
   const isOwner = Boolean(currentUser?.uid && company?.ownerUid === currentUser.uid) || normalizeRoleId(currentUser?.role || employee?.access?.roleId || employee?.employment?.role) === "owner";
-  const roleId = isOwner ? "owner" : normalizeRoleId(employee?.access?.roleId || currentUser?.role || employee?.employment?.role);
+  const roleId = isOwner ? "owner" : normalizeRoleId(resolveEmployeeRoleId(employee, currentUser));
   const base = role?.permissions || permissionsForRole(roleId);
-  const granted = employee?.access?.permissionOverrides?.grant || [];
-  const denied = employee?.access?.permissionOverrides?.deny || [];
-  const permissions = isOwner ? ALL_PERMISSIONS : [...new Set([...base, ...granted])].filter((key) => !denied.includes(key));
-  return { isOwner, roleId, permissions, status: employee?.access?.status || employee?.employment?.status || "active", loginEnabled: employee?.access?.loginEnabled !== false, requirePasswordChange: Boolean(employee?.access?.requirePasswordChange), policyAccepted: employee?.access?.policyAccepted !== false };
+  const overrides = resolvePermissionOverrides(employee);
+  const legacy = employee?.access?.effectivePermissions || employee?.effectivePermissions || [];
+  const permissions = isOwner ? ALL_PERMISSIONS : calculateEffectivePermissions({ rolePermissions: base.length ? base : legacy, grantedPermissions: overrides.grant, deniedPermissions: overrides.deny });
+  const accountType = isOwner ? "owner" : "employee";
+  return { isOwner, isEmployee: !isOwner, accountType, roleId, roleLevel: Number(role?.level ?? DEFAULT_ROLE_LEVELS[roleId] ?? 10), permissions, status: resolveEmployeeStatus(employee), loginEnabled: isOwner || resolveEmployeeLoginEnabled(employee), requirePasswordChange: !isOwner && Boolean(employee?.access?.requirePasswordChange ?? employee?.requirePasswordChange), policyAccepted: isOwner || employee?.access?.policyAccepted !== false, teamId: employee?.reporting?.teamId || employee?.employment?.teamId || null, reportsTo: employee?.reporting?.reportsTo || employee?.employment?.reportsTo || null };
 }
 export const can = (access, permission) => Boolean(access?.isOwner || !permission || access?.permissions?.includes(permission));
 export const canAccessPath = (access, pathname) => can(access, permissionForPath(pathname));

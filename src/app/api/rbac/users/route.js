@@ -3,9 +3,13 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import {
+  ALL_PERMISSIONS,
+  DEFAULT_ROLE_LEVELS,
+  calculateEffectivePermissions,
   permissionsForRole,
   normalizeRoleId,
 } from "@/app/allservice/rbac/permissionCatalog";
+import { buildEmployeeLoginEmail, resolveEmployeeAuthUid, resolveEmployeeRoleId, resolvePermissionOverrides } from "@/app/allservice/rbac/employeeAuth";
 
 const PLAN_LIMITS = {
   starter: 5,
@@ -19,22 +23,15 @@ const PLAN_LIMITS = {
    Helpers
 ===================================================== */
 
-function createLoginEmail(corporateId, employeeId) {
-  const safeCorporateId = String(corporateId || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+const validPermissions = (values) => [...new Set((Array.isArray(values) ? values : []).filter((value) => ALL_PERMISSIONS.includes(value)))];
 
-  const safeEmployeeId = String(employeeId || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-
-  if (!safeCorporateId || !safeEmployeeId) {
-    throw new Error("LOGIN_IDENTIFIER_MISSING");
-  }
-
-  return `${safeCorporateId}.${safeEmployeeId}@auth.sharo.in`;
+async function loadRole(companyId, roleId) {
+  const normalized = normalizeRoleId(roleId);
+  const snap = await adminDb.collection("Companies").doc(companyId).collection("Roles").doc(normalized).get();
+  const data = snap.exists ? snap.data() : null;
+  const permissions = data?.permissions || permissionsForRole(normalized);
+  if (!data && !permissions.length) throw new Error("ROLE_NOT_FOUND");
+  return { id: normalized, ...(data || {}), level: Number(data?.level ?? DEFAULT_ROLE_LEVELS[normalized] ?? 10), permissions: validPermissions(permissions) };
 }
 
 async function authorize(request) {
@@ -92,23 +89,27 @@ async function authorize(request) {
     String(caller.email || "").toLowerCase() ===
       String(company.ownerEmail || "").toLowerCase();
 
+  let callerEmployee = null;
+  let callerPermissions = owner ? ALL_PERMISSIONS : [];
+  let callerRole = owner ? { id: "owner", level: 100 } : null;
   if (!owner) {
-    const employees = await adminDb
+    let employees = await adminDb
       .collection("Companies")
       .doc(companyId)
       .collection("Usermanagement")
       .where("access.authUid", "==", token.uid)
       .limit(1)
       .get();
-
-    const permissions = employees.empty
-      ? []
-      : employees.docs[0].data().access?.effectivePermissions || [];
-
-    if (!permissions.includes("employee.manage")) {
-      throw new Error("FORBIDDEN");
-    }
+    if (employees.empty) employees = await adminDb.collection("Companies").doc(companyId).collection("Usermanagement").where("authUid", "==", token.uid).limit(1).get();
+    if (employees.empty) throw new Error("FORBIDDEN");
+    callerEmployee = { id: employees.docs[0].id, ...employees.docs[0].data() };
+    if (callerEmployee.access?.loginEnabled === false || String(callerEmployee.access?.status || callerEmployee.status || callerEmployee.employment?.status || "active").toLowerCase() !== "active") throw new Error("FORBIDDEN");
+    callerRole = await loadRole(companyId, resolveEmployeeRoleId(callerEmployee, caller));
+    const overrides = resolvePermissionOverrides(callerEmployee);
+    callerPermissions = calculateEffectivePermissions({ rolePermissions: callerRole.permissions, grantedPermissions: overrides.grant, deniedPermissions: overrides.deny });
   }
+
+  if (String(company.serviceStatus || "active").toLowerCase() !== "active") throw new Error("COMPANY_INACTIVE");
 
   return {
     token,
@@ -116,7 +117,22 @@ async function authorize(request) {
     company,
     companyId,
     owner,
+    callerEmployee,
+    callerPermissions,
+    callerRole,
   };
+}
+
+function requirePermission(context, permission) { if (!context.owner && !context.callerPermissions.includes(permission)) throw new Error("FORBIDDEN"); }
+
+function validateTarget(context, target, targetRole) {
+  if (targetRole.id === "owner") throw new Error("OWNER_PROTECTED");
+  if (!context.owner && targetRole.level >= context.callerRole.level) throw new Error("ROLE_HIERARCHY_VIOLATION");
+  if (context.callerRole.id === "team_leader") {
+    const actorTeam = context.callerEmployee?.reporting?.teamId || context.callerEmployee?.employment?.teamId;
+    const targetTeam = target?.reporting?.teamId || target?.employment?.teamId;
+    if (!actorTeam || actorTeam !== targetTeam) throw new Error("TEAM_BOUNDARY_VIOLATION");
+  }
 }
 
 function responseError(error) {
@@ -175,6 +191,8 @@ export async function POST(request) {
     }
 
     const employeeData = employeeDoc.data() || {};
+    requirePermission(context, "employee.create");
+    requirePermission(context, "employee.manage");
 
     const employeeId = String(
       employeeData.employeeId || employeeData.login?.employeeId || "",
@@ -198,7 +216,7 @@ export async function POST(request) {
      * This email is used internally by Firebase Authentication.
      * The employee never needs to see or enter it.
      */
-    const loginEmail = createLoginEmail(corporateId, employeeId);
+    const loginEmail = buildEmployeeLoginEmail(corporateId, employeeId);
 
     /* =================================================
        Check employee subscription limit
@@ -248,16 +266,16 @@ export async function POST(request) {
        Role and permissions
     ================================================= */
 
-    const roleId = normalizeRoleId(input.roleId);
-
-    const permissions = input.permissions?.length
-      ? input.permissions
-      : permissionsForRole(roleId);
-
-    const permissionOverrides = input.permissionOverrides || {
-      grant: [],
-      deny: [],
-    };
+    const roleId = normalizeRoleId(employeeData.access?.roleId || employeeData.roleId || employeeData.employment?.role);
+    const role = await loadRole(context.companyId, roleId);
+    validateTarget(context, employeeData, role);
+    const requestedOverrides = resolvePermissionOverrides(employeeData);
+    const grant = validPermissions(requestedOverrides.grant);
+    const deny = validPermissions(requestedOverrides.deny);
+    if (!context.owner && grant.some((permission) => !context.callerPermissions.includes(permission))) throw new Error("PERMISSION_ESCALATION");
+    if (context.callerRole.id === "team_leader" && grant.some((permission) => permission.endsWith(".manage"))) throw new Error("PERMISSION_ESCALATION");
+    const permissionOverrides = { grant, deny };
+    const permissions = calculateEffectivePermissions({ rolePermissions: role.permissions, grantedPermissions: grant, deniedPermissions: deny });
 
     /* =================================================
        Normalize phone number
@@ -408,7 +426,7 @@ export async function POST(request) {
       .doc();
 
     batch.set(activityLogRef, {
-      type: "user.created",
+      type: "employee.account-created",
 
       actorId: context.token.uid,
       targetUserId: authUser.uid,
@@ -417,7 +435,7 @@ export async function POST(request) {
       metadata: {
         roleId,
         employeeId,
-        loginEmail,
+        permissionCount: permissions.length,
       },
 
       createdAt: FieldValue.serverTimestamp(),
@@ -459,6 +477,22 @@ export async function PATCH(request) {
       throw new Error("ACTION_REQUIRED");
     }
 
+    requirePermission(context, input.action === "role" ? "employee.manage" : "employee.manage");
+
+    let employeeRef = null;
+    let employeeData = null;
+    if (input.employeeFirestoreId) {
+      employeeRef = adminDb.collection("Companies").doc(context.companyId).collection("Usermanagement").doc(input.employeeFirestoreId);
+      const targetSnap = await employeeRef.get();
+      if (!targetSnap.exists) throw new Error("EMPLOYEE_NOT_FOUND");
+      employeeData = targetSnap.data() || {};
+      const currentTargetRole = await loadRole(context.companyId, resolveEmployeeRoleId(employeeData));
+      validateTarget(context, employeeData, currentTargetRole);
+      const storedUid = resolveEmployeeAuthUid(employeeData);
+      if (input.targetUid && storedUid && input.targetUid !== storedUid) throw new Error("TARGET_MISMATCH");
+      input.targetUid = storedUid || input.targetUid;
+    }
+
     const protectedActions = [
       "disable",
       "lock",
@@ -481,7 +515,7 @@ export async function PATCH(request) {
     }
 
     if (
-      input.action !== "reset-password" &&
+      !["reset-password", "enable", "role"].includes(input.action) &&
       !input.targetUid
     ) {
       throw new Error("TARGET_UID_REQUIRED");
@@ -501,6 +535,11 @@ export async function PATCH(request) {
       });
     
       await adminAuth.revokeRefreshTokens(input.targetUid);
+    }
+
+    if (input.action === "enable") {
+      if (!input.targetUid) throw new Error("TARGET_UID_REQUIRED");
+      await adminAuth.updateUser(input.targetUid, { disabled: false });
     }
 
     if (input.action === "unlock") {
@@ -540,6 +579,8 @@ export async function PATCH(request) {
 
     if (input.action === "role") {
       const roleId = normalizeRoleId(input.roleId);
+      const role = await loadRole(context.companyId, roleId);
+      validateTarget(context, employeeData, role);
 
       await adminAuth.setCustomUserClaims(input.targetUid, {
         companyId: context.companyId,
@@ -554,12 +595,6 @@ export async function PATCH(request) {
     ================================================= */
 
     if (input.employeeFirestoreId) {
-      const employeeRef = adminDb
-        .collection("Companies")
-        .doc(context.companyId)
-        .collection("Usermanagement")
-        .doc(input.employeeFirestoreId);
-
       const updates = {
         "access.updatedAt": FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -568,9 +603,10 @@ export async function PATCH(request) {
       if (["disable", "lock"].includes(input.action)) {
         updates["access.status"] =
           input.action === "lock" ? "locked" : "inactive";
+        updates["access.loginEnabled"] = false;
       }
 
-      if (input.action === "unlock") {
+      if (["unlock", "enable"].includes(input.action)) {
         updates["access.status"] = "active";
         updates["access.loginEnabled"] = true;
       }
@@ -583,17 +619,18 @@ export async function PATCH(request) {
 
       if (input.action === "role") {
         const roleId = normalizeRoleId(input.roleId);
+        const role = await loadRole(context.companyId, roleId);
+        const requested = input.permissionOverrides || resolvePermissionOverrides(employeeData);
+        const grant = validPermissions(requested.grant);
+        const deny = validPermissions(requested.deny);
+        if (!context.owner && grant.some((permission) => !context.callerPermissions.includes(permission))) throw new Error("PERMISSION_ESCALATION");
+        if (context.callerRole.id === "team_leader" && grant.some((permission) => permission.endsWith(".manage"))) throw new Error("PERMISSION_ESCALATION");
 
         updates["access.roleId"] = roleId;
 
-        updates["access.effectivePermissions"] =
-          input.permissions || permissionsForRole(roleId);
+        updates["access.effectivePermissions"] = calculateEffectivePermissions({ rolePermissions: role.permissions, grantedPermissions: grant, deniedPermissions: deny });
 
-        updates["access.permissionOverrides"] =
-          input.permissionOverrides || {
-            grant: [],
-            deny: [],
-          };
+        updates["access.permissionOverrides"] = { grant, deny };
       }
 
       if (input.action === "expire-password") {
@@ -613,7 +650,7 @@ export async function PATCH(request) {
       .doc(context.companyId)
       .collection("ActivityLogs")
       .add({
-        type: `user.${input.action}`,
+        type: input.action === "role" ? "employee.role-changed" : `employee.account-${input.action === "disable" ? "disabled" : input.action === "enable" || input.action === "unlock" ? "enabled" : input.action}`,
 
         actorId: context.token.uid,
         targetUserId: input.targetUid || null,

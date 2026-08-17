@@ -82,6 +82,13 @@ export function mapEmployee({
 
     },
 
+    reporting: {
+      ...(form.reporting || {}),
+      teamId: form.reporting?.teamId || form.teamId || null,
+      teamLeadId: form.reporting?.teamLeadId || form.teamLeadId || null,
+      reportsTo: form.reporting?.reportsTo || form.reportsTo || null,
+    },
+
     /* ==========================================
        Salary
     ========================================== */

@@ -9,6 +9,7 @@ import FormSwitch from "../common/FormSwitch";
 export default function StepAttendance({
   form,
   setForm,
+  readOnly = false,
 }) {
 
   function change(e) {
@@ -22,7 +23,7 @@ export default function StepAttendance({
 
   return (
 
-    <div className="space-y-8">
+    <fieldset disabled={readOnly} className="space-y-4">
 
       {/* ================= GRACE RULES ================= */}
 
@@ -119,7 +120,7 @@ export default function StepAttendance({
         subtitle="Automatically checkout employees if they forget."
       >
 
-        <div className="mb-6">
+        <div className="mb-4">
 
           <FormSwitch
             label="Enable Auto Checkout"
@@ -160,7 +161,7 @@ export default function StepAttendance({
 
       </FormSection>
 
-    </div>
+    </fieldset>
 
   );
 

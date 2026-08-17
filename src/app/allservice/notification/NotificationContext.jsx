@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
+import { auth } from "@/lib/firebase";
 import notificationRepository from "./notificationRepository";
 import notificationService from "./notificationService";
 import { getUserAudienceKeys, isNotificationVisible } from "./notificationUtilities";
@@ -9,7 +10,7 @@ import { getUserAudienceKeys, isNotificationVisible } from "./notificationUtilit
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
-  const { company, currentUser } = useAuth();
+  const { company, currentUser, firebaseUser } = useAuth();
   const [source, setSource] = useState([]);
   const [states, setStates] = useState({});
   const [cursor, setCursor] = useState(null);
@@ -18,7 +19,7 @@ export function NotificationProvider({ children }) {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
   const [clock, setClock] = useState(Date.now());
-  const userId = currentUser?.id || currentUser?.uid;
+  const userId = firebaseUser?.uid || null;
   const audienceKeys = useMemo(() => getUserAudienceKeys(currentUser), [currentUser]);
   const audienceSignature = audienceKeys.join("|");
 
@@ -28,10 +29,19 @@ export function NotificationProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!company?.id || !userId || !audienceKeys.length) {
+    if (!auth.currentUser || !company?.id || !userId || !audienceKeys.length) {
       setLoading(false);
       return undefined;
     }
+    console.info("[Notification Identity Debug]", {
+      companyId: company.id,
+      firebaseUid: auth.currentUser.uid,
+      userId,
+      currentUserId: currentUser?.id,
+      currentUserUid: currentUser?.uid,
+      companyOwnerUid: company?.ownerUid,
+      role: currentUser?.role,
+    });
     setLoading(true);
     setError(null);
     const unsubscribeFeed = notificationRepository.subscribeNotifications(
@@ -44,7 +54,16 @@ export function NotificationProvider({ children }) {
         setLoading(false);
       },
       (listenerError) => {
-        console.error("Notification listener failed:", listenerError);
+        console.error("[Notification Firestore FAILED]", {
+          path: `Companies/${company.id}/Notifications`,
+          operation: "listen",
+          companyId: company.id,
+          userId,
+          firebaseUid: auth.currentUser?.uid,
+          code: listenerError?.code,
+          message: listenerError?.message,
+          error: listenerError,
+        });
         setError("Notifications are temporarily unavailable.");
         setLoading(false);
       },
@@ -53,10 +72,22 @@ export function NotificationProvider({ children }) {
       company.id,
       userId,
       setStates,
-      (stateError) => console.error("Notification state listener failed:", stateError),
+      (stateError) => {
+        console.error("[Notification Firestore RAW ERROR]", stateError);
+        console.error("[Notification Firestore FAILED]", {
+          path: `Companies/${company.id}/UserNotifications/${userId}/Items`,
+          operation: "listen",
+          companyId: company.id,
+          userId,
+          firebaseUid: auth.currentUser?.uid,
+          code: stateError?.code || String(stateError?.code),
+          message: stateError?.message || String(stateError),
+          name: stateError?.name,
+        });
+      },
     );
     return () => { unsubscribeFeed(); unsubscribeState(); };
-  }, [company?.id, userId, audienceSignature]);
+  }, [company?.id, userId, audienceSignature, currentUser]);
 
   const notifications = useMemo(() => source.map((item) => ({
     ...item,

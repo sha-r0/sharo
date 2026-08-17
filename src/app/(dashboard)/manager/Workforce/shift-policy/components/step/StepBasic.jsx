@@ -9,6 +9,7 @@ import FormSwitch from "../common/FormSwitch";
 export default function StepBasic({
     form,
     setForm,
+    readOnly = false,
 }) {
 
     function change(e) {
@@ -40,7 +41,7 @@ export default function StepBasic({
 
     return (
 
-        <div className="space-y-8">
+        <fieldset disabled={readOnly} className="space-y-4">
 
             {/* ================= BASIC INFORMATION ================= */}
 
@@ -88,15 +89,16 @@ export default function StepBasic({
 
                 </FormGrid>
 
-                <div className="mt-6">
+                <div className="mt-4">
 
-                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                    <label htmlFor="shift-description" className="mb-1.5 block text-sm font-semibold text-slate-700">
                         Description
                     </label>
 
                     <textarea
 
-                        rows={4}
+                        id="shift-description"
+                        rows={3}
 
                         name="description"
 
@@ -104,15 +106,15 @@ export default function StepBasic({
 
                         onChange={change}
 
-                        placeholder="Example : General Office Shift"
+                        placeholder="Example: General Office Shift"
 
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        className="min-h-24 w-full resize-y rounded-[10px] border border-slate-300 bg-white px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 
                     />
 
                 </div>
 
-                <div className="mt-6">
+                <div className="mt-4">
 
                     <FormSwitch
 
@@ -201,7 +203,7 @@ export default function StepBasic({
                 subtitle="Configure lunch or tea break timings."
             >
 
-                <div className="mb-6">
+                <div className="mb-4">
 
                     <FormSwitch
                         label="Enable Break"
@@ -311,11 +313,11 @@ export default function StepBasic({
 
                     <div>
 
-                        <label className="mb-3 block text-sm font-medium text-slate-700">
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
                             Applicable Weeks
                         </label>
 
-                        <div className="flex flex-wrap gap-3">
+                        <div className="flex flex-wrap gap-2">
 
                             {[1, 2, 3, 4, 5].map((week) => {
 
@@ -373,7 +375,7 @@ export default function StepBasic({
 
             </FormSection>
 
-        </div>
+        </fieldset>
 
     );
 

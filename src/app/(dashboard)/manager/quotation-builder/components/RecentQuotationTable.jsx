@@ -23,6 +23,8 @@ export default function RecentQuotationTable({
 
     onDelete,
 
+    emptyMessage = "No quotations yet.",
+
 }) {
 
     function statusBadge(status) {
@@ -55,7 +57,16 @@ export default function RecentQuotationTable({
 
         try {
 
-            const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
+            let date;
+
+            if (typeof value?.toDate === "function") {
+                date = value.toDate();
+            } else if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                const [year, month, day] = value.split("-").map(Number);
+                date = new Date(year, month - 1, day);
+            } else {
+                date = new Date(value);
+            }
 
             return Number.isNaN(date.getTime()) ? "--" : date.toLocaleDateString("en-IN");
 
@@ -86,15 +97,9 @@ export default function RecentQuotationTable({
 
                     <h2 className="mt-6 text-2xl font-bold">
 
-                        No Quotations Yet
+                        {emptyMessage}
 
                     </h2>
-
-                    <p className="mt-3 text-slate-500">
-
-                        Create your first quotation to get started.
-
-                    </p>
 
                 </div>
 
@@ -194,7 +199,7 @@ export default function RecentQuotationTable({
 
                                     <td className="px-6 py-5">
 
-                                        {formatDate(item.createdAt)}
+                                        {formatDate(item.quotationDate)}
 
                                     </td>
 

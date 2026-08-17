@@ -7,13 +7,10 @@ import {
   useState,
 } from "react";
 
-import { onAuthStateChanged } from "firebase/auth";
+import { onIdTokenChanged, signOut } from "firebase/auth";
 
 import {
   collection,
-  query,
-  where,
-  getDocs,
   doc,
   getDoc,
   updateDoc,
@@ -39,6 +36,7 @@ export function AuthProvider({ children }) {
   const [access, setAccess] = useState(null);
 
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   const loadCurrentUser = async (uid) => {
 
@@ -48,39 +46,43 @@ export function AuthProvider({ children }) {
       // Usermanagement
       // ============================
 
-      const userSnap = await getDocs(
-        query(
-          collection(db, "Usermanagement"),
-          where("uid", "==", uid)
-        )
-      );
+      const token = await auth.currentUser.getIdToken();
+      const identityResponse = await fetch("/api/rbac/session", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      if (userSnap.empty) {
+      if (!identityResponse.ok) {
 
         setCurrentUser(null);
         setCompany(null);
         setCompanyEmployee(null);
         setAccess(null);
 
-        return;
+        return false;
 
       }
 
-      const user = {
-
-        id: userSnap.docs[0].id,
-
-        ...userSnap.docs[0].data(),
-
-      };
+      const identity = await identityResponse.json();
 
       // ============================
       // Company
       // ============================
 
-      const companySnap = await getDoc(
-        doc(db, "Companies", user.companyId)
-      );
+      const companyPath = `Companies/${identity.companyId}`;
+      console.info(`[Auth Restore] ${identity.isOwner ? "OWNER" : "EMPLOYEE"} GET START ${companyPath}`);
+      let companySnap;
+      try {
+        companySnap = await getDoc(doc(db, "Companies", identity.companyId));
+        console.info(`[Auth Restore] ${identity.isOwner ? "OWNER" : "EMPLOYEE"} GET SUCCESS ${companyPath}`);
+      } catch (error) {
+        console.error(`[Auth Restore] FAILED GET ${companyPath}`, {
+          uid,
+          code: error?.code,
+          message: error?.message,
+        });
+        error.authRestoreLogged = true;
+        throw error;
+      }
 
       if (companySnap.exists()) {
         const companyData = {
@@ -91,21 +93,61 @@ export function AuthProvider({ children }) {
 
         };
 
-        const employeeCollection = collection(db, "Companies", user.companyId, "Usermanagement");
-        const tokenResult = await auth.currentUser?.getIdTokenResult();
-        const claimedEmployeeId = tokenResult?.claims?.companyEmployeeId || user.companyEmployeeId;
-        let employeeSnap = claimedEmployeeId ? { empty: false, docs: [await getDoc(doc(db, "Companies", user.companyId, "Usermanagement", claimedEmployeeId))] } : await getDocs(query(employeeCollection, where("access.authUid", "==", uid)));
-        if (employeeSnap.docs?.[0] && !employeeSnap.docs[0].exists()) employeeSnap = { empty: true, docs: [] };
-        if (employeeSnap.empty && user.email) employeeSnap = await getDocs(query(employeeCollection, where("personalInfo.email", "==", user.email.toLowerCase())));
-        const employee = employeeSnap.empty ? null : { id: employeeSnap.docs[0].id, ...employeeSnap.docs[0].data() };
+        if (identity.isOwner && companyData.ownerUid !== uid) {
+          throw new Error("Resolved company is not owned by the authenticated user.");
+        }
+
+        let user;
+        if (identity.isOwner) {
+          user = {
+            id: uid,
+            uid,
+            companyId: identity.companyId,
+            name: companyData.ownerName || auth.currentUser.displayName || "Owner",
+            email: companyData.ownerEmail || auth.currentUser.email || null,
+            phone: companyData.ownerPhone || null,
+            role: "owner",
+            accountType: "owner",
+          };
+        } else {
+          const userPath = `Usermanagement/${identity.rootUserId}`;
+          console.info(`[Auth Restore] EMPLOYEE GET START ${userPath}`);
+          let userDoc;
+          try {
+            userDoc = await getDoc(doc(db, "Usermanagement", identity.rootUserId));
+            console.info(`[Auth Restore] EMPLOYEE GET SUCCESS ${userPath}`);
+          } catch (error) {
+            console.error(`[Auth Restore] FAILED GET ${userPath}`, {
+              uid,
+              code: error?.code,
+              message: error?.message,
+            });
+            error.authRestoreLogged = true;
+            throw error;
+          }
+          if (!userDoc.exists() || userDoc.data()?.uid !== uid) {
+            throw new Error("Authenticated employee profile not found.");
+          }
+          user = { id: userDoc.id, ...userDoc.data() };
+        }
+
+        const employeeSnap = identity.companyEmployeeId
+          ? await getDoc(doc(db, "Companies", identity.companyId, "Usermanagement", identity.companyEmployeeId))
+          : null;
+        const employee = employeeSnap?.exists()
+          ? { id: employeeSnap.id, ...employeeSnap.data() }
+          : null;
         const roleId = employee?.access?.roleId || user.role || employee?.employment?.role || "employee";
-        const roleSnap = await getDoc(doc(db, "Companies", user.companyId, "Roles", String(roleId).toLowerCase().replace(/[^a-z0-9]+/g, "_")));
-        const resolved = resolveAccess({ currentUser: { ...user, uid }, employee, company: companyData, role: roleSnap.exists() ? roleSnap.data() : null });
+        const roleSnap = identity.isOwner
+          ? null
+          : await getDoc(doc(db, "Companies", identity.companyId, "Roles", String(roleId).toLowerCase().replace(/[^a-z0-9]+/g, "_")));
+        const resolved = resolveAccess({ currentUser: { ...user, uid }, employee, company: companyData, role: roleSnap?.exists() ? roleSnap.data() : null });
 
         setCurrentUser({ ...user, uid });
         setCompany(companyData);
         setCompanyEmployee(employee);
         setAccess(resolved);
+        setAuthError(null);
 
         const sessionKey = `rbac-session-${uid}`;
         if (typeof window !== "undefined" && !sessionStorage.getItem(sessionKey)) {
@@ -113,8 +155,8 @@ export function AuthProvider({ children }) {
           const userAgent = navigator.userAgent || "Unknown";
           const browser = userAgent.includes("Chrome") ? "Chrome" : userAgent.includes("Firefox") ? "Firefox" : userAgent.includes("Safari") ? "Safari" : "Other";
           const session = { lastLoginAt: serverTimestamp(), lastDevice: /Mobi|Android/i.test(userAgent) ? "Mobile" : "Desktop", lastBrowser: browser, lastLocation: Intl.DateTimeFormat().resolvedOptions().timeZone || "Unknown" };
-          const writes = [addDoc(collection(db, "Companies", user.companyId, "ActivityLogs"), { type: "user.login", actorId: uid, targetUserId: uid, targetEmployeeId: employee?.id || null, metadata: { device: session.lastDevice, browser, location: session.lastLocation }, createdAt: serverTimestamp() })];
-          if (employee) writes.push(updateDoc(doc(db, "Companies", user.companyId, "Usermanagement", employee.id), Object.fromEntries(Object.entries(session).map(([key, value]) => [`access.${key}`, value]))));
+          const writes = [addDoc(collection(db, "Companies", identity.companyId, "ActivityLogs"), { type: "user.login", actorId: uid, targetUserId: uid, targetEmployeeId: employee?.id || null, metadata: { device: session.lastDevice, browser, location: session.lastLocation }, createdAt: serverTimestamp() })];
+          if (employee) writes.push(updateDoc(doc(db, "Companies", identity.companyId, "Usermanagement", employee.id), Object.fromEntries(Object.entries(session).map(([key, value]) => [`access.${key}`, value]))));
           Promise.all(writes).catch((error) => console.warn("Session audit unavailable:", error));
         }
 
@@ -124,11 +166,27 @@ export function AuthProvider({ children }) {
         setCompanyEmployee(null);
         setAccess(null);
 
+        return false;
+
       }
+
+      return true;
 
     } catch (error) {
 
-      console.error(error);
+      if (!error?.authRestoreLogged) {
+        console.error("[Auth Restore] FAILED", {
+          uid,
+          code: error?.code,
+          message: error?.message,
+        });
+      }
+      setAuthError(error);
+      setCurrentUser(null);
+      setCompany(null);
+      setCompanyEmployee(null);
+      setAccess(null);
+      return false;
 
     }
 
@@ -136,7 +194,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
 
-    const unsubscribe = onAuthStateChanged(
+    const unsubscribe = onIdTokenChanged(
       auth,
       async (user) => {
 
@@ -173,7 +231,7 @@ export function AuthProvider({ children }) {
 
     if (!firebaseUser) return;
 
-    await loadCurrentUser(firebaseUser.uid);
+    return loadCurrentUser(firebaseUser.uid);
 
   };
 
@@ -192,9 +250,33 @@ export function AuthProvider({ children }) {
 
         access,
 
+        employee: companyEmployee,
+
+        permissions: access?.permissions || [],
+
+        roleId: access?.roleId || null,
+
+        roleLevel: access?.roleLevel || null,
+
+        isOwner: Boolean(access?.isOwner),
+
+        isEmployee: Boolean(access?.isEmployee),
+
+        accountType: access?.accountType || null,
+
         can: (permission) => hasPermission(access, permission),
 
+        hasPermission: (permission) => hasPermission(access, permission),
+
+        hasAnyPermission: (permissions) => permissions.some((permission) => hasPermission(access, permission)),
+
+        hasAllPermissions: (permissions) => permissions.every((permission) => hasPermission(access, permission)),
+
         loading,
+
+        authError,
+
+        logout: () => signOut(auth),
 
         refreshUser,
 

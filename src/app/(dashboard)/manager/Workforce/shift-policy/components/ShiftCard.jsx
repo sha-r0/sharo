@@ -19,11 +19,28 @@ const neo =
   "shadow-[0px_0.706592px_0.706592px_-0.666667px_rgba(0,0,0,0.08),0px_1.80656px_1.80656px_-1.33333px_rgba(0,0,0,0.08),0px_3.62176px_3.62176px_-2px_rgba(0,0,0,0.07),0px_6.8656px_6.8656px_-2.66667px_rgba(0,0,0,0.07),0px_13.6468px_13.6468px_-3.33333px_rgba(0,0,0,0.05),0px_30px_30px_-4px_rgba(0,0,0,0.02),inset_0px_3px_1px_0px_rgb(255,255,255)]";
 
 export default function ShiftCard({
-  shift,
+  shift: policy,
   onView,
   onEdit,
   onDelete,
 }) {
+
+  const shift = {
+    name: policy.basic?.name ?? policy.name,
+    code: policy.basic?.code ?? policy.code,
+    description: policy.basic?.description ?? policy.description,
+    status: policy.basic?.status ?? policy.status,
+    isNightShift: policy.basic?.isNightShift ?? policy.isNightShift,
+    startTime: policy.timing?.startTime ?? policy.startTime,
+    endTime: policy.timing?.endTime ?? policy.endTime,
+    workingHours: policy.timing?.workingHours ?? policy.workingHours,
+    breakStart: policy.break?.startTime ?? policy.breakStart,
+    breakEnd: policy.break?.endTime ?? policy.breakEnd,
+    weeklyOff: policy.weeklyOff,
+    attendance: policy.attendance,
+    gps: policy.gps,
+    payroll: policy.payroll,
+  };
 
   return (
 
@@ -237,7 +254,7 @@ export default function ShiftCard({
         <ActionButton
           label="View"
           className="bg-indigo-50 text-indigo-600"
-          onClick={() => onView(shift)}
+          onClick={() => onView(policy)}
         >
           <Eye size={18} />
         </ActionButton>
@@ -245,7 +262,7 @@ export default function ShiftCard({
         <ActionButton
           label="Edit"
           className="bg-blue-50 text-blue-600"
-          onClick={() => onEdit(shift)}
+          onClick={() => onEdit(policy)}
         >
           <Pencil size={18} />
         </ActionButton>
@@ -253,7 +270,7 @@ export default function ShiftCard({
         <ActionButton
           label="Delete"
           className="bg-red-50 text-red-600"
-          onClick={() => onDelete(shift)}
+          onClick={() => onDelete(policy)}
         >
           <Trash2 size={18} />
         </ActionButton>

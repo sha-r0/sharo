@@ -262,13 +262,15 @@ export default function BuilderHeader({
 
                         onClick={onPDF}
 
-                        className="flex items-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-5 py-3 font-semibold text-green-700 transition hover:bg-green-100"
+                        disabled={saving}
+
+                        className="flex items-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-5 py-3 font-semibold text-green-700 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
 
                     >
 
                         <FileDown size={18} />
 
-                        Generate PDF
+                        {saving ? "Preparing PDF..." : "Generate PDF"}
 
                     </button>
 

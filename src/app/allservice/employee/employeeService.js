@@ -6,7 +6,7 @@ import { validateEmployee } from "./employeeValidator";
 
 import { generateEmployeeId } from "./employeeIdGenerator";
 
-import { uploadEmployeeFile } from "./employee.storage";
+import { deleteEmployeeFiles, uploadEmployeeFile } from "./employee.storage";
 
 import { mapEmployee } from "./employeeMapper";
 import { employeeCollection } from "@/lib/firestore-firebase";
@@ -239,6 +239,7 @@ class EmployeeService {
           await notificationService.create({ companyId, type: "account.created", module: "user-management", title: "ERP account created", message: "Your employee login account is ready. Sign in using your temporary password.", priority: "high", targetUsers: [firestoreId], actionRoute: "/manager", actionId: firestoreId, metadata: { employeeId, requirePasswordChange: form.requirePasswordChange !== false } }).catch((error) => console.warn("Account notification unavailable:", error));
         } catch (accountError) {
           await this.repository.delete(companyId, firestoreId);
+          await deleteEmployeeFiles([photo.path, resume.path, governmentId.path]);
           throw accountError;
         }
       }
@@ -301,6 +302,8 @@ class EmployeeService {
   ) {
 
     try {
+
+      const existingEmployee = await this.repository.get(companyId, firestoreId);
 
       /* ==============================
           Validate
@@ -432,8 +435,17 @@ class EmployeeService {
 
       );
 
-      if (form.authUid) {
-        const token = await auth.currentUser?.getIdToken();
+      const token = await auth.currentUser?.getIdToken();
+      if (!form.authUid && form.loginEnabled) {
+        if (!form.password) throw new Error("A temporary password is required when enabling login.");
+        const response = await fetch("/api/rbac/users", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ employeeFirestoreId: firestoreId, password: form.password, displayName: employee.personalInfo?.fullName, phoneNumber: form.phone, requirePasswordChange: form.requirePasswordChange !== false }) });
+        if (!response.ok) throw new Error("Employee profile saved, but the login account could not be created.");
+      } else if (form.authUid) {
+        const wasEnabled = existingEmployee?.access?.loginEnabled ?? existingEmployee?.loginEnabled ?? true;
+        if (wasEnabled !== form.loginEnabled) {
+          const lifecycle = await fetch("/api/rbac/users", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: form.loginEnabled ? "enable" : "disable", targetUid: form.authUid, employeeFirestoreId: firestoreId }) });
+          if (!lifecycle.ok) throw new Error("Employee profile saved, but login status could not be synchronized.");
+        }
         const response = await fetch("/api/rbac/users", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: "role", targetUid: form.authUid, employeeFirestoreId: firestoreId, roleId: employee.access.roleId, permissions: employee.access.effectivePermissions, permissionOverrides: employee.access.permissionOverrides }) });
         if (!response.ok) throw new Error("Employee profile saved, but the login role could not be synchronized.");
         await notificationService.create({ companyId, type: "employee.role-changed", module: "user-management", title: "Your ERP role changed", message: `Your role is now ${form.role}. Your menu and permissions were updated.`, priority: "high", targetUsers: [firestoreId], actionRoute: "/manager", actionId: firestoreId, metadata: { employeeId: form.employeeId, roleId: employee.access.roleId } }).catch((error) => console.warn("Role notification unavailable:", error));

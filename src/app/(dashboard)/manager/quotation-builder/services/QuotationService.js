@@ -5,13 +5,13 @@ import {
     getDoc,
     getDocs,
     increment,
-    limit,
     orderBy,
     query,
     runTransaction,
     serverTimestamp,
     setDoc,
     updateDoc,
+    where,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
@@ -191,8 +191,41 @@ export default class QuotationService {
     // Dashboard
     //////////////////////////////////////////////////////
 
-    static async getDashboard(companyId) {
+    static async getDashboard(
+        companyId,
+        { viewMode = "all", month = "" } = {}
+    ) {
         this.validateCompanyId(companyId);
+
+        let quotationQuery = query(
+            this.quotationsRef(companyId),
+            orderBy("createdAt", "desc")
+        );
+
+        if (viewMode === "month") {
+            if (!/^\d{4}-\d{2}$/.test(month)) {
+                throw new Error("A valid quotation month is required.");
+            }
+
+            const [year, monthNumber] = month
+                .split("-")
+                .map(Number);
+            const nextMonth = new Date(
+                year,
+                monthNumber,
+                1
+            );
+            const nextMonthValue = `${nextMonth.getFullYear()}-${String(
+                nextMonth.getMonth() + 1
+            ).padStart(2, "0")}-01`;
+
+            quotationQuery = query(
+                this.quotationsRef(companyId),
+                where("quotationDate", ">=", `${month}-01`),
+                where("quotationDate", "<", nextMonthValue),
+                orderBy("quotationDate", "desc")
+            );
+        }
 
         try {
             const [
@@ -209,13 +242,7 @@ export default class QuotationService {
                     this.settingsRef(companyId)
                 ),
 
-                getDocs(
-                    query(
-                        this.quotationsRef(companyId),
-                        orderBy("createdAt", "desc"),
-                        limit(50)
-                    )
-                ),
+                getDocs(quotationQuery),
 
                 getDocs(
                     query(

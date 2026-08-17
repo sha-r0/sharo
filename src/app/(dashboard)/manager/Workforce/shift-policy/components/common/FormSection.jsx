@@ -6,9 +6,9 @@ export default function FormSection({
   children,
 }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6">
+    <section className="rounded-[14px] border border-slate-200 bg-white p-4 sm:p-5 lg:p-6">
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-5">
 
         <h2 className="text-lg font-bold text-slate-800">
           {title}
@@ -24,6 +24,6 @@ export default function FormSection({
 
       {children}
 
-    </div>
+    </section>
   );
 }

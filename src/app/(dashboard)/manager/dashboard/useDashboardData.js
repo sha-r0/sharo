@@ -26,13 +26,20 @@ const emptyData = {
 };
 
 async function readCollection(companyId, name) {
+  const path = `Companies/${companyId}/${name}`;
   try {
     const snapshot = await getDocs(
       collection(db, "Companies", companyId, name),
     );
     return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
   } catch (error) {
-    console.warn(`Dashboard could not read ${name}:`, error);
+    console.warn("[Dashboard Firestore FAILED]", {
+      path,
+      operation: "list",
+      companyId,
+      code: error?.code,
+      message: error?.message,
+    });
     return [];
   }
 }
@@ -46,13 +53,8 @@ async function loadDashboardData(companyId, access) {
     expenses,
     attendance,
     workLogs,
-    legacyWorkLogs,
-    leaveRequests,
-    legacyLeaves,
-    advanceRequests,
-    legacyAdvances,
-    employeeAdvanceRequests,
-    gpsPunches,
+    leaves,
+    advances,
     clients,
     holidays,
   ] = await Promise.all([
@@ -61,13 +63,8 @@ async function loadDashboardData(companyId, access) {
     safe(allowed("expense.view"), () => expenseService.getExpenses(companyId)),
     safe(allowed("attendance.view"), () => readCollection(companyId, "Attendance")),
     safe(allowed("projects.view"), () => readCollection(companyId, "WorkLogs")),
-    safe(allowed("projects.view"), () => readCollection(companyId, "WorkDetails")),
     safe(allowed("leave.view"), () => readCollection(companyId, "LeaveRequests")),
-    safe(allowed("leave.view"), () => readCollection(companyId, "Leaves")),
-    safe(allowed("advance.view"), () => readCollection(companyId, "AdvanceRequests")),
-    safe(allowed("advance.view"), () => readCollection(companyId, "Advances")),
     safe(allowed("advance.view"), () => readCollection(companyId, "advance_requests")),
-    safe(allowed("gps.view"), () => readCollection(companyId, "GPSPunches")),
     safe(allowed("clients.view"), () => readCollection(companyId, "Clients")),
     safe(allowed("leave.view"), () => readCollection(companyId, "Holidays")),
   ]);
@@ -77,10 +74,10 @@ async function loadDashboardData(companyId, access) {
     projects,
     expenses,
     attendance,
-    workLogs: [...workLogs, ...legacyWorkLogs],
-    leaves: [...leaveRequests, ...legacyLeaves],
-    advances: [...employeeAdvanceRequests, ...advanceRequests, ...legacyAdvances],
-    gpsPunches,
+    workLogs,
+    leaves,
+    advances,
+    gpsPunches: [],
     clients,
     holidays,
   };
@@ -142,9 +139,8 @@ export default function useDashboardData(companyId, access) {
     const realtimeCollections = [
       ["Attendance", "attendance", "attendance.view"], ["Expenses", "expenses", "expense.view"],
       ["Projectmanagement", "projects", "projects.view"], ["WorkLogs", "workLogs", "projects.view"],
-      ["LeaveRequests", "leaves", "leave.view"], ["AdvanceRequests", "advances", "advance.view"],
-      ["advance_requests", "advances", "advance.view"],
-      ["GPSPunches", "gpsPunches", "gps.view"], ["Holidays", "holidays", "leave.view"],
+      ["LeaveRequests", "leaves", "leave.view"], ["advance_requests", "advances", "advance.view"],
+      ["Holidays", "holidays", "leave.view"],
     ].filter(([, , permission]) => can(access, permission));
     const unsubscribes = realtimeCollections.map(([collectionName, dataKey]) =>
       onSnapshot(
@@ -157,7 +153,13 @@ export default function useDashboardData(companyId, access) {
             return next;
           });
         },
-        (snapshotError) => console.warn(`Realtime ${collectionName} unavailable:`, snapshotError),
+        (snapshotError) => console.warn("[Dashboard Firestore FAILED]", {
+          path: `Companies/${companyId}/${collectionName}`,
+          operation: "listen",
+          companyId,
+          code: snapshotError?.code,
+          message: snapshotError?.message,
+        }),
       ),
     );
 

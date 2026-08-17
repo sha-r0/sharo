@@ -24,6 +24,9 @@ export default function ProtectedRoute({ children }) {
 
     access,
 
+    logout,
+
+
   } = useAuth();
 
   // ===========================================
@@ -46,14 +49,18 @@ export default function ProtectedRoute({ children }) {
 
     }
 
+    if (access?.isEmployee && (!access.loginEnabled || access.status !== "active")) {
+      logout().finally(() => router.replace("/login"));
+      return;
+    }
+
     // -----------------------------
     // User or Company Missing
     // -----------------------------
 
     if (!currentUser || !company) {
-
+      logout().finally(() => router.replace("/login"));
       return;
-
     }
 
     // -----------------------------
@@ -103,6 +110,7 @@ export default function ProtectedRoute({ children }) {
     pathname,
 
     router,
+    access,
 
   ]);
 
@@ -114,7 +122,7 @@ export default function ProtectedRoute({ children }) {
 
     loading ||
 
-    (firebaseUser && (!currentUser || !company))
+    (firebaseUser && loading)
 
   ) {
 

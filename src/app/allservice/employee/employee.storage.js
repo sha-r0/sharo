@@ -2,6 +2,7 @@ import {
   ref,
   uploadBytes,
   getDownloadURL,
+  deleteObject,
 } from "firebase/storage";
 
 import { storage } from "@/lib/firebase";
@@ -106,4 +107,8 @@ export async function uploadEmployeeFile({
 
   }
 
+}
+
+export async function deleteEmployeeFiles(paths = []) {
+  await Promise.all(paths.filter(Boolean).map((path) => deleteObject(ref(storage, path)).catch(() => {})));
 }

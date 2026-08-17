@@ -1,38 +1,26 @@
 export default class QuotationCalculationService {
 
+    static TAX_RATES = {
+        igst: { igst: 18, cgst: 0, sgst: 0 },
+        cgst_sgst: { igst: 0, cgst: 9, sgst: 9 },
+        none: { igst: 0, cgst: 0, sgst: 0 },
+    };
+
     //////////////////////////////////////////////////////
     // Calculate One Item
     //////////////////////////////////////////////////////
 
     static calculateItem(item) {
 
-        const qty = Number(item.qty || 0);
+        const qtyValue = Number(item.qty || 0);
 
-        const rate = Number(item.rate || 0);
+        const rateValue = Number(item.rate || 0);
 
-        const discount = Number(item.discount || 0);
+        const qty = Number.isFinite(qtyValue) ? qtyValue : 0;
 
-        const gst = Number(item.gst || 0);
-
-        //////////////////////////////////////////
+        const rate = Number.isFinite(rateValue) ? rateValue : 0;
 
         const basicAmount = qty * rate;
-
-        const taxableAmount = Math.max(
-
-            basicAmount - discount,
-
-            0
-
-        );
-
-        const gstAmount =
-
-            taxableAmount * gst / 100;
-
-        const total =
-
-            taxableAmount + gstAmount;
 
         return {
 
@@ -40,11 +28,11 @@ export default class QuotationCalculationService {
 
             basicAmount,
 
-            taxableAmount,
+            taxableAmount: basicAmount,
 
-            gstAmount,
+            gstAmount: 0,
 
-            total,
+            total: basicAmount,
 
         };
 
@@ -78,39 +66,21 @@ export default class QuotationCalculationService {
 
         //////////////////////////////////////////////////
 
-        const discount = items.reduce(
+        const discount = 0;
 
-            (sum, item) =>
+        const taxable = subtotal;
 
-                sum + Number(item.discount || 0),
+        const taxMode = this.TAX_RATES[form.taxMode]
+            ? form.taxMode
+            : String(form.gstType || "").toLowerCase() === "igst"
+                ? "igst"
+                : "cgst_sgst";
 
-            0
-
-        );
-
-        //////////////////////////////////////////////////
-
-        const taxable = items.reduce(
-
-            (sum, item) =>
-
-                sum + item.taxableAmount,
-
-            0
-
-        );
-
-        //////////////////////////////////////////////////
-
-        const gst = items.reduce(
-
-            (sum, item) =>
-
-                sum + item.gstAmount,
-
-            0
-
-        );
+        const rates = this.TAX_RATES[taxMode];
+        const igst = taxable * rates.igst / 100;
+        const cgst = taxable * rates.cgst / 100;
+        const sgst = taxable * rates.sgst / 100;
+        const gst = igst + cgst + sgst;
 
         //////////////////////////////////////////////////
 
@@ -182,11 +152,13 @@ export default class QuotationCalculationService {
 
             gst,
 
-            cgst: gst / 2,
+            taxMode,
 
-            sgst: gst / 2,
+            cgst,
 
-            igst: gst,
+            sgst,
+
+            igst,
 
             freight,
 
