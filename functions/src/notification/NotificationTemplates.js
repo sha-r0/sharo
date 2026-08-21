@@ -15,6 +15,7 @@ const templates = {
   "advance.requested": (d) => ({ title: "Advance requested", body: `${employee(d)} requested an advance${d.amount ? ` of ${money(d.amount)}` : ""}.`, priority: "high" }),
   "advance.approved": (d) => ({ title: "Advance approved", body: `Your advance${d.amount ? ` of ${money(d.amount)}` : ""} was approved.`, priority: "medium" }),
   "advance.rejected": () => ({ title: "Advance rejected", body: "Your advance request was rejected.", priority: "high" }),
+  "advance.paid": () => ({ title: "Advance payment completed", body: "Advance payment completed.", priority: "high" }),
   "attendance.check-in": (d) => ({ title: "Employee checked in", body: `${employee(d)} checked in.`, priority: "low" }),
   "attendance.check-out": (d) => ({ title: "Employee checked out", body: `${employee(d)} checked out.`, priority: "low" }),
   "attendance.late": (d) => ({ title: "Late attendance", body: `${employee(d)} checked in late.`, priority: "high" }),

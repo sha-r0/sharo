@@ -1,10 +1,12 @@
 "use strict";
 
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { FieldValue, Timestamp, getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2/options");
 const { logger } = require("firebase-functions");
 const NotificationRepository = require("./notification/NotificationRepository");
@@ -14,6 +16,11 @@ const NotificationDelivery = require("./notification/NotificationDelivery");
 const NotificationLogger = require("./notification/NotificationLogger");
 const { INFRASTRUCTURE_COLLECTIONS } = require("./notification/NotificationTypes");
 const { statusOf, employeeIds } = require("./notification/NotificationHelpers");
+const { createAdvanceFunctions } = require("./advance/AdvanceFunctions");
+const { createPayoutDependencies, createPayoutSettingsFunctions } = require("./payout/PayoutSettingsFunctions");
+const { dispatchAdvancePayout, markAdvancePayoutFailed } = require("./payout/AdvancePayoutService");
+const { handlePayoutWebhook } = require("./payout/PayoutWebhookService");
+const { easyTimeProAttendanceWebhookCore, validBasicAuth } = require("./easytimepro_webhook");
 
 initializeApp();
 setGlobalOptions({ region: "asia-south1", memory: "256MiB", timeoutSeconds: 120, maxInstances: 20 });
@@ -23,6 +30,79 @@ const repository = new NotificationRepository(db);
 const service = new NotificationService(repository);
 const dispatcher = new NotificationDispatcher(service);
 const delivery = new NotificationDelivery(getMessaging(), repository, new NotificationLogger(db));
+const advanceFunctions = createAdvanceFunctions(db);
+const payoutDependencies = createPayoutDependencies();
+const payoutSettingsFunctions = createPayoutSettingsFunctions(db, payoutDependencies);
+const easyTimeProUsername = defineSecret("EASYTIMEPRO_WEBHOOK_USERNAME");
+const easyTimeProPassword = defineSecret("EASYTIMEPRO_WEBHOOK_PASSWORD");
+
+exports.createAdvanceRequest = advanceFunctions.createAdvanceRequest;
+exports.getAdvanceReferenceData = advanceFunctions.getAdvanceReferenceData;
+exports.decideAdvance = advanceFunctions.decideAdvance;
+exports.getPayoutSettings = payoutSettingsFunctions.getPayoutSettings;
+exports.updatePayoutSettings = payoutSettingsFunctions.updatePayoutSettings;
+exports.verifyPayoutConnection = payoutSettingsFunctions.verifyPayoutConnection;
+exports.connectMerchantPayout = payoutSettingsFunctions.connectMerchantPayout;
+exports.disconnectMerchantPayout = payoutSettingsFunctions.disconnectMerchantPayout;
+exports.syncEmployeePayoutBeneficiary = payoutSettingsFunctions.syncEmployeePayoutBeneficiary;
+exports.initiateAdvancePayout = payoutSettingsFunctions.initiateAdvancePayout;
+
+exports.easyTimeProAttendanceWebhook = onRequest({
+  region: "us-central1", timeoutSeconds: 60, secrets: [easyTimeProUsername, easyTimeProPassword],
+}, async (request, response) => {
+  if (request.method !== "POST") {
+    response.status(405).json({ ok: false, error: "method_not_allowed" });
+    return;
+  }
+  if (!validBasicAuth(request.headers.authorization, easyTimeProUsername.value(), easyTimeProPassword.value())) {
+    response.set("WWW-Authenticate", 'Basic realm="SHARO EasyTimePro"');
+    response.status(401).json({ ok: false, error: "unauthorized" });
+    return;
+  }
+  const result = await easyTimeProAttendanceWebhookCore({
+    firestore: db, fieldValue: FieldValue, timestamp: Timestamp, body: request.body,
+  });
+  response.status(result.httpStatus).json(result.body);
+});
+
+exports.cashfreePayoutWebhook = onRequest({ region: "asia-south1" }, async (request, response) => {
+  try {
+    const result = await handlePayoutWebhook(db, request, { secretStore: payoutDependencies.secretStore, notificationService: service });
+    response.status(result.httpStatus).json(result.body);
+  } catch (error) {
+    const code = error?.message || "PAYOUT_WEBHOOK_FAILED";
+    if (["RAW_BODY_REQUIRED", "INVALID_WEBHOOK_BODY"].includes(code)) {
+      response.status(400).json({ ok: false });
+      return;
+    }
+    logger.error("Cashfree payout webhook failed", { code, name: error?.name || "Error" });
+    response.status(500).json({ ok: false });
+  }
+});
+
+const PAYOUT_BLOCK_CODES = new Set([
+  "ADVANCE_NOT_APPROVED", "INVALID_ADVANCE_AMOUNT", "PAYOUT_ALREADY_DISPATCHED", "PAYOUT_CONNECTION_REQUIRED",
+  "PRODUCTION_DISPATCH_BLOCKED", "BENEFICIARY_NOT_VERIFIED", "BENEFICIARY_BANK_CHANGED", "BENEFICIARY_ENVIRONMENT_MISMATCH", "PAYOUT_SOURCE_NOT_FOUND",
+  "PAYOUT_CREDENTIALS_REQUIRED",
+]);
+
+exports.onAdvancePayoutQueued = onDocumentCreated({
+  document: "Companies/{companyId}/Payouts/{payoutId}", retry: true,
+}, async (event) => {
+  try {
+    const result = await dispatchAdvancePayout(db, event.params.companyId, event.params.payoutId, { ...payoutDependencies, source: "firestore-trigger" });
+    if (result?.status === "UNKNOWN") throw new Error("PAYOUT_RECONCILIATION_PENDING");
+  } catch (error) {
+    const code = error?.message || "PAYOUT_DISPATCH_FAILED";
+    if (PAYOUT_BLOCK_CODES.has(code)) {
+      await markAdvancePayoutFailed(db, event.params.companyId, event.params.payoutId, code);
+      logger.warn("Advance payout dispatch blocked", { ...event.params, code });
+      return;
+    }
+    logger.error("Advance payout dispatch failed", { ...event.params, code, name: error?.name || "Error" });
+    throw error;
+  }
+});
 
 exports.onErpEventWritten = onDocumentWritten({
   document: "Companies/{companyId}/{collectionName}/{documentId}", retry: true,

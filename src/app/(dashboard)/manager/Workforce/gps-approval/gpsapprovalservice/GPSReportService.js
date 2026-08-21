@@ -40,7 +40,7 @@ const asEmployee = (doc) => {
     };
 };
 
-const normalizeAttendance = (doc, employeeMap) => {
+const normalizeAttendance = (doc, employeeMap, collectionName) => {
     const data = doc.data();
     const employeeFirestoreId = firstValue(data.employeeFirestoreId, data.userId, data.employeeId, "");
     const employee = employeeMap.get(String(employeeFirestoreId));
@@ -53,6 +53,7 @@ const normalizeAttendance = (doc, employeeMap) => {
         firstValue(data.checkOutLocation, data.checkOutGps, data.checkOutGPS)
     );
     const rawGpsValid = firstValue(data.gpsValid, data.isWithinRadius, data.withinRadius);
+    const source = String(firstValue(data.attendanceSource, data.source, data.checkInSource, data.checkOutSource, "")).toLowerCase();
 
     return {
         ...data,
@@ -67,6 +68,9 @@ const normalizeAttendance = (doc, employeeMap) => {
         checkOutLocation,
         gpsValid: rawGpsValid === true,
         totalHours: Number(data.totalHours || data.hours || 0),
+        collectionName,
+        isHardware: data.hardwareVerified === true || source === "hardware" || source === "biometric",
+        isGps: collectionName === "GPSPunches" || source === "gps" || source === "mobile" || data.gpsValid !== undefined || Boolean(checkInLocation || checkOutLocation),
     };
 };
 
@@ -87,10 +91,14 @@ export default class GPSReportService {
             if (employee.employeeId) employeeMap.set(String(employee.employeeId), employee);
         });
 
-        const documents = [...attendanceSnap.docs, ...gpsSnap.docs];
+        const documents = [
+            ...attendanceSnap.docs.map((item) => ({ item, collectionName: "Attendance" })),
+            ...gpsSnap.docs.map((item) => ({ item, collectionName: "GPSPunches" })),
+        ];
         const unique = new Map();
-        documents.forEach((doc) => {
-            const row = normalizeAttendance(doc, employeeMap);
+        documents.forEach(({ item, collectionName }) => {
+            const row = normalizeAttendance(item, employeeMap, collectionName);
+            if (row.isHardware || !row.isGps) return;
             const identity = `${row.employeeFirestoreId}|${row.date}|${dateKey(row.checkIn)}`;
             const existing = unique.get(identity);
             unique.set(identity, existing ? { ...row, ...existing } : row);

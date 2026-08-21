@@ -203,6 +203,10 @@ export default function EmployeeDetailsPage() {
 
                     employee={employee}
 
+                    canSync={can("company.manage") || can("employee.manage")}
+
+                    onSynced={loadEmployee}
+
                 />
 
                 <AddressSection

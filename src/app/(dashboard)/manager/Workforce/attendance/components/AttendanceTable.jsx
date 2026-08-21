@@ -1,6 +1,7 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { Fragment, useState } from "react";
+import { ChevronDown, ChevronUp, Info, ShieldCheck } from "lucide-react";
 import AttendanceService from "../services/AttendanceService";
 
 const neo =
@@ -14,7 +15,11 @@ export default function AttendanceTable({
 
     view = "summary",
 
+    companyId,
+
 }) {
+
+    if (view === "detailed") return <DailyAttendanceTable report={report} companyId={companyId} />;
 
     return (
 
@@ -372,4 +377,42 @@ export default function AttendanceTable({
 
     );
 
+}
+
+function DailyAttendanceTable({ report, companyId }) {
+    const records = report.flatMap((row) => Object.entries(row.details || {})
+        .filter(([, detail]) => detail?.record)
+        .map(([date, detail]) => ({ employee: row.employee, date, ...detail })));
+    const [expanded, setExpanded] = useState("");
+    const [events, setEvents] = useState({});
+    const [loading, setLoading] = useState("");
+
+    async function toggle(row) {
+        const key = row.record.id || `${row.employee.id}_${row.date}`;
+        if (expanded === key) return setExpanded("");
+        setExpanded(key);
+        if (!row.hardwareVerified || events[key]) return;
+        setLoading(key);
+        try {
+            const hardwareEvents = await AttendanceService.getHardwareEvents(companyId, row.record);
+            setEvents((current) => ({ ...current, [key]: hardwareEvents }));
+        } catch {
+            setEvents((current) => ({ ...current, [key]: [] }));
+        } finally {
+            setLoading("");
+        }
+    }
+
+    return <div className={`${neo} overflow-hidden rounded-3xl bg-[#F9FAFC]`}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-7 py-5"><div><h2 className="text-2xl font-bold text-slate-800">Attendance Records</h2><p className="mt-1 text-slate-500">Finalized daily records for the selected period.</p></div><div className="rounded-xl bg-indigo-100 px-4 py-2 text-sm font-semibold text-indigo-700">{records.length} Records</div></div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[1150px] text-sm"><thead className="bg-[#EEF4FF] text-left text-xs uppercase tracking-wide text-slate-600"><tr><th className="p-4"></th><th>Employee</th><th>Date</th><th>Check In</th><th>Check Out</th><th>Worked Time</th><th>Late</th><th>Status</th><th>Attendance Source</th></tr></thead><tbody>
+            {records.map((row) => { const key = row.record.id || `${row.employee.id}_${row.date}`; return <Fragment key={key}><tr className="border-t bg-white hover:bg-slate-50"><td className="p-4"><button aria-label="Show attendance details" onClick={() => toggle(row)}>{expanded === key ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}</button></td><td><strong>{row.employee.name}</strong><p className="text-xs text-slate-400">{row.employee.employeeId}</p></td><td>{row.date}</td><td>{row.checkIn}</td><td>{row.checkOut}</td><td>{row.totalHours}</td><td>{row.lateMinutes ? `${row.lateMinutes} min` : "—"}</td><td><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${AttendanceService.getStatusColor(AttendanceService.getShortStatus(row.status))}`}>{row.status}</span></td><td><span className="inline-flex items-center gap-1.5 font-semibold text-slate-700">{row.hardwareVerified && <ShieldCheck size={16} className="text-emerald-600"/>}{row.source}{row.hardwareVerified && <span className="text-xs text-emerald-600">Verified</span>}</span></td></tr>
+                {expanded === key && <tr className="border-t bg-slate-50"><td colSpan={9} className="px-8 py-5"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"><Detail label="Punches" value={row.hardwarePunchCount || "—"}/><Detail label="Check-in source" value={row.checkInSource || "—"}/><Detail label="Check-out source" value={row.checkOutSource || "—"}/><Detail label="Verify type" value={row.verifyType || "—"}/><Detail label="Applied shift" value={[row.shiftName, row.shiftTiming].filter(Boolean).join(" • ") || "—"}/></div>{row.hardwareVerified && <div className="mt-5"><h4 className="mb-2 font-bold text-slate-700">Original hardware events</h4>{loading === key ? <p className="text-slate-500">Loading events...</p> : events[key]?.length ? <div className="flex flex-wrap gap-2">{events[key].map((event) => <span key={event.id} className="rounded-xl border bg-white px-3 py-2 text-xs">{AttendanceService.formatTime(event.punchTime || event.timestamp || event.eventTime || event.createdAt)} • {event.verifyType || event.verify || event.type || "Punch"}</span>)}</div> : <p className="text-sm text-slate-500">No matching raw events were found for this employee and date.</p>}</div>}</td></tr>}</Fragment>; })}
+            {!records.length && <tr><td colSpan={9} className="p-16 text-center text-slate-500">No finalized attendance records found.</td></tr>}
+        </tbody></table></div>
+    </div>;
+}
+
+function Detail({ label, value }) {
+    return <div className="rounded-2xl border bg-white p-3"><p className="text-xs uppercase text-slate-400">{label}</p><p className="mt-1 font-semibold capitalize text-slate-700">{String(value)}</p></div>;
 }

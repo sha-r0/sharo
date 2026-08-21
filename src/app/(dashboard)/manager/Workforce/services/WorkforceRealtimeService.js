@@ -1,5 +1,6 @@
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { attendanceDayKey, attendanceEmployeeKeys, toAttendanceDate } from "./attendanceDateTime";
 
 const names = ["Usermanagement", "Attendance", "GPSPunches", "LeaveRequests", "WorkLogs", "ShiftPolicies", "Holidays", "advance_requests", "Payroll"];
 export function subscribeWorkforce(companyId, onData, onError) {
@@ -11,18 +12,26 @@ export function subscribeWorkforce(companyId, onData, onError) {
   return () => stops.forEach((stop) => stop());
 }
 
-export const toDate = (value) => { if (!value) return null; if (typeof value?.toDate === "function") return value.toDate(); const date = new Date(value); return Number.isNaN(date.getTime()) ? null : date; };
-export const dayKey = (value) => { const date = toDate(value); if (!date) return typeof value === "string" ? value.slice(0, 10) : ""; return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
+export const toDate = toAttendanceDate;
+export const dayKey = attendanceDayKey;
 export const employeeName = (item) => item.employeeName || item.personalInfo?.fullName || item.fullName || item.name || "Employee";
 
 export function workforceMetrics(data) {
   const today = dayKey(new Date());
   const employees = data.Usermanagement || [], attendance = data.Attendance || [], leaves = data.LeaveRequests || [], logs = data.WorkLogs || [];
   const active = employees.filter((item) => String(item.employment?.status || item.status || "active").toLowerCase() !== "inactive");
-  const todayAttendance = attendance.filter((item) => dayKey(item.date || item.checkIn || item.createdAt) === today);
-  const presentIds = new Set(todayAttendance.filter((item) => item.checkIn || ["present", "late", "half day"].includes(String(item.status).toLowerCase())).map((item) => item.employeeFirestoreId || item.employeeId));
+  const todayAttendance = attendance.filter((item) => dayKey(item.date || item.checkIn || item.createdAt) === today).sort((a, b) => (toDate(b.checkIn)?.getTime() || 0) - (toDate(a.checkIn)?.getTime() || 0));
+  const normalizedStatus = (item) => String(item.status || "").toLowerCase().replace(/[ _-]/g, "");
+  const employeeKey = (item) => attendanceEmployeeKeys(item)[0];
+  const presentIds = new Set(todayAttendance.filter((item) => ["present", "late"].includes(normalizedStatus(item))).map(employeeKey).filter(Boolean));
+  const halfDayIds = new Set(todayAttendance.filter((item) => normalizedStatus(item) === "halfday").map(employeeKey).filter(Boolean));
+  const explicitAbsentIds = new Set(todayAttendance.filter((item) => normalizedStatus(item) === "absent").map(employeeKey).filter(Boolean));
   const onLeave = leaves.filter((item) => String(item.status).toLowerCase() === "approved" && dayKey(item.fromDate || item.startDate) <= today && dayKey(item.toDate || item.endDate) >= today);
-  const leaveIds = new Set(onLeave.map((item) => item.employeeFirestoreId || item.employeeId));
+  const leaveIds = new Set(onLeave.map((item) => item.employeeFirestoreId || item.employeeId).filter(Boolean).map(String));
   const todayLogs = logs.filter((item) => dayKey(item.date || item.startTime || item.createdAt) === today);
-  return { employees, active, todayAttendance, onLeave, todayLogs, summary: { total: employees.length, active: active.length, present: presentIds.size, late: todayAttendance.filter((item) => item.isLate || String(item.status).toLowerCase() === "late").length, absent: Math.max(0, active.length - presentIds.size - leaveIds.size), leave: leaveIds.size, working: todayLogs.filter((item) => item.startTime && !item.endTime).length, pendingLeave: leaves.filter((item) => String(item.status || "pending").toLowerCase() === "pending").length, gpsReview: (data.GPSPunches || todayAttendance).filter((item) => dayKey(item.date || item.checkIn) === today && (item.gpsValid === false || item.outsideRadius)).length } };
+  const accountedIds = new Set([...presentIds, ...halfDayIds, ...leaveIds]);
+  const missing = active.filter((item) => !accountedIds.has(String(item.id)) && !accountedIds.has(String(item.employeeId || item.login?.employeeId || ""))).length;
+  const checkedIn = todayAttendance.filter((item) => item.checkIn).length;
+  const checkedOut = todayAttendance.filter((item) => item.checkOut).length;
+  return { employees, active, todayAttendance, onLeave, todayLogs, summary: { total: active.length, active: active.length, present: presentIds.size, halfDay: halfDayIds.size, late: todayAttendance.filter((item) => Number(item.lateMinutes || 0) > 0 || item.isLate || normalizedStatus(item) === "late").length, absent: Math.max(explicitAbsentIds.size, missing), leave: leaveIds.size, checkedIn, checkedOut, working: todayAttendance.filter((item) => item.checkIn && !item.checkOut).length, pendingLeave: leaves.filter((item) => String(item.status || "pending").toLowerCase() === "pending").length, gpsReview: (data.GPSPunches || []).filter((item) => dayKey(item.date || item.checkIn) === today && (item.gpsValid === false || item.outsideRadius)).length } };
 }

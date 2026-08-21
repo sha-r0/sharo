@@ -1,7 +1,8 @@
 export const PERMISSION_ACTIONS = ["view", "create", "edit", "delete", "approve", "export", "print", "manage"];
 export const PERMISSION_MODULES = ["dashboard", "employee", "attendance", "gps", "leave", "advance", "expense", "projects", "clients", "vendors", "inventory", "billing", "invoices", "payroll", "reports", "notifications", "settings", "company", "quotation"];
 export const permissionKey = (module, action) => `${module}.${action}`;
-export const ALL_PERMISSIONS = PERMISSION_MODULES.flatMap((module) => PERMISSION_ACTIONS.map((action) => permissionKey(module, action)));
+export const DEDICATED_PERMISSIONS = ["payout.execute"];
+export const ALL_PERMISSIONS = [...PERMISSION_MODULES.flatMap((module) => PERMISSION_ACTIONS.map((action) => permissionKey(module, action))), ...DEDICATED_PERMISSIONS];
 export const DEFAULT_ROLE_LEVELS = { owner: 100, admin: 90, hr_manager: 70, accounts_manager: 70, project_manager: 60, manager: 60, team_leader: 50, employee: 10 };
 export function calculateEffectivePermissions({ rolePermissions = [], grantedPermissions = [], deniedPermissions = [] }) {
   const permissions = new Set([...rolePermissions, ...grantedPermissions]);
@@ -14,7 +15,7 @@ const commonActions = ["view", "create", "edit", "approve", "export", "print"];
 export const ROLE_TEMPLATES = {
   owner: { name: "Owner", level: 100, system: true, isActive: true, canAssignRoles: ["admin", "hr_manager", "accounts_manager", "project_manager", "manager", "team_leader", "employee"], canManagePermissions: true, permissions: ALL_PERMISSIONS },
   hr_manager: { name: "HR Manager", level: 70, system: true, isActive: true, canAssignRoles: ["project_manager", "manager", "team_leader", "employee"], canManagePermissions: true, permissions: modulePermissions(["dashboard", "employee", "attendance", "gps", "leave", "payroll", "reports", "notifications"], [...commonActions, "manage"]) },
-  accounts_manager: { name: "Accounts Manager", level: 70, system: true, isActive: true, canAssignRoles: ["employee"], canManagePermissions: false, permissions: modulePermissions(["dashboard", "expense", "advance", "billing", "invoices", "vendors", "reports", "notifications"], commonActions) },
+  accounts_manager: { name: "Accounts Manager", level: 70, system: true, isActive: true, canAssignRoles: ["employee"], canManagePermissions: false, permissions: [...modulePermissions(["dashboard", "expense", "advance", "billing", "invoices", "vendors", "reports", "notifications"], commonActions), "payout.execute"] },
   project_manager: { name: "Project Manager", level: 60, system: true, isActive: true, canAssignRoles: ["team_leader", "employee"], canManagePermissions: false, permissions: modulePermissions(["dashboard", "projects", "employee", "attendance", "gps", "expense", "clients", "reports", "notifications"], commonActions) },
   team_leader: { name: "Team Leader", level: 50, system: true, isActive: true, canAssignRoles: ["employee"], canManagePermissions: false, permissions: modulePermissions(["dashboard", "projects", "employee", "attendance", "gps", "leave", "notifications"], ["view", "create", "edit", "approve"] ) },
   employee: { name: "Employee", level: 10, system: true, isActive: true, canAssignRoles: [], canManagePermissions: false, permissions: modulePermissions(["dashboard", "attendance", "gps", "leave", "advance", "expense", "projects", "notifications"], ["view", "create", "edit"] ) },
@@ -25,6 +26,7 @@ export const permissionsForRole = (roleId) => ROLE_TEMPLATES[normalizeRoleId(rol
 export const ROUTE_PERMISSIONS = [
   ["/manager/userManagement/add", "employee.create"], ["/manager/userManagement/edit", "employee.edit"],
   ["/manager/billing/new", "billing.create"], ["/manager/billing/settings", "billing.manage"],
+  ["/manager/settings", "company.manage"],
   ["/manager/quotation-builder/new", "quotation.create"], ["/manager/quotation-builder/setup", "quotation.manage"],
   ["/manager/userManagement", "employee.view"], ["/manager/Workforce/payroll", "payroll.view"],
   ["/manager/Workforce/attendance", "attendance.view"], ["/manager/Workforce/gps-approval", "gps.view"],

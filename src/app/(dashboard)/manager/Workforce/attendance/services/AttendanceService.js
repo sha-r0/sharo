@@ -7,9 +7,11 @@ import {
     updateDoc,
     Timestamp,
     limit,
+    onSnapshot,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase"
+import { attendanceDayKey, attendanceEmployeeKeys, attendanceSource, formatAttendanceTime, formatWorkedMinutes } from "../../services/attendanceDateTime";
 
 export default class AttendanceService {
 
@@ -198,6 +200,20 @@ export default class AttendanceService {
         }));
 
     }
+
+    static subscribeAttendance(companyId, fromDate, toDate, onData, onError) {
+        const q = query(this.attendanceCollection(companyId), where("date", ">=", fromDate), where("date", "<=", toDate));
+        return onSnapshot(q, (snap) => onData(snap.docs.map((item) => ({ id: item.id, ...item.data() }))), onError);
+    }
+
+    static async getHardwareEvents(companyId, attendance) {
+        if (!companyId || !attendance?.date) return [];
+        const events = collection(db, "Companies", companyId, "HardwareAttendanceEvents");
+        const snap = await getDocs(query(events, where("date", "==", attendance.date)));
+        const keys = new Set(attendanceEmployeeKeys(attendance));
+        return snap.docs.map((item) => ({ id: item.id, ...item.data() }))
+            .filter((item) => attendanceEmployeeKeys(item).some((key) => keys.has(key)));
+    }
     //////////////////////////////////////////////////////
     // Date Array
     //////////////////////////////////////////////////////
@@ -212,19 +228,15 @@ export default class AttendanceService {
 
         const days = [];
 
-        const current = new Date(fromDate);
+        const current = new Date(`${fromDate}T00:00:00`);
 
-        const end = new Date(toDate);
+        const end = new Date(`${toDate}T00:00:00`);
 
         while (current <= end) {
 
             days.push(
 
-                current
-
-                    .toISOString()
-
-                    .split("T")[0]
+                attendanceDayKey(current)
 
             );
 
@@ -348,6 +360,10 @@ export default class AttendanceService {
 
             case "halfday":
 
+            case "half day":
+
+            case "half_day":
+
                 return "HD";
 
             case "leave":
@@ -386,33 +402,7 @@ export default class AttendanceService {
 
         }
 
-        try {
-
-            return time
-
-                .toDate()
-
-                .toLocaleTimeString(
-
-                    [],
-
-                    {
-
-                        hour: "2-digit",
-
-                        minute: "2-digit",
-
-                        hour12: true,
-
-                    }
-
-                );
-
-        } catch {
-
-            return "--:--";
-
-        }
+        return formatAttendanceTime(time);
 
     }
 
@@ -500,6 +490,8 @@ export default class AttendanceService {
 
         selectedEmployees = [],
 
+        attendanceRecords,
+
     }) {
 
         ////////////////////////////////////////////
@@ -518,15 +510,7 @@ export default class AttendanceService {
         // Attendance
         ////////////////////////////////////////////
 
-        const attendance = await this.getAttendance(
-
-            companyId,
-
-            fromDate,
-
-            toDate
-
-        );
+        const attendance = attendanceRecords || await this.getAttendance(companyId, fromDate, toDate);
 
         ////////////////////////////////////////////
         // Attendance Map
@@ -535,19 +519,10 @@ export default class AttendanceService {
         const attendanceMap = {};
 
         attendance.forEach((item) => {
-
-            if (
-
-                !attendanceMap[item.employeeFirestoreId]
-
-            ) {
-
-                attendanceMap[item.employeeFirestoreId] = {};
-
-            }
-
-            attendanceMap[item.employeeFirestoreId][item.date] = item;
-
+            attendanceEmployeeKeys(item).forEach((key) => {
+                if (!attendanceMap[key]) attendanceMap[key] = {};
+                attendanceMap[key][item.date || attendanceDayKey(item.checkIn || item.createdAt)] = item;
+            });
         });
 
         ////////////////////////////////////////////
@@ -600,9 +575,7 @@ export default class AttendanceService {
 
             };
 
-            const employeeAttendance =
-
-                attendanceMap[employee.id] || {};
+            const employeeAttendance = attendanceMap[employee.id] || attendanceMap[employee.employeeId] || {};
 
             days.forEach((date) => {
 
@@ -645,12 +618,29 @@ export default class AttendanceService {
                             ),
 
                         totalHours:
+                            record.workedMinutes !== undefined ? formatWorkedMinutes(record.workedMinutes) : this.formatHours(record.totalHours),
 
-                            this.formatHours(
+                        workedMinutes: Number(record.workedMinutes || 0),
 
-                                record.totalHours
+                        lateMinutes: Number(record.lateMinutes || 0),
 
-                            ),
+                        source: attendanceSource(record),
+
+                        hardwareVerified: record.hardwareVerified === true,
+
+                        hardwarePunchCount: Number(record.hardwarePunchCount || 0),
+
+                        checkInSource: record.checkInSource || "",
+
+                        checkOutSource: record.checkOutSource || "",
+
+                        verifyType: record.verifyType || record.verify || record.verificationType || "",
+
+                        shiftName: record.shiftName || record.appliedShiftName || record.shift?.name || "",
+
+                        shiftTiming: record.shiftTiming || record.appliedShiftTiming || "",
+
+                        record,
 
                         approvalStatus:
 

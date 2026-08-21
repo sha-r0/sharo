@@ -10,6 +10,7 @@ import AttendanceTable from "./components/AttendanceTable";
 import AttendanceService from "./services/AttendanceService";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
 import AttendanceCorrection from "./components/AttendanceCorrection";
+import { attendanceDayKey } from "../services/attendanceDateTime";
 
 
 export default function AttendancePage() {
@@ -69,14 +70,10 @@ export default function AttendancePage() {
         useState({
 
             fromDate:
-                firstDay
-                    .toISOString()
-                    .split("T")[0],
+                attendanceDayKey(firstDay),
 
             toDate:
-                lastDay
-                    .toISOString()
-                    .split("T")[0],
+                attendanceDayKey(lastDay),
 
             search: "",
 
@@ -84,7 +81,7 @@ export default function AttendancePage() {
 
             shift: "",
 
-            view: "summary",
+            view: "detailed",
 
         });
 
@@ -221,14 +218,10 @@ export default function AttendancePage() {
 
         }
 
-        async function generate() {
-
+        setLoading(true);
+        return AttendanceService.subscribeAttendance(COMPANY_ID, filters.fromDate, filters.toDate, async (attendanceRecords) => {
             try {
-
-                setLoading(true);
-
-                const result =
-                    await AttendanceService.generateAttendanceReport({
+                const result = await AttendanceService.generateAttendanceReport({
 
                         companyId: COMPANY_ID,
 
@@ -241,6 +234,8 @@ export default function AttendancePage() {
                         toDate: filters.toDate,
 
                         selectedEmployees,
+
+                        attendanceRecords,
 
                     });
 
@@ -257,10 +252,10 @@ export default function AttendancePage() {
                 setLoading(false);
 
             }
-
-        }
-
-        generate();
+        }, (e) => {
+            console.error(e);
+            setLoading(false);
+        });
 
     }, [
 
@@ -455,6 +450,8 @@ export default function AttendancePage() {
                 report={report}
 
                 view={filters.view}
+
+                companyId={COMPANY_ID}
 
             />
 

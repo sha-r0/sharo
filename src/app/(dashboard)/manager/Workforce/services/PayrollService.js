@@ -19,7 +19,8 @@ export default class PayrollService {
     return data.employees.filter((employee) => String(employee.employment?.status || employee.status || "active").toLowerCase() !== "inactive").map((employee) => {
       const ids = new Set([employee.id, employee.employeeId].filter(Boolean).map(String));
       const attendance = data.attendance.filter((item) => ids.has(String(item.employeeFirestoreId || item.employeeId)) && dayKey(item.date || item.checkIn).startsWith(month));
-      const presentDays = new Set(attendance.filter((item) => item.checkIn || ["present", "late", "half day"].includes(String(item.status).toLowerCase())).map((item) => dayKey(item.date || item.checkIn))).size;
+      const finalizedStatus = (item) => String(item.status || "").toLowerCase().replace(/[ _-]/g, "");
+      const presentDays = new Set(attendance.filter((item) => ["present", "late", "halfday"].includes(finalizedStatus(item))).map((item) => dayKey(item.date || item.checkIn))).size;
       const halfDays = attendance.filter((item) => String(item.status).toLowerCase().includes("half")).length;
       const paidLeaveDays = data.leaves.filter((item) => ids.has(String(item.employeeFirestoreId || item.employeeId)) && String(item.status).toLowerCase() === "approved" && String(item.leaveType || "").toLowerCase().includes("paid")).reduce((sum, item) => sum + number(item.totalDays || item.days || 1), 0);
       const payableDays = Math.min(scheduledDays, Math.max(0, presentDays - halfDays * 0.5 + paidLeaveDays));

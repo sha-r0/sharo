@@ -33,7 +33,7 @@ class NotificationDispatcher {
       if (!created && status !== previousStatus && status === "rejected") tasks.push(this.employeeEvent(base, "expense.rejected", "expense", after, { eventKey: "rejected" }));
     }
 
-    if (["AdvanceRequests", "Advances"].includes(collectionName)) {
+    if (["AdvanceRequests", "Advances", "advance_requests"].includes(collectionName)) {
       if (created && ["pending", "requested"].includes(status)) tasks.push(this.managerEvent(base, "advance.requested", "advance", after, { eventKey: "requested" }));
       if (!created && status !== previousStatus && status === "approved") tasks.push(this.employeeEvent(base, "advance.approved", "advance", after, { eventKey: "approved" }));
       if (!created && status !== previousStatus && status === "rejected") tasks.push(this.employeeEvent(base, "advance.rejected", "advance", after, { eventKey: "rejected" }));

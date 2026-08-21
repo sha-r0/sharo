@@ -57,14 +57,25 @@ const date = (value) =>
 const lower = (value) =>
     String(value || "").toLowerCase();
 
+const payoutLabel = (value) => {
+    const state = String(value || "NOT_INITIATED").toUpperCase();
+    if (state === "NOT_INITIATED") return "Not Initiated";
+    if (state === "QUEUED") return "Queued";
+    if (state === "PAID") return "Paid";
+    if (["FAILED", "REJECTED", "REVERSED"].includes(state)) return "Failed";
+    return "Processing";
+};
+
 export default function AdvancePage() {
     const {
         company,
-        currentUser,
+        companyEmployee,
+        can,
     } = useAuth();
+    const canApprove = can("advance.approve");
+    const canExecutePayout = can("payout.execute");
 
     const [records, setRecords] = useState([]);
-    const [employees, setEmployees] = useState([]);
     const [projects, setProjects] = useState([]);
 
     const [loading, setLoading] = useState(true);
@@ -81,33 +92,26 @@ export default function AdvancePage() {
     ] = useState(null);
 
     const [
-        statusRemarks,
-        setStatusRemarks,
-    ] = useState("");
-
-    const [
         updatingStatus,
         setUpdatingStatus,
     ] = useState(false);
+    const [initiatingPayout, setInitiatingPayout] = useState(null);
 
     useEffect(() => {
         if (!company?.id) return;
+        if (!canApprove && !companyEmployee?.id) return;
 
-        AdvanceService.getReferenceData(
-            company.id
-        )
+        AdvanceService.getReferenceData()
             .then(
                 ({
-                    employees: people,
                     projects: work,
                 }) => {
-                    setEmployees(people);
                     setProjects(work);
                 }
             )
             .catch(() => {
                 setError(
-                    "Unable to load employees and projects."
+                    "Unable to load advance reference data."
                 );
             });
 
@@ -125,11 +129,12 @@ export default function AdvancePage() {
                     );
 
                     setLoading(false);
-                }
+                },
+                canApprove ? null : companyEmployee?.id
             );
 
         return unsubscribe;
-    }, [company?.id]);
+    }, [company?.id, companyEmployee?.id, canApprove]);
 
     const filtered = useMemo(() => {
         return records.filter((item) => {
@@ -243,14 +248,12 @@ export default function AdvancePage() {
             nextStatus,
         });
 
-        setStatusRemarks("");
     }
 
     function closeStatusDialog() {
         if (updatingStatus) return;
 
         setStatusDialog(null);
-        setStatusRemarks("");
     }
 
     async function confirmStatusChange() {
@@ -264,12 +267,9 @@ export default function AdvancePage() {
         try {
             setUpdatingStatus(true);
 
-            await AdvanceService.setStatus(
-                company.id,
-                statusDialog.item,
-                statusDialog.nextStatus,
-                statusRemarks.trim(),
-                currentUser
+            await AdvanceService.decide(
+                statusDialog.item.id,
+                statusDialog.nextStatus === "Approved" ? "approve" : "reject"
             );
 
             toast.success(
@@ -277,15 +277,29 @@ export default function AdvancePage() {
             );
 
             setStatusDialog(null);
-            setStatusRemarks("");
         } catch (statusError) {
             console.error(statusError);
 
             toast.error(
-                "Unable to update request."
+                statusError?.message?.includes("legacy advance")
+                    ? statusError.message
+                    : "Unable to update request."
             );
         } finally {
             setUpdatingStatus(false);
+        }
+    }
+
+    async function initiatePayout(item) {
+        try {
+            setInitiatingPayout(item.id);
+            await AdvanceService.initiatePayout(item.id);
+            toast.success("Advance payout queued.");
+        } catch (payoutError) {
+            console.error(payoutError);
+            toast.error("Unable to initiate payout.");
+        } finally {
+            setInitiatingPayout(null);
         }
     }
 
@@ -766,11 +780,16 @@ export default function AdvancePage() {
                                                     {item.status ||
                                                         "Pending"}
                                                 </span>
+                                                {lower(item.status) === "approved" && (
+                                                    <p className="mt-2 text-xs font-semibold text-slate-500">
+                                                        Payout: {payoutLabel(item.payoutStatus)}
+                                                    </p>
+                                                )}
                                             </td>
 
                                             <td className="pr-4">
                                                 <div className="flex justify-end gap-2">
-                                                    {lower(
+                                                    {canApprove && lower(
                                                         item.status
                                                     ) ===
                                                         "pending" && (
@@ -802,6 +821,19 @@ export default function AdvancePage() {
                                                             </button>
                                                         </>
                                                     )}
+
+                                                    {canExecutePayout &&
+                                                        lower(item.status) === "approved" &&
+                                                        String(item.payoutStatus || "NOT_INITIATED").toUpperCase() === "NOT_INITIATED" && (
+                                                            <button
+                                                                type="button"
+                                                                disabled={initiatingPayout === item.id}
+                                                                onClick={() => initiatePayout(item)}
+                                                                className="rounded-lg bg-emerald-600 px-3 py-2 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                {initiatingPayout === item.id ? "Queuing…" : "Initiate Payout"}
+                                                            </button>
+                                                        )}
 
                                                     {lower(
                                                         item.status
@@ -862,8 +894,8 @@ export default function AdvancePage() {
             {modal && (
                 <AddAdvanceModal
                     companyId={company.id}
-                    employees={employees}
                     projects={projects}
+                    currentEmployee={companyEmployee}
                     existing={
                         modal.id
                             ? modal
@@ -990,50 +1022,6 @@ export default function AdvancePage() {
                                     </p>
                                 </div>
                             )}
-                        </div>
-
-                        <div className="mt-5">
-                            <label className="text-sm font-bold text-slate-700">
-                                Remarks
-
-                                <span className="ml-1 font-normal text-slate-400">
-                                    (optional)
-                                </span>
-                            </label>
-
-                            <textarea
-                                value={
-                                    statusRemarks
-                                }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setStatusRemarks(
-                                        event
-                                            .target
-                                            .value
-                                    )
-                                }
-                                rows={4}
-                                maxLength={500}
-                                disabled={
-                                    updatingStatus
-                                }
-                                placeholder={
-                                    statusDialog.nextStatus ===
-                                    "Approved"
-                                        ? "Add approval remarks..."
-                                        : "Add rejection reason..."
-                                }
-                                className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-white p-4 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100"
-                            />
-
-                            <p className="mt-1 text-right text-xs text-slate-400">
-                                {
-                                    statusRemarks.length
-                                }
-                                /500
-                            </p>
                         </div>
 
                         <div className="mt-6 flex justify-end gap-3">
