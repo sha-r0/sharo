@@ -23,3 +23,4 @@ export const storage = getStorage(app);
 
 export const auth = getAuth(app);
 export const functions = getFunctions(app, "asia-south1");
+export const usCentralFunctions = getFunctions(app, "us-central1");

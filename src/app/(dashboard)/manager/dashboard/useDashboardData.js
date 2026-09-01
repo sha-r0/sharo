@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, getDocs, onSnapshot } from "firebase/firestore";
+import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import employeeService from "@/app/allservice/employee/employeeService";
 import { getProjects } from "@/app/allservice/projectService";
@@ -25,11 +25,13 @@ const emptyData = {
   holidays: [],
 };
 
-async function readCollection(companyId, name) {
+async function readCollection(companyId, name, ownership = null) {
   const path = `Companies/${companyId}/${name}`;
   try {
     const snapshot = await getDocs(
-      collection(db, "Companies", companyId, name),
+      ownership
+        ? query(collection(db, "Companies", companyId, name), where(ownership.field, "==", ownership.value))
+        : collection(db, "Companies", companyId, name),
     );
     return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
   } catch (error) {
@@ -44,7 +46,7 @@ async function readCollection(companyId, name) {
   }
 }
 
-async function loadDashboardData(companyId, access) {
+async function loadDashboardData(companyId, access, companyEmployee) {
   const allowed = (permission) => can(access, permission);
   const safe = (enabled, loader) => enabled ? loader() : Promise.resolve([]);
   const [
@@ -58,13 +60,13 @@ async function loadDashboardData(companyId, access) {
     clients,
     holidays,
   ] = await Promise.all([
-    safe(allowed("employee.view") || allowed("attendance.view"), () => employeeService.getEmployees(companyId)),
+    safe(allowed("employee.view"), () => employeeService.getEmployees(companyId)),
     safe(allowed("projects.view"), () => getProjects(companyId)),
-    safe(allowed("expense.view"), () => expenseService.getExpenses(companyId)),
+    safe(allowed("expense.view"), () => expenseService.getExpenses(companyId, access?.roleId === "employee" ? companyEmployee?.employeeId : null)),
     safe(allowed("attendance.view"), () => readCollection(companyId, "Attendance")),
     safe(allowed("projects.view"), () => readCollection(companyId, "WorkLogs")),
     safe(allowed("leave.view"), () => readCollection(companyId, "LeaveRequests")),
-    safe(allowed("advance.view"), () => readCollection(companyId, "advance_requests")),
+    safe(allowed("advance.view"), () => readCollection(companyId, "advance_requests", access?.roleId === "employee" ? { field: "employeeFirestoreId", value: companyEmployee?.id } : null)),
     safe(allowed("clients.view"), () => readCollection(companyId, "Clients")),
     safe(allowed("leave.view"), () => readCollection(companyId, "Holidays")),
   ]);
@@ -83,7 +85,7 @@ async function loadDashboardData(companyId, access) {
   };
 }
 
-export default function useDashboardData(companyId, access) {
+export default function useDashboardData(companyId, access, companyEmployee) {
   const [data, setData] = useState(emptyData);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -106,7 +108,7 @@ export default function useDashboardData(companyId, access) {
       setError(null);
 
       try {
-        const nextData = await loadDashboardData(companyId, access);
+        const nextData = await loadDashboardData(companyId, access, companyEmployee);
         if (!mounted.current) return;
         dashboardCache.set(key, { data: nextData, savedAt: Date.now() });
         setData(nextData);
@@ -122,7 +124,7 @@ export default function useDashboardData(companyId, access) {
         }
       }
     },
-    [companyId, access],
+    [companyId, access, companyEmployee],
   );
 
   useEffect(() => {
@@ -142,9 +144,18 @@ export default function useDashboardData(companyId, access) {
       ["LeaveRequests", "leaves", "leave.view"], ["advance_requests", "advances", "advance.view"],
       ["Holidays", "holidays", "leave.view"],
     ].filter(([, , permission]) => can(access, permission));
-    const unsubscribes = realtimeCollections.map(([collectionName, dataKey]) =>
+    const unsubscribes = realtimeCollections.map(([collectionName, dataKey]) => {
+      const ownership = access?.roleId === "employee" && collectionName === "Expenses"
+        ? { field: "employeeId", value: companyEmployee?.employeeId }
+        : access?.roleId === "employee" && collectionName === "advance_requests"
+          ? { field: "employeeFirestoreId", value: companyEmployee?.id }
+          : null;
+      const source = ownership
+        ? query(collection(db, "Companies", companyId, collectionName), where(ownership.field, "==", ownership.value))
+        : collection(db, "Companies", companyId, collectionName);
+      return (
       onSnapshot(
-        collection(db, "Companies", companyId, collectionName),
+        source,
         (snapshot) => {
           const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
           setData((current) => {
@@ -160,11 +171,11 @@ export default function useDashboardData(companyId, access) {
           code: snapshotError?.code,
           message: snapshotError?.message,
         }),
-      ),
-    );
+      ));
+    });
 
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
-  }, [companyId, access]);
+  }, [companyId, access, companyEmployee]);
 
   const refresh = useCallback(() => load({ force: true }), [load]);
 

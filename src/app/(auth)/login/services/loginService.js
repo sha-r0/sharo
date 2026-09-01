@@ -283,7 +283,7 @@ export async function loginEmployee({ corporateId, employeeId, password, remembe
     });
     const resolved = await resolution.json();
     if (!resolution.ok) {
-      const messages = { COMPANY_INACTIVE: "Your company account is currently inactive.", LOGIN_DISABLED: "Your login access is disabled. Contact your administrator." };
+      const messages = { COMPANY_INACTIVE: "Your company account is currently inactive.", LOGIN_DISABLED: "Your login access is disabled. Contact your administrator.", EMPLOYEE_ID_AMBIGUOUS: "Employee ID configuration is ambiguous. Contact your administrator." };
       return { success: false, message: messages[resolved.error] || "Invalid Corporate ID, Employee ID or password." };
     }
     await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);

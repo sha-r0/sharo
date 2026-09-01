@@ -3,9 +3,11 @@ import { db } from "@/lib/firebase";
 import { attendanceDayKey, attendanceEmployeeKeys, toAttendanceDate } from "./attendanceDateTime";
 
 const names = ["Usermanagement", "Attendance", "GPSPunches", "LeaveRequests", "WorkLogs", "ShiftPolicies", "Holidays", "advance_requests", "Payroll"];
-export function subscribeWorkforce(companyId, onData, onError) {
+export function subscribeWorkforce(companyId, allowedNames, onData, onError) {
   const state = Object.fromEntries(names.map((name) => [name, []]));
-  const stops = names.map((name) => onSnapshot(collection(db, "Companies", companyId, name), (snapshot) => {
+  const subscriptions = names.filter((name) => allowedNames.has(name));
+  if (!subscriptions.length) onData({ ...state });
+  const stops = subscriptions.map((name) => onSnapshot(collection(db, "Companies", companyId, name), (snapshot) => {
     state[name] = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
     onData({ ...state });
   }, (error) => onError?.(name, error)));
@@ -33,5 +35,6 @@ export function workforceMetrics(data) {
   const missing = active.filter((item) => !accountedIds.has(String(item.id)) && !accountedIds.has(String(item.employeeId || item.login?.employeeId || ""))).length;
   const checkedIn = todayAttendance.filter((item) => item.checkIn).length;
   const checkedOut = todayAttendance.filter((item) => item.checkOut).length;
-  return { employees, active, todayAttendance, onLeave, todayLogs, summary: { total: active.length, active: active.length, present: presentIds.size, halfDay: halfDayIds.size, late: todayAttendance.filter((item) => Number(item.lateMinutes || 0) > 0 || item.isLate || normalizedStatus(item) === "late").length, absent: Math.max(explicitAbsentIds.size, missing), leave: leaveIds.size, checkedIn, checkedOut, working: todayAttendance.filter((item) => item.checkIn && !item.checkOut).length, pendingLeave: leaves.filter((item) => String(item.status || "pending").toLowerCase() === "pending").length, gpsReview: (data.GPSPunches || []).filter((item) => dayKey(item.date || item.checkIn) === today && (item.gpsValid === false || item.outsideRadius)).length } };
+  const pendingReview = (item) => String(item.reviewStatus || item.approvalStatus || item.decision || "pending").toLowerCase() === "pending";
+  return { employees, active, todayAttendance, onLeave, todayLogs, summary: { total: active.length, active: active.length, present: presentIds.size, halfDay: halfDayIds.size, late: todayAttendance.filter((item) => Number(item.lateMinutes || 0) > 0 || item.isLate || normalizedStatus(item) === "late").length, absent: Math.max(explicitAbsentIds.size, missing), leave: leaveIds.size, checkedIn, checkedOut, working: todayAttendance.filter((item) => item.checkIn && !item.checkOut).length, pendingLeave: leaves.filter((item) => String(item.status || "pending").toLowerCase() === "pending").length, gpsReview: (data.GPSPunches || []).filter((item) => dayKey(item.date || item.checkIn) === today && pendingReview(item) && (item.gpsValid === false || item.outsideRadius)).length } };
 }

@@ -8,13 +8,26 @@ import { EmptyState, SectionCard, StatCard, neo } from "../dashboard/DashboardWi
 import WorkforceHeader from "./components/WorkforceHeader";
 import { employeeName, subscribeWorkforce, workforceMetrics } from "./services/WorkforceRealtimeService";
 import { attendanceSource, formatAttendanceTime } from "./services/attendanceDateTime";
+import { can as hasAccess } from "@/app/allservice/rbac/AuthorizationService";
 
 const time = (value) => formatAttendanceTime(value).replace("--:--", "—");
 const statusTone = (value) => String(value).toLowerCase() === "approved" || String(value).toLowerCase() === "present" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700";
 export default function WorkforceDashboardPage() {
-  const { company } = useAuth();
+  const { company, access, isOwner } = useAuth();
   const [data, setData] = useState({}), [loading, setLoading] = useState(true), [error, setError] = useState("");
-  useEffect(() => { if (!company?.id) return; return subscribeWorkforce(company.id, (next) => { setData(next); setLoading(false); }, (name) => setError(`Realtime ${name} data is unavailable.`)); }, [company?.id]);
+  const allowedNames = useMemo(() => new Set([
+    hasAccess(access, "employee.view") && "Usermanagement",
+    hasAccess(access, "attendance.view") && "Attendance",
+    hasAccess(access, "gps.view") && "GPSPunches",
+    hasAccess(access, "leave.view") && "LeaveRequests",
+    hasAccess(access, "projects.view") && "WorkLogs",
+    "ShiftPolicies",
+    "Holidays",
+    (isOwner || hasAccess(access, "advance.approve") || hasAccess(access, "advance.manage")) && "advance_requests",
+    hasAccess(access, "payroll.view") && "Payroll",
+  ].filter(Boolean)), [access, isOwner]);
+  const allowedSignature = [...allowedNames].sort().join("|");
+  useEffect(() => { if (!company?.id) return; return subscribeWorkforce(company.id, allowedNames, (next) => { setData(next); setLoading(false); }, (name) => setError(`Realtime ${name} data is unavailable.`)); }, [company?.id, allowedSignature]);
   const metrics = useMemo(() => workforceMetrics(data), [data]);
   if (loading) return <div className="space-y-4 p-5">{Array.from({ length: 8 }, (_, i) => <div key={i} className="h-24 animate-pulse rounded-3xl bg-white/70"/>)}</div>;
   const cards = [["Total Employees",metrics.summary.total,Users,"blue"],["Present",metrics.summary.present,UserCheck,"green"],["Absent",metrics.summary.absent,UserX,"red"],["Half Day",metrics.summary.halfDay,Timer,"amber"],["Late",metrics.summary.late,Clock3,"amber"],["On Leave",metrics.summary.leave,Umbrella,"violet"],["Checked In",metrics.summary.checkedIn,LogIn,"cyan"],["Checked Out",metrics.summary.checkedOut,LogOut,"blue"],["Working Now",metrics.summary.working,CalendarCheck,"green"],["GPS Review",metrics.summary.gpsReview,LocateFixed,"red"]];

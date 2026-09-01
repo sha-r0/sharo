@@ -55,13 +55,13 @@ function MainText({ title, subtitle }) {
 }
 
 export default function ManagerDashboard({ companyId, companyName }) {
-  const { access, can } = useAuth();
+  const { access, can, companyEmployee } = useAuth();
   const [preset, setPreset] = useState("month");
   const [range, setRange] = useState(getRange("month"));
   const [search, setSearch] = useState("");
   const [pullDistance, setPullDistance] = useState(0);
   const touchStart = useRef(null);
-  const { data, loading, refreshing, error, refresh } = useDashboardData(companyId, access);
+  const { data, loading, refreshing, error, refresh } = useDashboardData(companyId, access, companyEmployee);
   const metrics = useMemo(() => buildDashboardMetrics(data, range), [data, range]);
   const visibleTopCards = topCards.filter((item) => can(item[5]));
 

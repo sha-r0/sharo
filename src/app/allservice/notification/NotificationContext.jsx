@@ -1,16 +1,18 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
 import { auth } from "@/lib/firebase";
 import notificationRepository from "./notificationRepository";
 import notificationService from "./notificationService";
 import { getUserAudienceKeys, isNotificationVisible } from "./notificationUtilities";
+import { logFirestoreFailure } from "@/lib/firestoreDiagnostics";
 
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
-  const { company, currentUser, firebaseUser } = useAuth();
+  const { company, currentUser, firebaseUser, can } = useAuth();
   const [source, setSource] = useState([]);
   const [states, setStates] = useState({});
   const [cursor, setCursor] = useState(null);
@@ -20,6 +22,7 @@ export function NotificationProvider({ children }) {
   const [error, setError] = useState(null);
   const [clock, setClock] = useState(Date.now());
   const userId = firebaseUser?.uid || null;
+  const canViewNotifications = can("notifications.view");
   const audienceKeys = useMemo(() => getUserAudienceKeys(currentUser), [currentUser]);
   const audienceSignature = audienceKeys.join("|");
 
@@ -29,19 +32,12 @@ export function NotificationProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!auth.currentUser || !company?.id || !userId || !audienceKeys.length) {
+    if (!auth.currentUser || !company?.id || !userId || !audienceKeys.length || !canViewNotifications) {
+      setSource([]);
+      setStates({});
       setLoading(false);
       return undefined;
     }
-    console.info("[Notification Identity Debug]", {
-      companyId: company.id,
-      firebaseUid: auth.currentUser.uid,
-      userId,
-      currentUserId: currentUser?.id,
-      currentUserUid: currentUser?.uid,
-      companyOwnerUid: company?.ownerUid,
-      role: currentUser?.role,
-    });
     setLoading(true);
     setError(null);
     const unsubscribeFeed = notificationRepository.subscribeNotifications(
@@ -54,16 +50,7 @@ export function NotificationProvider({ children }) {
         setLoading(false);
       },
       (listenerError) => {
-        console.error("[Notification Firestore FAILED]", {
-          path: `Companies/${company.id}/Notifications`,
-          operation: "listen",
-          companyId: company.id,
-          userId,
-          firebaseUid: auth.currentUser?.uid,
-          code: listenerError?.code,
-          message: listenerError?.message,
-          error: listenerError,
-        });
+        logFirestoreFailure({ feature: "notifications", operation: "listen", path: `Companies/${company.id}/Notifications`, error: listenerError });
         setError("Notifications are temporarily unavailable.");
         setLoading(false);
       },
@@ -73,21 +60,11 @@ export function NotificationProvider({ children }) {
       userId,
       setStates,
       (stateError) => {
-        console.error("[Notification Firestore RAW ERROR]", stateError);
-        console.error("[Notification Firestore FAILED]", {
-          path: `Companies/${company.id}/UserNotifications/${userId}/Items`,
-          operation: "listen",
-          companyId: company.id,
-          userId,
-          firebaseUid: auth.currentUser?.uid,
-          code: stateError?.code || String(stateError?.code),
-          message: stateError?.message || String(stateError),
-          name: stateError?.name,
-        });
+        logFirestoreFailure({ feature: "notifications", operation: "listen", path: `Companies/${company.id}/UserNotifications/current-user/Items`, error: stateError });
       },
     );
     return () => { unsubscribeFeed(); unsubscribeState(); };
-  }, [company?.id, userId, audienceSignature, currentUser]);
+  }, [company?.id, userId, audienceSignature, currentUser, canViewNotifications]);
 
   const notifications = useMemo(() => source.map((item) => ({
     ...item,
@@ -131,9 +108,23 @@ export function NotificationProvider({ children }) {
   const togglePinned = useCallback((item) => notificationService.togglePinned(company.id, userId, item.id, !item.userState?.isPinned), [company?.id, userId]);
   const archive = useCallback((item) => runAction("archive", item), [runAction]);
   const remove = useCallback((item) => runAction("remove", item), [runAction]);
-  const markAllRead = useCallback(() => {
+  const markAllRead = useCallback(async () => {
     if (!company?.id || !userId) return Promise.resolve();
-    return notificationRepository.markManyRead(company.id, userId, notifications.filter((item) => !item.userState.isRead).map((item) => item.id));
+    const notificationIds = notifications.filter((item) => !item.userState.isRead).map((item) => item.id);
+    if (!notificationIds.length) return undefined;
+    try {
+      await notificationRepository.markManyRead(company.id, userId, notificationIds);
+      toast.success("All notifications marked as read.");
+    } catch (markAllError) {
+      console.error("[Notifications] markAllRead failed", {
+        path: `Companies/${company.id}/UserNotifications/${userId}/Items/*`,
+        operation: "set-merge-batch",
+        itemCount: notificationIds.length,
+        code: markAllError?.code,
+        message: markAllError?.message,
+      });
+      toast.error("Unable to mark notifications as read.");
+    }
   }, [company?.id, userId, notifications]);
 
   const value = useMemo(() => ({

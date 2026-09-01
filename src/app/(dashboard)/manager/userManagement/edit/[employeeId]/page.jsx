@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { useParams } from "next/navigation";
+import { toast } from "react-hot-toast";
 
 import { useAuth } from "@/app/(auth)/context/AuthContext";
 
@@ -22,15 +23,17 @@ export default function EditEmployeePage() {
 
     useEffect(() => {
 
-        if (!company) return;
+        if (!company?.id || !employeeId) return;
 
         loadEmployee();
 
-    }, [company]);
+    }, [company?.id, employeeId]);
 
     async function loadEmployee() {
 
-        const data = await employeeService.getEmployee(
+        try {
+
+            const data = await employeeService.getEmployee(
 
             company.id,
 
@@ -38,9 +41,23 @@ export default function EditEmployeePage() {
 
         );
 
-        setEmployee(data);
+            setEmployee(data);
 
-        setLoading(false);
+        } catch (error) {
+
+            console.error("[EditEmployee] Unable to load employee", {
+                operation: "getDoc",
+                path: `Companies/${company.id}/Usermanagement/${employeeId}`,
+                code: error?.code || "unknown",
+            });
+
+            toast.error("Unable to load employee.");
+
+        } finally {
+
+            setLoading(false);
+
+        }
 
     }
 

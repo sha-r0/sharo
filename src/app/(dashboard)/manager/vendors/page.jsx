@@ -37,10 +37,10 @@ const money = (value) =>
   })}`;
 
 export default function VendorsPage() {
-  const { company } = useAuth();
+  const { company, can } = useAuth();
   const router = useRouter();
 
-  const data = useVendorData(company?.id);
+  const data = useVendorData(company?.id, can("projects.view"));
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");

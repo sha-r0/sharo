@@ -10,7 +10,8 @@ import {
     onSnapshot,
 } from "firebase/firestore";
 
-import { db } from "@/lib/firebase"
+import { db, functions } from "@/lib/firebase"
+import { httpsCallable } from "firebase/functions";
 import { attendanceDayKey, attendanceEmployeeKeys, attendanceSource, formatAttendanceTime, formatWorkedMinutes } from "../../services/attendanceDateTime";
 
 export default class AttendanceService {
@@ -965,101 +966,18 @@ export default class AttendanceService {
 
     ) {
 
-        const attendanceRef = doc(
-
-            db,
-
-            "Companies",
-
-            companyId,
-
-            "Attendance",
-
-            attendanceId
-
-        );
-
-
-
-        ////////////////////////////////////////////////////
-        // Working Hours
-        ////////////////////////////////////////////////////
-
-        let totalHours = values.totalHours;
-
-        if (
-
-            values.checkIn instanceof Date &&
-
-            values.checkOut instanceof Date
-
-        ) {
-
-            totalHours =
-
-                (
-
-                    values.checkOut -
-
-                    values.checkIn
-
-                ) /
-
-                1000 /
-
-                60 /
-
-                60;
-
-        }
-
-        await updateDoc(
-
-            attendanceRef,
-
-            {
-
-                checkIn:
-
-                    Timestamp.fromDate(
-
-                        values.checkIn
-
-                    ),
-
-                checkOut:
-
-                    Timestamp.fromDate(
-
-                        values.checkOut
-
-                    ),
-
-                totalHours,
-
-                status:
-
-                    values.status,
-
-                approvalStatus:
-
-                    values.approvalStatus,
-
-                gpsValid:
-
-                    values.gpsValid,
-
-                remarks:
-
-                    values.remarks || "",
-
-                updatedAt:
-
-                    Timestamp.now(),
-
-            }
-
-        );
+        void companyId;
+        const response = await httpsCallable(functions, "correctAttendance")({
+            attendanceId,
+            changes: {
+                checkIn: values.checkIn instanceof Date ? values.checkIn.toISOString() : values.checkIn,
+                checkOut: values.checkOut instanceof Date ? values.checkOut.toISOString() : values.checkOut,
+                status: values.status,
+                approvalStatus: values.approvalStatus,
+                remarks: values.remarks || "",
+            },
+        });
+        return response.data;
 
     }
 

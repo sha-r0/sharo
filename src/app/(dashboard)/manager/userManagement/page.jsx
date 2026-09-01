@@ -601,6 +601,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "react-hot-toast";
 
 import { useAuth } from "@/app/(auth)/context/AuthContext";
 
@@ -633,11 +634,11 @@ export default function EmployeePage() {
 
     useEffect(() => {
 
-        if (!company) return;
+        if (!company?.id) return;
 
         loadEmployees();
 
-    }, [company]);
+    }, [company?.id]);
 
     async function loadEmployees() {
 
@@ -652,6 +653,16 @@ export default function EmployeePage() {
             );
 
             setEmployees(data);
+
+        } catch (error) {
+
+            console.error("[EmployeeDirectory] Unable to load employees", {
+                operation: "getDocs",
+                path: `Companies/${company.id}/Usermanagement`,
+                code: error?.code || "unknown",
+            });
+
+            toast.error("Unable to load employees.");
 
         }
 

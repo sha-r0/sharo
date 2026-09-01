@@ -28,13 +28,27 @@ export default function DocumentsSection({ employee }) {
 
                 >
 
-                    <img
+                    {employee.photoUrl ? (
 
-                        src={employee.photoUrl}
+                        <img
 
-                        className="h-52 w-full object-cover"
+                            src={employee.photoUrl}
 
-                    />
+                            alt={`${employee.fullName || "Employee"} profile`}
+
+                            className="h-52 w-full object-cover"
+
+                        />
+
+                    ) : (
+
+                        <div className="flex h-52 w-full items-center justify-center bg-slate-100 text-slate-400">
+
+                            <ImageIcon size={40} />
+
+                        </div>
+
+                    )}
 
                     <div className="p-4 flex justify-between">
 

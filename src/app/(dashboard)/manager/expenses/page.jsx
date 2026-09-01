@@ -11,10 +11,17 @@ import employeeService from "@/app/allservice/employee/employeeService";
 import EditAmountModal from "./components/EditAmountModal";
 import { exportExpenseExcel } from "./utils/exportExpenseExcel";
 import BillPreviewModal from "./components/BillPreviewModal";
+import { firestoreUserMessage, logFirestoreFailure } from "@/lib/firestoreDiagnostics";
+import toast from "react-hot-toast";
 
 export default function ExpenseApprovalPage() {
 
-    const { company, currentUser, employee, } = useAuth();
+    const { company, companyEmployee, can, isOwner, roleId } = useAuth();
+    const canViewEmployees = can("employee.view");
+    const canEditExpense = can("expense.edit");
+    const canApproveExpense = can("expense.approve");
+    const canExportExpense = can("expense.export");
+    const companyExpenseScope = isOwner || roleId !== "employee";
 
     function formatDate(date) {
         const year = date.getFullYear();
@@ -50,6 +57,7 @@ export default function ExpenseApprovalPage() {
     const [categoryFilter, setCategoryFilter] = useState("");
 
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
 
     const [expenses, setExpenses] = useState([]);
     const [filteredExpenses, setFilteredExpenses] = useState([]);
@@ -76,31 +84,18 @@ export default function ExpenseApprovalPage() {
 
     useEffect(() => {
 
-        if (!company) return;
+        if (!company?.id || (!companyExpenseScope && !companyEmployee?.employeeId)) return;
 
         loadData();
 
-    }, [company]);
+    }, [company?.id, companyEmployee?.employeeId, companyExpenseScope, canViewEmployees]);
 
     async function loadData() {
-
-        const [
-            expenseData,
-            employeeData
-        ] = await Promise.all([
-            expenseService.getExpenses(company.id),
-            employeeService.getEmployees(company.id)
-        ]);
-
-        console.log("Expenses", expenseData);
-        console.log("Employees", employeeData);
-
-        setExpenses(expenseData);
-        setEmployees(employeeData);
 
         try {
 
             setLoading(true);
+            setLoadError("");
 
             const [
 
@@ -109,15 +104,37 @@ export default function ExpenseApprovalPage() {
 
             ] = await Promise.all([
 
-                expenseService.getExpenses(company.id),
+                expenseService.getExpenses(
+                    company.id,
+                    companyExpenseScope ? null : companyEmployee.employeeId,
+                ),
 
-                employeeService.getEmployees(company.id)
+                canViewEmployees
+                    ? employeeService.getEmployees(company.id)
+                    : Promise.resolve(companyEmployee ? [{
+                        ...companyEmployee,
+                        firestoreId: companyEmployee.id,
+                        fullName: companyEmployee.personalInfo?.fullName || "",
+                        employeeId: companyEmployee.employeeId || companyEmployee.login?.employeeId || "",
+                    }] : [])
 
             ]);
 
             setExpenses(expenseData);
 
             setEmployees(employeeData);
+
+        } catch (error) {
+
+            logFirestoreFailure({
+                feature: "expenses",
+                operation: "list",
+                path: `Companies/${company.id}/Expenses`,
+                query: companyExpenseScope ? "company" : "employeeId == currentEmployee",
+                error,
+            });
+
+            setLoadError(firestoreUserMessage(error, "Unable to load expenses. Please try again."));
 
         }
 
@@ -227,6 +244,10 @@ export default function ExpenseApprovalPage() {
 
     function handleEdit(expense) {
 
+        if (process.env.NODE_ENV === "development") {
+            console.info(`[ManagerExpenseWeb] editPressed expenseId=${expense?.id || "missing"}`);
+        }
+
         setSelectedExpense(expense);
 
         setEditOpen(true);
@@ -250,53 +271,23 @@ export default function ExpenseApprovalPage() {
         try {
             setUpdatingAmount(true);
 
-            const wasApproved =
-                String(selectedExpense.status || "")
-                    .trim()
-                    .toLowerCase() === "approved";
+            if (process.env.NODE_ENV === "development") {
+                console.info(`[ManagerExpenseWeb] submitting oldAmount=${Number(selectedExpense.amount || 0)} newAmount=${Number(amount)}`);
+            }
 
             await expenseService.updateAmount(
-                company.id,
-                selectedExpense,
+                selectedExpense.id,
                 amount,
-                {
-                    editedAfterApproval: wasApproved,
-
-                    editor: {
-                        uid:
-                            currentUser?.uid ||
-                            employee?.authUid ||
-                            "",
-
-                        name:
-                            currentUser?.fullName ||
-                            currentUser?.name ||
-                            employee?.personalInfo?.fullName ||
-                            company?.ownerName ||
-                            "Admin",
-
-                        role:
-                            currentUser?.role ||
-                            employee?.access?.roleId ||
-                            "admin",
-                    },
-                },
             );
 
             setEditOpen(false);
             setSelectedExpense(null);
 
             await loadData();
+            toast.success("Expense updated successfully.");
         } catch (error) {
-            console.error(
-                "Failed to update expense amount:",
-                error,
-            );
-
-            alert(
-                error?.message ||
-                "Failed to update expense amount.",
-            );
+            console.error("Failed to update expense amount", { message: error?.message });
+            toast.error(error?.message || "Unable to update expense. Please try again.");
         } finally {
             setUpdatingAmount(false);
         }
@@ -305,28 +296,7 @@ export default function ExpenseApprovalPage() {
     async function handleApprove(expense) {
         try {
 
-            await expenseService.approveExpense(
-                company.id,
-                expense,
-                {
-                    uid:
-                        currentUser?.uid ||
-                        employee?.authUid ||
-                        "",
-
-                    name:
-                        currentUser?.fullName ||
-                        currentUser?.name ||
-                        employee?.personalInfo?.fullName ||
-                        company?.ownerName ||
-                        "Admin",
-
-                    role:
-                        currentUser?.role ||
-                        employee?.access?.roleId ||
-                        "admin",
-                },
-            );
+            await expenseService.approveExpense(expense.id);
 
             await loadData();
 
@@ -342,10 +312,7 @@ export default function ExpenseApprovalPage() {
     async function handleReject(expense) {
         try {
 
-            await expenseService.rejectExpense(
-                company.id,
-                expense
-            );
+            await expenseService.rejectExpense(expense.id);
 
             await loadData();
 
@@ -371,6 +338,12 @@ export default function ExpenseApprovalPage() {
     return (
         <div className="min-h-screen  px-6">
 
+            {loadError && (
+                <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    {loadError}
+                </div>
+            )}
+
             <ExpenseHeader
                 loading={loading}
                 onRefresh={loadData}
@@ -395,7 +368,7 @@ export default function ExpenseApprovalPage() {
                 projects={projects}
                 categories={categories}
 
-                onExport={handleExport}
+                onExport={canExportExpense ? handleExport : null}
             />
 
             <ExpenseSummaryCards
@@ -408,9 +381,9 @@ export default function ExpenseApprovalPage() {
 
             <ExpenseTable
                 expenses={filteredExpenses}
-                onEdit={handleEdit}
-                onApprove={handleApprove}
-                onReject={handleReject}
+                onEdit={canEditExpense ? handleEdit : null}
+                onApprove={canApproveExpense ? handleApprove : null}
+                onReject={canApproveExpense ? handleReject : null}
                 onViewBill={handleViewBill}
             />
 

@@ -76,15 +76,15 @@ export default function ExpenseRow({
                         <Receipt size={17} />
                     </ActionButton>
 
-                <ActionButton
+                {onEdit && <ActionButton
                     label="Edit"
                     className="bg-blue-50 text-blue-600"
                     onClick={() => onEdit(expense)}
                 >
                     <Pencil size={16} />
-                </ActionButton>
+                </ActionButton>}
 
-                {expense.status === "pending" && (
+                {expense.status === "pending" && onApprove && onReject && (
                     <>
                         <ActionButton
                             label="Approve"

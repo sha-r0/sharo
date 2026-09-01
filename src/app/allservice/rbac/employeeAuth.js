@@ -6,6 +6,21 @@ export function normalizeEmployeeId(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
 }
 
+export function canonicalEmployeeId(value) {
+  const normalized = normalizeEmployeeId(value);
+  return /^\d+$/.test(normalized) ? normalized.replace(/^0+(?=\d)/, "") : normalized;
+}
+
+export function employeeMatchesIdentifier(employee = {}, requestedId) {
+  const requested = normalizeEmployeeId(requestedId);
+  const canonicalRequested = canonicalEmployeeId(requested);
+  const identifiers = [employee?.employeeId, employee?.login?.employeeId]
+    .map(normalizeEmployeeId)
+    .filter(Boolean);
+  return identifiers.includes(requested)
+    || identifiers.some((identifier) => canonicalEmployeeId(identifier) === canonicalRequested);
+}
+
 export function buildEmployeeLoginEmail(corporateId, employeeId) {
   const companyPart = normalizeCorporateId(corporateId);
   const employeePart = normalizeEmployeeId(employeeId);

@@ -21,6 +21,8 @@ const { createPayoutDependencies, createPayoutSettingsFunctions } = require("./p
 const { dispatchAdvancePayout, markAdvancePayoutFailed } = require("./payout/AdvancePayoutService");
 const { handlePayoutWebhook } = require("./payout/PayoutWebhookService");
 const { easyTimeProAttendanceWebhookCore, validBasicAuth } = require("./easytimepro_webhook");
+const { createUpdateExpense } = require("./expense_management");
+const { createWorkforceFunctions } = require("./workforce/WorkforceFunctions");
 
 initializeApp();
 setGlobalOptions({ region: "asia-south1", memory: "256MiB", timeoutSeconds: 120, maxInstances: 20 });
@@ -33,6 +35,7 @@ const delivery = new NotificationDelivery(getMessaging(), repository, new Notifi
 const advanceFunctions = createAdvanceFunctions(db);
 const payoutDependencies = createPayoutDependencies();
 const payoutSettingsFunctions = createPayoutSettingsFunctions(db, payoutDependencies);
+const workforceFunctions = createWorkforceFunctions(db);
 const easyTimeProUsername = defineSecret("EASYTIMEPRO_WEBHOOK_USERNAME");
 const easyTimeProPassword = defineSecret("EASYTIMEPRO_WEBHOOK_PASSWORD");
 
@@ -46,6 +49,12 @@ exports.connectMerchantPayout = payoutSettingsFunctions.connectMerchantPayout;
 exports.disconnectMerchantPayout = payoutSettingsFunctions.disconnectMerchantPayout;
 exports.syncEmployeePayoutBeneficiary = payoutSettingsFunctions.syncEmployeePayoutBeneficiary;
 exports.initiateAdvancePayout = payoutSettingsFunctions.initiateAdvancePayout;
+exports.updateExpense = createUpdateExpense(db);
+exports.decideGpsPunch = workforceFunctions.decideGpsPunch;
+exports.decideLeaveRequest = workforceFunctions.decideLeaveRequest;
+exports.correctAttendance = workforceFunctions.correctAttendance;
+exports.generatePayroll = workforceFunctions.generatePayroll;
+exports.transitionPayroll = workforceFunctions.transitionPayroll;
 
 exports.easyTimeProAttendanceWebhook = onRequest({
   region: "us-central1", timeoutSeconds: 60, secrets: [easyTimeProUsername, easyTimeProPassword],

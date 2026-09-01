@@ -12,7 +12,7 @@ import GPSTable from "./components/GPSTable";
 
 export default function GPSReportPage() {
 
-    const { company } = useAuth();
+    const { company, hasAnyPermission, isOwner } = useAuth();
 
     const COMPANY_ID = company?.id;
 
@@ -94,6 +94,16 @@ export default function GPSReportPage() {
         XLSX.writeFile(workbook, `gps-report-${filters.month || "all"}.xlsx`);
     }
 
+    async function decide(row, decision) {
+        try {
+            await GPSReportService.decide(row.id, decision);
+            await loadData();
+        } catch (decisionError) {
+            console.error("[GPSApproval] decision failed", { code: decisionError?.code, name: decisionError?.name });
+            setError(decisionError?.message === "GPS_ALREADY_DECIDED" ? "This GPS punch has already been reviewed." : "Unable to review this GPS punch.");
+        }
+    }
+
     ////////////////////////////////////////
 
     useEffect(() => {
@@ -115,6 +125,8 @@ export default function GPSReportPage() {
                 onExport={exportReport}
 
                 loading={loading}
+                canDecide={isOwner || hasAnyPermission(["gps.approve", "gps.manage"])}
+                onDecide={decide}
 
             />
 

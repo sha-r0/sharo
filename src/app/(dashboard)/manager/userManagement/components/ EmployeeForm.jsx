@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
@@ -40,6 +40,8 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
     const { company, currentUser, can, roleLevel } = useAuth();
 
     const canManageAccess = can("employee.manage");
+
+    const createRequestId = useRef(null);
 
     const [showPassword, setShowPassword] = useState(false);
 
@@ -465,7 +467,10 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
                         company.id,
 
-                        form
+                        {
+                            ...form,
+                            firestoreId: createRequestId.current || (createRequestId.current = crypto.randomUUID()),
+                        }
 
                     );
 

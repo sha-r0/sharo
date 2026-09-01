@@ -1,6 +1,7 @@
-import { collection, doc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import notificationService from "@/app/allservice/notification/notificationService";
+import { functions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import { dayKey, employeeName, toDate } from "./WorkforceRealtimeService";
 
 const number = (value) => Number(value || 0) || 0;
@@ -32,17 +33,15 @@ export default class PayrollService {
   }
 
   static async save(companyId, rows, month) {
-    await Promise.all(rows.map((row) => setDoc(doc(db, "Companies", companyId, "Payroll", row.id), { ...row, companyId, month, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true })));
+    void companyId;
+    const adjustments = Object.fromEntries(rows.map((row) => [row.employeeFirestoreId, { bonus: number(row.bonus), otherDeduction: number(row.otherDeduction) }]));
+    const response = await httpsCallable(functions, "generatePayroll")({ month, adjustments });
+    return response.data?.rows || [];
   }
 
   static async setStatus(companyId, row, status) {
-    await updateDoc(doc(db, "Companies", companyId, "Payroll", row.id), { status, [`${status.toLowerCase()}At`]: serverTimestamp(), updatedAt: serverTimestamp() });
-    if (status === "Paid" && row.status !== "Paid") {
-      await Promise.all((row.advanceDeductions || []).map((deduction) => {
-        const remainingAmount = Math.max(0, number(deduction.previousRemaining) - number(deduction.amount));
-        return updateDoc(doc(db, "Companies", companyId, "advance_requests", deduction.advanceId), { remainingAmount, settledAmount: number(deduction.previousSettled) + number(deduction.amount), status: remainingAmount === 0 ? "Settled" : "Approved", updatedAt: serverTimestamp() });
-      }));
-    }
-    if (["Processed", "Paid"].includes(status)) await notificationService.emitSafe(status === "Paid" ? "payroll.paid" : "payroll.processed", { companyId, targetUsers: [row.employeeFirestoreId], employeeName: row.employeeName, actionId: row.id, actionRoute: "/manager/Workforce/payroll", metadata: { payrollId: row.id, month: row.month, netSalary: row.netSalary } });
+    void companyId;
+    const response = await httpsCallable(functions, "transitionPayroll")({ payrollId: row.id, status });
+    return response.data;
   }
 }

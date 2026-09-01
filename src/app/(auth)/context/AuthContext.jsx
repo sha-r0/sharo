@@ -10,12 +10,8 @@ import {
 import { onIdTokenChanged, signOut } from "firebase/auth";
 
 import {
-  collection,
   doc,
   getDoc,
-  updateDoc,
-  addDoc,
-  serverTimestamp,
 } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
@@ -152,12 +148,13 @@ export function AuthProvider({ children }) {
         const sessionKey = `rbac-session-${uid}`;
         if (typeof window !== "undefined" && !sessionStorage.getItem(sessionKey)) {
           sessionStorage.setItem(sessionKey, "1");
-          const userAgent = navigator.userAgent || "Unknown";
-          const browser = userAgent.includes("Chrome") ? "Chrome" : userAgent.includes("Firefox") ? "Firefox" : userAgent.includes("Safari") ? "Safari" : "Other";
-          const session = { lastLoginAt: serverTimestamp(), lastDevice: /Mobi|Android/i.test(userAgent) ? "Mobile" : "Desktop", lastBrowser: browser, lastLocation: Intl.DateTimeFormat().resolvedOptions().timeZone || "Unknown" };
-          const writes = [addDoc(collection(db, "Companies", identity.companyId, "ActivityLogs"), { type: "user.login", actorId: uid, targetUserId: uid, targetEmployeeId: employee?.id || null, metadata: { device: session.lastDevice, browser, location: session.lastLocation }, createdAt: serverTimestamp() })];
-          if (employee) writes.push(updateDoc(doc(db, "Companies", identity.companyId, "Usermanagement", employee.id), Object.fromEntries(Object.entries(session).map(([key, value]) => [`access.${key}`, value]))));
-          Promise.all(writes).catch((error) => console.warn("Session audit unavailable:", error));
+          fetch("/api/rbac/session/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Unknown" }),
+          }).then((response) => {
+            if (!response.ok) throw new Error("Session audit request failed");
+          }).catch((error) => console.warn("Session audit unavailable:", error));
         }
 
       } else {

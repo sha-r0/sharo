@@ -103,6 +103,14 @@ import LeaveTypeTable from "./components/LeaveTypeTable";
 import AssignLeavePolicy from "./components/AssignLeavePolicy";
 import LeaveBalanceManager from "./components/LeaveBalanceManager";
 
+const LEAVE_POLICY_TABS = [
+  { id: "create-leave-type", label: "Create Leave Type" },
+  { id: "holiday-calendar", label: "Holiday Calendar" },
+  { id: "leave-types", label: "Leave Types" },
+  { id: "assign-leave-policy", label: "Assign Leave Policy" },
+  { id: "employee-leave-balance", label: "Employee Leave Balance" },
+];
+
 export default function LeavePolicyPage() {
 
   const { company } = useAuth();
@@ -114,6 +122,8 @@ export default function LeavePolicyPage() {
   const [holidays, setHolidays] = useState([]);
 
   const [employees, setEmployees] = useState([]);
+
+  const [activeTab, setActiveTab] = useState("create-leave-type");
 
   ///////////////////////////////////////////////////////
 
@@ -197,69 +207,171 @@ export default function LeavePolicyPage() {
 
   return (
 
-    <div className="space-y-8">
+    <div className="space-y-6">
+
+      <div>
+
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+
+          Leave Policy
+
+        </h1>
+
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+
+          Manage leave types, holidays and employee leave policies
+
+        </p>
+
+      </div>
+
+      <div className="overflow-x-auto">
+
+        <div
+          role="tablist"
+          aria-label="Leave policy sections"
+          className="flex min-w-max border-b border-slate-200 dark:border-slate-700"
+        >
+
+          {LEAVE_POLICY_TABS.map((tab) => {
+
+            const isActive = activeTab === tab.id;
+
+            return (
+
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`${tab.id}-tab`}
+                aria-selected={isActive}
+                aria-controls={`${tab.id}-panel`}
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${
+                  isActive
+                    ? "text-blue-600 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-blue-600 dark:text-blue-400 dark:after:bg-blue-400"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+
+                {tab.label}
+
+              </button>
+
+            );
+
+          })}
+
+        </div>
+
+      </div>
 
       {/* Create Leave Type */}
 
-      <CreateLeaveType
+      <section
+        role="tabpanel"
+        id="create-leave-type-panel"
+        aria-labelledby="create-leave-type-tab"
+        hidden={activeTab !== "create-leave-type"}
+      >
 
-        companyId={company.id}
+        <CreateLeaveType
 
-        onSaved={loadData}
+          companyId={company.id}
 
-      />
+          onSaved={loadData}
+
+        />
+
+      </section>
 
       {/* Holidays */}
 
-      <HolidayManager
+      <section
+        role="tabpanel"
+        id="holiday-calendar-panel"
+        aria-labelledby="holiday-calendar-tab"
+        hidden={activeTab !== "holiday-calendar"}
+      >
 
-        companyId={company.id}
+        <HolidayManager
 
-        holidays={holidays}
+          companyId={company.id}
 
-        onSaved={loadData}
+          holidays={holidays}
 
-      />
+          onSaved={loadData}
+
+        />
+
+      </section>
 
       {/* Leave Types */}
 
-      <LeaveTypeTable
+      <section
+        role="tabpanel"
+        id="leave-types-panel"
+        aria-labelledby="leave-types-tab"
+        hidden={activeTab !== "leave-types"}
+      >
 
-        companyId={company.id}
+        <LeaveTypeTable
 
-        leaveTypes={leaveTypes}
+          companyId={company.id}
 
-        onSaved={loadData}
+          leaveTypes={leaveTypes}
 
-      />
+          onSaved={loadData}
+
+        />
+
+      </section>
 
       {/* Assign Policy */}
 
-      <AssignLeavePolicy
+      <section
+        role="tabpanel"
+        id="assign-leave-policy-panel"
+        aria-labelledby="assign-leave-policy-tab"
+        hidden={activeTab !== "assign-leave-policy"}
+      >
 
-        companyId={company.id}
+        <AssignLeavePolicy
 
-        employees={employees}
+          companyId={company.id}
 
-        leaveTypes={leaveTypes}
+          employees={employees}
 
-        onSaved={loadData}
+          leaveTypes={leaveTypes}
 
-      />
+          onSaved={loadData}
+
+        />
+
+      </section>
 
       {/* Opening Balance */}
 
-      <LeaveBalanceManager
+      <section
+        role="tabpanel"
+        id="employee-leave-balance-panel"
+        aria-labelledby="employee-leave-balance-tab"
+        hidden={activeTab !== "employee-leave-balance"}
+      >
 
-        companyId={company.id}
+        <LeaveBalanceManager
 
-        employees={employees}
+          companyId={company.id}
 
-        leaveTypes={leaveTypes}
+          employees={employees}
 
-        onSaved={loadData}
+          leaveTypes={leaveTypes}
 
-      />
+          onSaved={loadData}
+
+        />
+
+      </section>
 
     </div>
 

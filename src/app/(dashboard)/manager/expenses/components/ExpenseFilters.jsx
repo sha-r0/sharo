@@ -145,7 +145,7 @@ export default function ExpenseFilters({
 
         {/* Export */}
 
-        <div className="flex items-end">
+        {onExport && <div className="flex items-end">
 
           <button
             onClick={onExport}
@@ -155,7 +155,7 @@ export default function ExpenseFilters({
             Export Excel
           </button>
 
-        </div>
+        </div>}
 
       </div>
     </div>

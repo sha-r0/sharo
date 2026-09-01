@@ -7,7 +7,8 @@
   },
   "scripts": {
     "lint": "node --check src/index.js && node --test test/*.test.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:rules": "firebase emulators:exec --config ../firebase.json --project demo-sharo --only firestore \"node --test test/firestore-rules.emulator.test.js\""
   },
   "dependencies": {
     "@google-cloud/secret-manager": "^7.0.0",
@@ -16,5 +17,9 @@
   },
   "overrides": {
     "uuid": "^11.1.1"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.18.0"
   }
 }

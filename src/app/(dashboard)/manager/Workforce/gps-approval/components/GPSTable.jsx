@@ -20,6 +20,8 @@ export default function GPSTable({
     rows = [],
 
     loading,
+    canDecide = false,
+    onDecide,
 
 }) {
 
@@ -98,6 +100,7 @@ export default function GPSTable({
                                 GPS
 
                             </th>
+                            <th className="px-6 py-4 text-left">Review</th>
 
                         </tr>
 
@@ -149,6 +152,14 @@ export default function GPSTable({
 
                                         </button>
 
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {String(row.reviewStatus || "Pending").toLowerCase() === "pending" && canDecide ? (
+                                            <div className="flex gap-2">
+                                                <button type="button" onClick={() => onDecide?.(row, "approved")} className="rounded-lg bg-green-50 px-3 py-2 text-xs font-bold text-green-700">Approve</button>
+                                                <button type="button" onClick={() => onDecide?.(row, "rejected")} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700">Reject</button>
+                                            </div>
+                                        ) : <span className="text-xs font-semibold text-slate-500">{row.reviewStatus || "Pending"}</span>}
                                     </td>
 
                                     <td className="px-6 py-4">
@@ -233,7 +244,7 @@ export default function GPSTable({
                                         <tr>
 
                                             <td
-                                                colSpan={6}
+                                                colSpan={7}
                                                 className="bg-slate-50 p-6"
                                             >
 

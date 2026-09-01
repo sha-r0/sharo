@@ -30,6 +30,7 @@ export const ROUTE_PERMISSIONS = [
   ["/manager/quotation-builder/new", "quotation.create"], ["/manager/quotation-builder/setup", "quotation.manage"],
   ["/manager/userManagement", "employee.view"], ["/manager/Workforce/payroll", "payroll.view"],
   ["/manager/Workforce/attendance", "attendance.view"], ["/manager/Workforce/gps-approval", "gps.view"],
+  ["/manager/Workforce/leave-approval", "leave.view"],
   ["/manager/Workforce/leave-policy", "leave.manage"], ["/manager/Workforce/shift-policy", "settings.manage"],
   ["/manager/Workforce", "attendance.view"], ["/manager/projects", "projects.view"], ["/manager/clients", "clients.view"],
   ["/manager/vendors", "vendors.view"], ["/manager/expenses", "expense.view"], ["/manager/advance", "advance.view"],

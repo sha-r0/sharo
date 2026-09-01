@@ -1,5 +1,6 @@
 import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 
 const companyCollection = (companyId, name) =>
     collection(db, "Companies", companyId, name);
@@ -71,10 +72,16 @@ const normalizeAttendance = (doc, employeeMap, collectionName) => {
         collectionName,
         isHardware: data.hardwareVerified === true || source === "hardware" || source === "biometric",
         isGps: collectionName === "GPSPunches" || source === "gps" || source === "mobile" || data.gpsValid !== undefined || Boolean(checkInLocation || checkOutLocation),
+        reviewStatus: firstValue(data.reviewStatus, data.approvalStatus, data.decision, "Pending"),
     };
 };
 
 export default class GPSReportService {
+    static async decide(gpsPunchId, decision, remarks = "") {
+        const response = await httpsCallable(functions, "decideGpsPunch")({ gpsPunchId, decision, remarks });
+        return response.data;
+    }
+
     static async getReport({ companyId, filters = {} }) {
         if (!companyId) throw new Error("Company is not available.");
 
