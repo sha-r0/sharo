@@ -16,7 +16,7 @@ export default class ProjectPredictionService {
         const estimatedCompletion = remainingDays ? new Date(now.getTime() + remainingDays * day) : plannedEnd;
         const actualExpense = analytics.finance.actualExpense;
         const finalCost = progress > 5 ? actualExpense / (progress / 100) : Math.max(actualExpense, analytics.finance.budget);
-        const expectedProfit = analytics.finance.contract - finalCost;
+        const expectedProfit = analytics.finance.budget - finalCost;
         const scheduledProgress = plannedDays ? clamp(elapsedDays / plannedDays * 100) : progress;
         const scheduleGap = scheduledProgress - progress;
         const expenseVelocity = analytics.finance.burnRate;
@@ -33,7 +33,7 @@ export default class ProjectPredictionService {
         const currentEmployees = analytics.employees.assigned;
         const requiredEmployees = progressRate > 0 && plannedDays ? Math.max(currentEmployees, Math.ceil(currentEmployees * Math.max(1, scheduledProgress / Math.max(progress, 1)))) : currentEmployees;
         return {
-            estimatedCompletion, finalCost, expectedProfit: Math.max(0, expectedProfit), expectedLoss: Math.max(0, -expectedProfit),
+            estimatedCompletion, finalCost, expectedProfit: Math.max(0, expectedProfit), expectedLoss: Math.max(0, finalCost - analytics.finance.budget),
             budgetOverrun: overrun, delayProbability, labourRequirement: requiredEmployees,
             additionalLabour: Math.max(0, requiredEmployees - currentEmployees), cashFlowRequirement: requiredCash,
             clientPaymentRisk: paymentRisk, vendorPaymentRisk: vendorRisk, failureProbability: failure,

@@ -6,37 +6,56 @@ import { useAuth } from "@/app/(auth)/context/AuthContext";
 import useProjects from "./hooks/useProjects";
 import useProjectData from "./hooks/useProjectData";
 import AddProjectDialog from "./components/form/AddProjectDialog";
-import ProjectPortfolioDashboard from "./components/portfolio/ProjectPortfolioDashboard";
+import ProjectPortfolioDashboard, { effectiveProjectStatus, matchesProjectIntelligence } from "./components/portfolio/ProjectPortfolioDashboard";
 import useProjectPortfolioCosts from "./hooks/useProjectPortfolioCosts";
+import { asDate } from "./services/ProjectAnalyticsService";
+
+const projectDate = (value) => {
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const [year, month, day] = value.split("-").map(Number);
+        const date = new Date(year, month - 1, day);
+        return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+    }
+    return asDate(value);
+};
+
+const financialYearStart = (date) => date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+const currentFinancialYear = () => String(financialYearStart(new Date()));
 
 export default function ProjectManagementPage() {
     const { company } = useAuth();
     const { loading, refreshing, error, projects, refresh, createProject, updateProject, deleteProject } = useProjects();
     const lookup = useProjectData(company?.id);
     const costedProjects = useProjectPortfolioCosts(company?.id, projects);
-    const [filters, setFilters] = useState({ search: "", status: "all", client: "", intelligence: "all" });
+    const [filters, setFilters] = useState({ search: "", status: "all", client: "", intelligence: "all", financialYear: currentFinancialYear() });
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingProject, setEditingProject] = useState(null);
     const [busyId, setBusyId] = useState(null);
 
-    const filteredProjects = useMemo(() => costedProjects.filter((project) => {
+    const financialYears = useMemo(() => {
+        const years = new Set([Number(currentFinancialYear())]);
+        costedProjects.forEach((project) => {
+            const date = projectDate(project.startDate);
+            if (date) years.add(financialYearStart(date));
+        });
+        return [...years].sort((a, b) => b - a);
+    }, [costedProjects]);
+
+    const financialYearProjects = useMemo(() => costedProjects.filter((project) => {
+        const date = projectDate(project.startDate);
+        return filters.financialYear === "all" || (date && financialYearStart(date) === Number(filters.financialYear));
+    }), [costedProjects, filters.financialYear]);
+
+    const filteredProjects = useMemo(() => financialYearProjects.filter((project) => {
         const text = filters.search.trim().toLowerCase();
         const employeeText = (project.employees || []).map((item) => `${item.fullName} ${item.employeeId}`).join(" ");
         const searchMatch = !text || `${project.projectName} ${project.projectId} ${project.clientName} ${project.managerName} ${employeeText}`.toLowerCase().includes(text);
-        const projectStatus = String(project.status || "").toLowerCase();
+        const projectStatus = effectiveProjectStatus(project).toLowerCase();
         const statusMatch = filters.status === "all" || projectStatus === filters.status || (filters.status === "hold" && projectStatus === "on hold");
         const clientMatch = !filters.client || project.clientId === filters.client;
-        const expense = Number(project.totalExpense || 0); const budget = Number(project.budget || 0); const revenue = Number(project.poAmount || 0);
-        const profit = Number(project.totalProfit ?? revenue - expense);
-        const delayed = project.overdue || projectStatus === "delayed" || (project.endDate && project.endDate < new Date().toISOString().slice(0,10) && projectStatus !== "completed");
-        const smartMatch = filters.intelligence === "all" || (filters.intelligence === "delayed" && delayed) ||
-            (filters.intelligence === "critical" && Number(project.healthScore ?? 100) < 60) ||
-            (filters.intelligence === "loss" && profit < 0) ||
-            (filters.intelligence === "profit" && revenue > 0 && profit / revenue >= .2) ||
-            (filters.intelligence === "budget" && budget > 0 && expense > budget) ||
-            (filters.intelligence === "vendor" && expense > 0 && Number(project.vendorCost || project.vendorExpense || 0) / expense >= .5);
+        const smartMatch = matchesProjectIntelligence(project, filters.intelligence);
         return searchMatch && statusMatch && clientMatch && smartMatch;
-    }), [costedProjects, filters]);
+    }), [financialYearProjects, filters]);
 
     const openCreate = () => { setEditingProject(null); setDialogOpen(true); };
     const openEdit = (project) => { setEditingProject(project); setDialogOpen(true); };
@@ -97,7 +116,7 @@ export default function ProjectManagementPage() {
 
     return <>
         <ProjectPortfolioDashboard
-            projects={filteredProjects} allProjects={costedProjects} clients={lookup.clients}
+            projects={filteredProjects} allProjects={financialYearProjects} clients={lookup.clients} financialYears={financialYears}
             loading={loading} refreshing={refreshing} error={error || lookup.error}
             filters={filters} onFilter={(key, value) => setFilters((current) => ({ ...current, [key]: value }))}
             onRefresh={refresh} onCreate={openCreate} onEdit={openEdit} onDelete={removeProject}

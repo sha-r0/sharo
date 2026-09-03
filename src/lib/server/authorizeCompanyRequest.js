@@ -1,4 +1,5 @@
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { ALL_PERMISSIONS } from "@/app/allservice/rbac/permissionCatalog";
 
 const error = (code) => { throw new Error(code); };
 
@@ -19,7 +20,7 @@ export async function authorizeCompanyRequest(request) {
   }
   if (companySnapshot) {
     if (String(companySnapshot.data()?.serviceStatus || "active").toLowerCase() !== "active") error("COMPANY_INACTIVE");
-    return { token, companyId: companySnapshot.id, company: companySnapshot.data(), isOwner: true, employee: null, permissions: [] };
+    return { token, companyId: companySnapshot.id, company: companySnapshot.data(), isOwner: true, employee: null, permissions: ALL_PERMISSIONS };
   }
 
   const rootUsers = adminDb.collection("Usermanagement");

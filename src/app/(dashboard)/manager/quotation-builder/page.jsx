@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
-
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
+import QuotationSetupService from "./services/QuotationSetupService";
 
 import Dashboard from "./components/Dashboard";
 
@@ -29,23 +27,9 @@ export default function QuotationPage() {
 
         try {
 
-            const ref = doc(
+            const settings = await QuotationSetupService.load(company.id);
 
-                db,
-
-                "Companies",
-
-                company.id,
-
-                "QuotationSettings",
-
-                "default"
-
-            );
-
-            const snap = await getDoc(ref);
-
-            if (!snap.exists()) {
+            if (!settings) {
 
                 router.replace(
 

@@ -6,13 +6,12 @@ import { useAuth } from "@/app/(auth)/context/AuthContext";
 import roleRepository from "@/app/allservice/rbac/roleRepository";
 import activityLogRepository from "@/app/allservice/rbac/activityLogRepository";
 import { PERMISSION_ACTIONS, PERMISSION_MODULES, permissionKey } from "@/app/allservice/rbac/permissionCatalog";
-import permissionRepository from "@/app/allservice/rbac/permissionRepository";
 
 const neo = "border border-white bg-[#F9FAFC] shadow-[0px_1.8px_1.8px_-1.3px_rgba(0,0,0,.08),0px_6.8px_6.8px_-2.6px_rgba(0,0,0,.05),inset_0px_3px_1px_white]";
 export default function RoleManagement() {
   const { company, currentUser, access } = useAuth();
   const [roles, setRoles] = useState([]), [selected, setSelected] = useState(null), [search, setSearch] = useState(""), [expanded, setExpanded] = useState(new Set(PERMISSION_MODULES));
-  const load = async () => { if (access?.isOwner) await permissionRepository.ensureCatalog(company.id); const items = await roleRepository.list(company.id); setRoles(items); setSelected((current) => items.find((item) => item.id === current?.id) || items[0]); };
+  const load = async () => { const items = await roleRepository.list(company.id); setRoles(items); setSelected((current) => items.find((item) => item.id === current?.id) || items[0]); };
   useEffect(() => { if (company?.id) load(); }, [company?.id]);
   const modules = useMemo(() => PERMISSION_MODULES.filter((module) => !search || module.includes(search.toLowerCase()) || PERMISSION_ACTIONS.some((action) => `${module} ${action}`.includes(search.toLowerCase()))), [search]);
   const editable = access?.isOwner && selected?.id !== "owner";

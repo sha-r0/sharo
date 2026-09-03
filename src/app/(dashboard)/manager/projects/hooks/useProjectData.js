@@ -6,6 +6,19 @@ import employeeService from "@/app/allservice/employee/employeeService";
 import clientService from "../../clients/services/clientService";
 import vendorRepository from "../../vendors/services/VendorRepository";
 
+function clientLabel(client) {
+    return String(client?.clientName || client?.companyName || client?.name || "").trim();
+}
+
+function sortClients(clients = []) {
+    return [...clients].sort((a, b) =>
+        clientLabel(a).localeCompare(clientLabel(b), undefined, {
+            sensitivity: "base",
+            numeric: true,
+        })
+    );
+}
+
 export default function useProjectData(companyId) {
 
     const [loading, setLoading] = useState(true);
@@ -52,7 +65,7 @@ export default function useProjectData(companyId) {
 
             ]);
 
-            setClients(clientData);
+            setClients(sortClients(clientData));
 
             setEmployees(employeeData);
 

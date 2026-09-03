@@ -9,6 +9,14 @@ function isActiveEmployee(employee) {
   return ACTIVE.has(status);
 }
 
+function hasCompanyPermission(actor, ...permissions) {
+  return Boolean(actor?.isOwner || permissions.some((permission) => actor?.permissions?.includes(permission)));
+}
+
+function requireCompanyPermission(actor, ...permissions) {
+  if (!hasCompanyPermission(actor, ...permissions)) throw new Error("FORBIDDEN");
+}
+
 async function resolveCompanyActor(db, auth) {
   if (!auth?.uid) throw new Error("UNAUTHENTICATED");
   let companyId = clean(auth.token?.companyId);
@@ -46,4 +54,4 @@ async function resolveCompanyActor(db, auth) {
   };
 }
 
-module.exports = { clean, isActiveEmployee, resolveCompanyActor };
+module.exports = { clean, hasCompanyPermission, isActiveEmployee, requireCompanyPermission, resolveCompanyActor };

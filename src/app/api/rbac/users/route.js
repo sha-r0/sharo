@@ -10,6 +10,7 @@ import {
   normalizeRoleId,
 } from "@/app/allservice/rbac/permissionCatalog";
 import { buildEmployeeLoginEmail, canonicalEmployeeId, resolveEmployeeAuthUid, resolveEmployeeRoleId, resolvePermissionOverrides } from "@/app/allservice/rbac/employeeAuth";
+import { authorizeCompanyRequest } from "@/lib/server/authorizeCompanyRequest";
 
 const PLAN_LIMITS = {
   starter: 5,
@@ -35,78 +36,21 @@ async function loadRole(companyId, roleId) {
 }
 
 async function authorize(request) {
-  const header = request.headers.get("authorization") || "";
-
-  if (!header.startsWith("Bearer ")) {
-    throw new Error("UNAUTHENTICATED");
-  }
-
-  const idToken = header.slice(7);
-
-  const token = await adminAuth.verifyIdToken(idToken, true);
-
-  const users = await adminDb
-    .collection("Usermanagement")
-    .where("uid", "==", token.uid)
-    .limit(1)
-    .get();
-
-  if (users.empty) {
-    throw new Error("UNAUTHENTICATED");
-  }
-
-  const callerDocument = users.docs[0];
-
-  const caller = {
-    id: callerDocument.id,
-    ...callerDocument.data(),
-    uid: token.uid,
-  };
-
-  const companyId = caller.companyId || token.companyId;
-
-  if (!companyId) {
-    throw new Error("COMPANY_NOT_FOUND");
-  }
-
-  const companyDoc = await adminDb
-    .collection("Companies")
-    .doc(companyId)
-    .get();
-
-  if (!companyDoc.exists) {
-    throw new Error("COMPANY_NOT_FOUND");
-  }
-
-  const company = {
-    id: companyDoc.id,
-    ...companyDoc.data(),
-  };
-
-  const owner =
-    company.ownerUid === token.uid ||
-    String(caller.role || "").toLowerCase() === "owner" ||
-    String(caller.email || "").toLowerCase() ===
-      String(company.ownerEmail || "").toLowerCase();
+  const authorized = await authorizeCompanyRequest(request);
+  const { token, companyId } = authorized;
+  const company = { id: companyId, ...authorized.company };
+  const owner = authorized.isOwner;
+  const caller = owner
+    ? { id: token.uid, uid: token.uid, companyId, role: "owner" }
+    : { ...authorized.employee, uid: token.uid, companyId };
 
   let callerEmployee = null;
   let callerPermissions = owner ? ALL_PERMISSIONS : [];
   let callerRole = owner ? { id: "owner", level: 100 } : null;
   if (!owner) {
-    let employees = await adminDb
-      .collection("Companies")
-      .doc(companyId)
-      .collection("Usermanagement")
-      .where("access.authUid", "==", token.uid)
-      .limit(1)
-      .get();
-    if (employees.empty) employees = await adminDb.collection("Companies").doc(companyId).collection("Usermanagement").where("authUid", "==", token.uid).limit(1).get();
-    if (employees.empty) throw new Error("FORBIDDEN");
-    callerEmployee = { id: employees.docs[0].id, ...employees.docs[0].data() };
-    if (callerEmployee.access?.loginEnabled === false || String(callerEmployee.access?.status || callerEmployee.status || callerEmployee.employment?.status || "active").toLowerCase() !== "active") throw new Error("FORBIDDEN");
+    callerEmployee = authorized.employee;
     callerRole = await loadRole(companyId, resolveEmployeeRoleId(callerEmployee, caller));
-    const overrides = resolvePermissionOverrides(callerEmployee);
-    callerPermissions = calculateEffectivePermissions({ rolePermissions: callerRole.permissions, grantedPermissions: overrides.grant, deniedPermissions: overrides.deny });
+    callerPermissions = authorized.permissions;
   }
 
   if (String(company.serviceStatus || "active").toLowerCase() !== "active") throw new Error("COMPANY_INACTIVE");

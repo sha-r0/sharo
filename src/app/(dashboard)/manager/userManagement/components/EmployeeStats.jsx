@@ -3,7 +3,6 @@
 import {
     Users,
     UserCheck,
-    UserMinus,
     UserX,
 } from "lucide-react";
 
@@ -21,13 +20,6 @@ const cards = [
         title: "Active",
         icon: UserCheck,
         color: "green",
-    },
-
-    {
-        key: "leave",
-        title: "On Leave",
-        icon: UserMinus,
-        color: "amber",
     },
 
     {
@@ -51,12 +43,6 @@ const colors = {
         bg: "bg-green-50",
         icon: "text-green-600",
         border: "border-green-100",
-    },
-
-    amber: {
-        bg: "bg-amber-50",
-        icon: "text-amber-600",
-        border: "border-amber-100",
     },
 
     red: {
@@ -83,12 +69,6 @@ export default function EmployeeStats({
 
         ).length,
 
-        leave: employees.filter(
-
-            (e) => e.status === "Leave"
-
-        ).length,
-
         inactive: employees.filter(
 
             (e) => e.status === "Inactive"
@@ -99,7 +79,7 @@ export default function EmployeeStats({
 
     return (
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
 
             {cards.map((card) => {
 

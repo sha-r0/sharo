@@ -136,6 +136,53 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     await assertFails(getDoc(doc(db, "Companies", "company-b", "Usermanagement", "employee-b")));
   });
 
+  test("spoofed owner claims and employee role cannot cross company boundaries", async () => {
+    const spoofed = environment.authenticatedContext(EMPLOYEE_UID, {
+      companyId: "company-b",
+      companyEmployeeId: EMPLOYEE_ID,
+      roleId: "owner",
+    }).firestore();
+    await assertFails(getDoc(doc(spoofed, "Companies", COMPANY_A)));
+    await assertFails(getDoc(doc(spoofed, "Companies", "company-b", "Usermanagement", "employee-b")));
+  });
+
+  test("owner can manage representative company modules without an employee record", async () => {
+    const db = environment.authenticatedContext(OWNER_UID, { roleId: "employee" }).firestore();
+    const writes = [
+      ["Projectmanagement", "project-owner"],
+      ["Expenses", "expense-owner"],
+      ["Quotations", "quotation-owner"],
+      ["Attendance", "attendance-owner"],
+      ["LeaveTypes", "leave-type-owner"],
+      ["ShiftPolicies", "shift-owner"],
+      ["Notifications", "notification-owner"],
+    ];
+    for (const [collectionName, id] of writes) {
+      await assertSucceeds(setDoc(doc(db, "Companies", COMPANY_A, collectionName, id), { companyId: COMPANY_A, createdBy: OWNER_UID }));
+      await assertFails(setDoc(doc(db, "Companies", "company-b", collectionName, id), { companyId: "company-b", createdBy: OWNER_UID }));
+    }
+  });
+
+  test("company ownership cannot be reassigned by an owner or permission holder", async () => {
+    const owner = environment.authenticatedContext(OWNER_UID).firestore();
+    await assertFails(updateDoc(doc(owner, "Companies", COMPANY_A), { ownerUid: OTHER_UID }));
+  });
+
+  test("permission catalog remains server-owned for the company owner", async () => {
+    const owner = environment.authenticatedContext(OWNER_UID).firestore();
+    await assertSucceeds(getDoc(doc(owner, "Companies", COMPANY_A, "Permissions", "catalog")));
+    await assertSucceeds(getDocs(collection(owner, "Companies", COMPANY_A, "Roles")));
+    await assertFails(setDoc(doc(owner, "Companies", COMPANY_A, "Permissions", "catalog"), { version: 2 }));
+  });
+
+  test("owner reads company quotations while quotation settings remain server-owned", async () => {
+    const owner = environment.authenticatedContext(OWNER_UID).firestore();
+    await assertSucceeds(getDocs(collection(owner, "Companies", COMPANY_A, "Quotations")));
+    await assertFails(getDoc(doc(owner, "Companies", "company-b", "Quotations", "other")));
+    await assertFails(getDoc(doc(owner, "Companies", COMPANY_A, "QuotationSettings", "default")));
+    await assertFails(setDoc(doc(owner, "Companies", COMPANY_A, "QuotationSettings", "default"), { quotationPrefix: "QT" }));
+  });
+
   test("authorized manager can read and edit profile fields but not protected identity", async () => {
     const db = environment.authenticatedContext(MANAGER_UID, { companyId: COMPANY_A, companyEmployeeId: MANAGER_ID }).firestore();
     const target = doc(db, "Companies", COMPANY_A, "Usermanagement", TARGET_ID);

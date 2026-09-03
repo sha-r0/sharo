@@ -107,7 +107,8 @@ service cloud.firestore {
     match /PayoutWebhookEvents/{eventId} { allow read, write: if false; }
     match /Companies/{companyId} {
       allow read: if companyMember(companyId);
-      allow update: if has(companyId, 'company.manage');
+      allow update: if has(companyId, 'company.manage')
+        && request.resource.data.ownerUid == resource.data.ownerUid;
       allow create, delete: if false;
 
       match /Usermanagement/{userId} {
@@ -176,6 +177,7 @@ service cloud.firestore {
         allow write: if false;
       }
       match /Quotations/{id} { allow read: if has(companyId, 'quotation.view'); allow write: if canWrite(companyId, 'quotation'); }
+      match /QuotationSettings/{id} { allow read, write: if false; }
       match /Payroll/{id} { allow read: if has(companyId, 'payroll.view'); allow write: if false; }
       match /Notifications/{id} { allow read: if isOwner(companyId) || has(companyId, 'notifications.view'); allow write: if has(companyId, 'notifications.manage'); }
       match /UserNotifications/{userId} {
@@ -190,10 +192,10 @@ service cloud.firestore {
         }
       }
       match /{collection}/{document} {
-        allow read, write: if isOwner(companyId) && !(collection in ['PayoutSettings', 'Payouts', 'Usermanagement', 'advance_requests', 'UserNotifications']);
+        allow read, write: if isOwner(companyId) && !(collection in ['PayoutSettings', 'Payouts', 'Usermanagement', 'advance_requests', 'UserNotifications', 'Roles', 'Permissions', 'QuotationSettings']);
       }
       match /{collection}/{document}/{nested=**} {
-        allow read, write: if isOwner(companyId) && !(collection in ['PayoutSettings', 'Payouts', 'Usermanagement', 'advance_requests', 'UserNotifications']);
+        allow read, write: if isOwner(companyId) && !(collection in ['PayoutSettings', 'Payouts', 'Usermanagement', 'advance_requests', 'UserNotifications', 'Roles', 'Permissions', 'QuotationSettings']);
       }
     }
   }

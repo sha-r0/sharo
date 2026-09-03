@@ -1,22 +1,11 @@
 import {
-    doc,
-    getDoc,
-    serverTimestamp,
-    setDoc,
-    updateDoc,
-} from "firebase/firestore";
-
-import {
     deleteObject,
     getDownloadURL,
     ref,
     uploadBytes,
 } from "firebase/storage";
 
-import {
-    db,
-    storage,
-} from "@/lib/firebase";
+import { storage, auth } from "@/lib/firebase";
 
 export default class QuotationSetupService {
 
@@ -33,32 +22,6 @@ export default class QuotationSetupService {
                 "Company ID is required."
             );
         }
-    }
-
-    //////////////////////////////////////////////////////
-    // References
-    //////////////////////////////////////////////////////
-
-    static settingsRef(companyId) {
-        this.validateCompanyId(companyId);
-
-        return doc(
-            db,
-            "Companies",
-            companyId,
-            "QuotationSettings",
-            "default"
-        );
-    }
-
-    static companyRef(companyId) {
-        this.validateCompanyId(companyId);
-
-        return doc(
-            db,
-            "Companies",
-            companyId
-        );
     }
 
     //////////////////////////////////////////////////////
@@ -181,18 +144,11 @@ export default class QuotationSetupService {
     static async load(companyId) {
         this.validateCompanyId(companyId);
 
-        const snapshot = await getDoc(
-            this.settingsRef(companyId)
-        );
-
-        if (!snapshot.exists()) {
-            return null;
-        }
-
-        return {
-            id: snapshot.id,
-            ...snapshot.data(),
-        };
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch("/api/quotations", { headers: { Authorization: `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to load quotation settings.");
+        return result.settings || null;
     }
 
     //////////////////////////////////////////////////////
@@ -331,18 +287,7 @@ export default class QuotationSetupService {
             );
         }
 
-        const settingsReference =
-            this.settingsRef(companyId);
-
-        const existingSnapshot =
-            await getDoc(
-                settingsReference
-            );
-
-        const existingSettings =
-            existingSnapshot.exists()
-                ? existingSnapshot.data()
-                : null;
+        const existingSettings = await this.load(companyId);
 
         const existingBranding =
             existingSettings?.branding || {};
@@ -558,24 +503,18 @@ export default class QuotationSetupService {
                     30
                 ),
 
-            updatedAt:
-                serverTimestamp(),
         };
 
         //////////////////////////////////////////////////////
         // Only First-Time Setup Fields
         //////////////////////////////////////////////////////
 
-        if (!existingSnapshot.exists()) {
+        if (!existingSettings) {
             payload.quotationPrefix =
                 this.text(
                     form.quotationPrefix
                 ) || "QT";
 
-            payload.nextQuotationNumber = 1;
-
-            payload.createdAt =
-                serverTimestamp();
         }
 
         //////////////////////////////////////////////////////
@@ -583,7 +522,7 @@ export default class QuotationSetupService {
         //////////////////////////////////////////////////////
 
         if (
-            existingSnapshot.exists() &&
+            existingSettings &&
             form.quotationPrefix
         ) {
             payload.quotationPrefix =
@@ -596,32 +535,10 @@ export default class QuotationSetupService {
         // Save Firestore Settings
         //////////////////////////////////////////////////////
 
-        console.log(
-            "Quotation branding being saved:",
-            payload.branding
-        );
-
-        await setDoc(
-            settingsReference,
-            payload,
-            {
-                merge: true,
-            }
-        );
-
-        //////////////////////////////////////////////////////
-        // Mark Company Setup Complete
-        //////////////////////////////////////////////////////
-
-        await updateDoc(
-            this.companyRef(companyId),
-            {
-                quotationSetupCompleted: true,
-
-                quotationSetupUpdatedAt:
-                    serverTimestamp(),
-            }
-        );
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch("/api/quotations", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to save quotation settings.");
 
         //////////////////////////////////////////////////////
         // Delete Replaced Old Images
@@ -694,7 +611,7 @@ export default class QuotationSetupService {
             success: true,
 
             isNewSetup:
-                !existingSnapshot.exists(),
+                !existingSettings,
 
             settings: {
                 ...payload,

@@ -73,8 +73,8 @@ export default function ProjectReviewStep({
 
     const po = Number(form.poAmount || 0);
 
-    const expectedProfit = po - budget;
     const vendorAllocation = form.vendors.reduce((sum, vendor) => sum + Number(vendor.allocatedAmount || 0), 0);
+    const expectedProfit = budget - labourCost - vendorAllocation;
 
     return (
 

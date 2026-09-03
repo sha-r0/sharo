@@ -4,18 +4,17 @@ import {
     doc,
     getDoc,
     getDocs,
-    increment,
     orderBy,
     query,
-    runTransaction,
     serverTimestamp,
-    setDoc,
     updateDoc,
     where,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import notificationService from "@/app/allservice/notification/notificationService";
+import { normalizeQuotationRecord } from "./quotationCompatibility.js";
 
 export default class QuotationService {
 
@@ -46,18 +45,6 @@ export default class QuotationService {
             db,
             "Companies",
             companyId
-        );
-    }
-
-    static settingsRef(companyId) {
-        this.validateCompanyId(companyId);
-
-        return doc(
-            db,
-            "Companies",
-            companyId,
-            "QuotationSettings",
-            "default"
         );
     }
 
@@ -120,18 +107,22 @@ export default class QuotationService {
     //////////////////////////////////////////////////////
 
     static async getSettings(companyId) {
-        const snapshot = await getDoc(
-            this.settingsRef(companyId)
-        );
+        this.validateCompanyId(companyId);
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch("/api/quotations", { headers: { Authorization: `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to load quotation settings.");
+        return result.settings || null;
+    }
 
-        if (!snapshot.exists()) {
-            return null;
-        }
-
-        return {
-            id: snapshot.id,
-            ...snapshot.data(),
-        };
+    static async getNewQuotationData(companyId, quotationId = "") {
+        this.validateCompanyId(companyId);
+        const token = await auth.currentUser?.getIdToken();
+        const suffix = quotationId ? `?quotationId=${encodeURIComponent(quotationId)}` : "";
+        const response = await fetch(`/api/quotations${suffix}`, { headers: { Authorization: `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to initialize new quotation.");
+        return result;
     }
 
     /**
@@ -151,40 +142,11 @@ export default class QuotationService {
             throw new Error("Quotation settings are required.");
         }
 
-        const settingsReference =
-            this.settingsRef(companyId);
-
-        const existingSnapshot =
-            await getDoc(settingsReference);
-
-        const payload = {
-            ...settingsData,
-            updatedAt: serverTimestamp(),
-        };
-
-        if (!existingSnapshot.exists()) {
-            payload.createdAt = serverTimestamp();
-
-            payload.quotationPrefix =
-                settingsData.quotationPrefix || "QT";
-
-            payload.nextQuotationNumber =
-                Number(
-                    settingsData.nextQuotationNumber || 1
-                );
-        }
-
-        await setDoc(
-            settingsReference,
-            payload,
-            {
-                merge: true,
-            }
-        );
-
-        return {
-            success: true,
-        };
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch("/api/quotations", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(settingsData) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to save quotation settings.");
+        return result;
     }
 
     //////////////////////////////////////////////////////
@@ -228,54 +190,33 @@ export default class QuotationService {
         }
 
         try {
-            const [
-                companySnapshot,
-                settingsSnapshot,
-                quotationSnapshot,
-                clientSnapshot,
-            ] = await Promise.all([
-                getDoc(
-                    this.companyRef(companyId)
-                ),
-
-                getDoc(
-                    this.settingsRef(companyId)
-                ),
-
-                getDocs(quotationQuery),
-
-                getDocs(
-                    query(
-                        this.clientsRef(companyId),
-                        orderBy("companyName")
-                    )
-                ),
+            const quotationSnapshot = await getDocs(quotationQuery);
+            const [companyResult, settingsResult, clientResult] = await Promise.allSettled([
+                getDoc(this.companyRef(companyId)),
+                this.getSettings(companyId),
+                getDocs(query(this.clientsRef(companyId), orderBy("companyName"))),
             ]);
+            for (const [name, result] of [["company", companyResult], ["settings", settingsResult], ["clients", clientResult]]) {
+                if (result.status === "rejected") console.error("Quotation supporting request failed", { source: "QuotationService.getDashboard", operation: "get", path: name === "company" ? `Companies/${companyId}` : name === "settings" ? `Companies/${companyId}/QuotationSettings/default` : `Companies/${companyId}/Clients`, companyId, authUid: auth.currentUser?.uid || null, code: result.reason?.code || result.reason?.message || "unknown" });
+            }
+            const companySnapshot = companyResult.status === "fulfilled" ? companyResult.value : null;
+            const settings = settingsResult.status === "fulfilled" ? settingsResult.value : null;
+            const clientSnapshot = clientResult.status === "fulfilled" ? clientResult.value : null;
 
-            const company = companySnapshot.exists()
+            const company = companySnapshot?.exists()
                 ? {
                     id: companySnapshot.id,
                     ...companySnapshot.data(),
                 }
                 : null;
 
-            const settings = settingsSnapshot.exists()
-                ? {
-                    id: settingsSnapshot.id,
-                    ...settingsSnapshot.data(),
-                }
-                : null;
-
             const quotations =
                 quotationSnapshot.docs.map(
-                    (quotationDocument) => ({
-                        id: quotationDocument.id,
-                        ...quotationDocument.data(),
-                    })
+                    (quotationDocument) => normalizeQuotationRecord(quotationDocument.id, quotationDocument.data())
                 );
 
             const clients =
-                clientSnapshot.docs.map(
+                (clientSnapshot?.docs || []).map(
                     (clientDocument) => ({
                         id: clientDocument.id,
                         ...clientDocument.data(),
@@ -423,56 +364,11 @@ export default class QuotationService {
             );
         }
 
-        const quotationReference = doc(
-            this.quotationsRef(companyId)
-        );
-
-        const settingsReference =
-            this.settingsRef(companyId);
-
-        await runTransaction(
-            db,
-            async (transaction) => {
-                const settingsSnapshot =
-                    await transaction.get(
-                        settingsReference
-                    );
-
-                if (!settingsSnapshot.exists()) {
-                    throw new Error(
-                        "Quotation setup is incomplete."
-                    );
-                }
-
-                transaction.set(
-                    quotationReference,
-                    {
-                        id: quotationReference.id,
-                        ...data,
-
-                        status:
-                            data.status || "Draft",
-
-                        createdAt:
-                            serverTimestamp(),
-
-                        updatedAt:
-                            serverTimestamp(),
-                    }
-                );
-
-                transaction.update(
-                    settingsReference,
-                    {
-                        nextQuotationNumber:
-                            increment(1),
-
-                        updatedAt:
-                            serverTimestamp(),
-                    }
-                );
-            }
-        );
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch("/api/quotations", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to create quotation.");
+        const quotationId = result.id;
 
         try {
             await notificationService.emitSafe(
@@ -486,14 +382,14 @@ export default class QuotationService {
                     targetRole: "manager",
 
                     actionId:
-                        quotationReference.id,
+                        quotationId,
 
                     actionRoute:
                         "/manager/quotation-builder",
 
                     metadata: {
                         quotationId:
-                            quotationReference.id,
+                            quotationId,
 
                         quotationNumber:
                             data.quotationNumber || null,
@@ -510,7 +406,7 @@ export default class QuotationService {
             );
         }
 
-        return quotationReference.id;
+        return quotationId;
     }
 
     //////////////////////////////////////////////////////

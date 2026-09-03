@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/app/(auth)/context/AuthContext";
@@ -57,6 +57,10 @@ export default function Dashboard() {
     const [search, setSearch] = useState("");
 
     const [status, setStatus] = useState("All");
+
+    const [page, setPage] = useState(1);
+
+    const [pageSize, setPageSize] = useState(10);
 
     const [viewMode, setViewMode] = useState("all");
 
@@ -148,7 +152,7 @@ export default function Dashboard() {
     // Filtering
     /////////////////////////////////////////////////
 
-    const filteredQuotations = dashboard.quotations.filter((item) => {
+    const filteredQuotations = useMemo(() => dashboard.quotations.filter((item) => {
 
         ////////////////////////////////////////////
         // Search
@@ -192,7 +196,26 @@ export default function Dashboard() {
 
         );
 
-    });
+    }), [dashboard.quotations, search, status]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredQuotations.length / pageSize));
+
+    const paginatedQuotations = filteredQuotations.slice(
+        (page - 1) * pageSize,
+        page * pageSize
+    );
+
+    useEffect(() => {
+
+        setPage(1);
+
+    }, [search, status, viewMode, month]);
+
+    useEffect(() => {
+
+        if (page > totalPages) setPage(totalPages);
+
+    }, [page, totalPages]);
 
     /////////////////////////////////////////////////
     // Loading
@@ -271,7 +294,20 @@ export default function Dashboard() {
 
             <RecentQuotationTable
 
-                quotations={filteredQuotations}
+                quotations={paginatedQuotations}
+
+                totalQuotations={filteredQuotations.length}
+
+                page={page}
+
+                pageSize={pageSize}
+
+                onPageChange={setPage}
+
+                onPageSizeChange={(value) => {
+                    setPageSize(value);
+                    setPage(1);
+                }}
 
                 onView={(row) => router.push(`/manager/quotation-builder/new?id=${row.id}&mode=view`)}
 

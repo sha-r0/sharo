@@ -1,11 +1,15 @@
-import { ALL_PERMISSIONS, DEFAULT_ROLE_LEVELS, calculateEffectivePermissions, permissionForPath, permissionsForRole, normalizeRoleId } from "./permissionCatalog";
-import { resolveEmployeeLoginEnabled, resolveEmployeeRoleId, resolveEmployeeStatus, resolvePermissionOverrides } from "./employeeAuth";
+import { ALL_PERMISSIONS, DEFAULT_ROLE_LEVELS, calculateEffectivePermissions, permissionForPath, permissionsForRole, normalizeRoleId } from "./permissionCatalog.js";
+import { resolveEmployeeLoginEnabled, resolveEmployeeRoleId, resolveEmployeeStatus, resolvePermissionOverrides } from "./employeeAuth.js";
 export function resolveAccess({ currentUser, employee, company, role }) {
-  const isOwner = Boolean(currentUser?.uid && company?.ownerUid === currentUser.uid) || normalizeRoleId(currentUser?.role || employee?.access?.roleId || employee?.employment?.role) === "owner";
-  const roleId = isOwner ? "owner" : normalizeRoleId(resolveEmployeeRoleId(employee, currentUser));
+  // Ownership is authoritative only when the authenticated Firebase UID matches
+  // the trusted company document. Employee/root profile roles are editable data
+  // and must never be able to promote an account to owner.
+  const isOwner = Boolean(currentUser?.uid && company?.ownerUid === currentUser.uid);
+  const requestedRoleId = normalizeRoleId(resolveEmployeeRoleId(employee, currentUser));
+  const roleId = isOwner ? "owner" : requestedRoleId === "owner" ? "employee" : requestedRoleId;
   const storedPermissions = employee?.access?.effectivePermissions || employee?.effectivePermissions;
   const hasStoredPermissions = Array.isArray(storedPermissions);
-  const base = role?.permissions || permissionsForRole(roleId);
+  const base = !isOwner && requestedRoleId === "owner" ? permissionsForRole(roleId) : role?.permissions || permissionsForRole(roleId);
   const overrides = resolvePermissionOverrides(employee);
   // Firestore rules use access.effectivePermissions. Prefer that same
   // server-maintained snapshot so route checks and rules cannot disagree.

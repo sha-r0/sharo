@@ -3,7 +3,7 @@ const number=(value)=>Number(value||0)||0;
 const asDate=(value)=>{if(!value)return null;if(typeof value.toDate==="function")return value.toDate();if(Number.isFinite(value.seconds))return new Date(value.seconds*1000);const result=value instanceof Date?value:new Date(value);return Number.isNaN(result.getTime())?null:result;};
 const key=(value)=>{const date=asDate(value);return date?`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`:typeof value==="string"?value.slice(0,10):"";};
 const hours=(item)=>{const direct=number(item.totalHours||item.hoursWorked||item.durationHours||item.hours);if(direct)return direct;const start=asDate(item.startTime||item.checkIn),end=asDate(item.endTime||item.checkOut);return start&&end?Math.max(0,(end-start)/3_600_000):0;};
-const accepted=(item)=>!["rejected","cancelled","failed","void"].includes(lower(item.status));
+const accepted=(item)=>!["rejected","cancelled","deleted","failed","void"].includes(lower(item.status));
 export default class ProjectCostService {
   static calculate(data){
     const {project}=data;const employees=project.employees||[];
@@ -11,7 +11,7 @@ export default class ProjectCostService {
     const employeeCost=employeeRows.reduce((sum,item)=>sum+item.cost,0);const employeeHours=employeeRows.reduce((sum,item)=>sum+item.hours,0);
     const departmentCost=employeeRows.reduce((result,item)=>({...result,[item.department]:(result[item.department]||0)+item.cost}),{});
     const vendorPayments=data.vendorPayments.filter((item)=>["paid","completed","approved"].includes(lower(item.status))||!item.status);const vendorCost=vendorPayments.reduce((sum,item)=>sum+number(item.amount),0);
-    const expenses=data.expenses.filter((item)=>accepted(item)&&!["pending","submitted"].includes(lower(item.status))&&!item.vendorPaymentId&&!lower(item.module).includes("vendor-payment")&&!lower(item.type).includes("vendor payment"));
+    const expenses=data.expenses.filter((item)=>accepted(item)&&!item.vendorPaymentId&&!lower(item.module).includes("vendor-payment")&&!lower(item.type).includes("vendor payment"));
     const expenseCost=expenses.reduce((sum,item)=>sum+number(item.amount),0);const actualCost=employeeCost+vendorCost+expenseCost;
     const budget=number(project.approvedBudget||project.budget);const contract=number(project.contractValue||project.poAmount);
     const vendorAssignments=(project.vendors||[]).map((assignment)=>{const ids=new Set([assignment.firestoreId,assignment.vendorId].filter(Boolean).map(String));const paid=vendorPayments.filter((item)=>ids.has(String(item.vendorId))).reduce((sum,item)=>sum+number(item.amount),0);const allocated=number(assignment.allocatedAmount||assignment.contractValue);return{...assignment,allocatedAmount:allocated,paidAmount:paid,remainingAmount:Math.max(0,allocated-paid),paymentPercent:allocated?paid/allocated*100:0};});

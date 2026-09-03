@@ -4,6 +4,9 @@ import fs from "node:fs";
 
 const serviceSource = fs.readFileSync(new URL("../src/app/allservice/employee/employeeService.js", import.meta.url), "utf8");
 const routeSource = fs.readFileSync(new URL("../src/app/api/rbac/users/route.js", import.meta.url), "utf8");
+const directorySource = fs.readFileSync(new URL("../src/app/(dashboard)/manager/userManagement/page.jsx", import.meta.url), "utf8");
+const roleManagementSource = fs.readFileSync(new URL("../src/app/(dashboard)/manager/userManagement/components/RoleManagement.jsx", import.meta.url), "utf8");
+const firestoreHelpersSource = fs.readFileSync(new URL("../src/lib/firestore-firebase.js", import.meta.url), "utf8");
 
 test("employee create and edit use authenticated backend profile operations", () => {
   assert.match(serviceSource, /method: "POST"/);
@@ -18,3 +21,12 @@ test("employee profile backend derives company and preserves immutable employee 
   assert.doesNotMatch(routeSource, /updates\.employeeId\s*=/);
 });
 
+test("employee directory lists the company-scoped collection", () => {
+  assert.match(directorySource, /employeeService\.getEmployees\(/);
+  assert.match(firestoreHelpersSource, /collection\(\s*db,\s*"Companies",\s*companyId,\s*"Usermanagement"\s*\)/);
+});
+
+test("role management does not attempt the server-owned permission catalog write", () => {
+  assert.doesNotMatch(roleManagementSource, /ensureCatalog|permissionRepository/);
+  assert.match(roleManagementSource, /roleRepository\.list\(company\.id\)/);
+});

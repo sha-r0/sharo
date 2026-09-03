@@ -94,7 +94,11 @@ export default function useProjects() {
 
                 form,
 
-                currentUser
+                currentUser,
+                {
+                    projects,
+                    ownerUid: company?.ownerUid || null,
+                }
 
             );
 
@@ -108,7 +112,7 @@ export default function useProjects() {
 
         }
 
-    }, [companyId, currentUser]);
+    }, [companyId, currentUser, company?.ownerUid, projects]);
 
     /* =======================================================
         Update
@@ -146,13 +150,17 @@ export default function useProjects() {
 
                 companyId,
 
-                firestoreId
+                firestoreId,
+                {
+                    authUid: currentUser?.uid || null,
+                    ownerUid: company?.ownerUid || null,
+                }
 
             );
 
         },
 
-        [companyId]
+        [companyId, currentUser?.uid, company?.ownerUid]
 
     );
 

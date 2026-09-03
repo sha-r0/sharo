@@ -624,8 +624,6 @@ export default function EmployeePage() {
 
     const [search, setSearch] = useState("");
 
-    const [department, setDepartment] = useState("All");
-
     const [role, setRole] = useState("All");
 
     const [status, setStatus] = useState("All");
@@ -673,24 +671,6 @@ export default function EmployeePage() {
         }
 
     }
-
-    const departments = useMemo(() => {
-
-        return [
-
-            ...new Set(
-
-                employees.map(
-
-                    (e) => e.department
-
-                )
-
-            ),
-
-        ];
-
-    }, [employees]);
 
     const roles = useMemo(() => {
 
@@ -746,14 +726,6 @@ export default function EmployeePage() {
 
                     ?.includes(keyword);
 
-            const matchesDepartment =
-
-                department === "All"
-
-                ||
-
-                employee.department === department;
-
             const matchesRole =
 
                 role === "All"
@@ -774,13 +746,29 @@ export default function EmployeePage() {
 
                 matchesSearch &&
 
-                matchesDepartment &&
-
                 matchesRole &&
 
                 matchesStatus
 
             );
+
+        }).sort((a, b) => {
+
+            const aEmployeeId = String(a.employeeId ?? "").trim();
+
+            const bEmployeeId = String(b.employeeId ?? "").trim();
+
+            const aIsValid = /^\d+$/.test(aEmployeeId);
+
+            const bIsValid = /^\d+$/.test(bEmployeeId);
+
+            if (!aIsValid && !bIsValid) return 0;
+
+            if (!aIsValid) return 1;
+
+            if (!bIsValid) return -1;
+
+            return Number(aEmployeeId) - Number(bEmployeeId);
 
         });
 
@@ -789,8 +777,6 @@ export default function EmployeePage() {
         employees,
 
         search,
-
-        department,
 
         role,
 
@@ -838,16 +824,11 @@ export default function EmployeePage() {
                 search={search}
                 setSearch={setSearch}
 
-                department={department}
-                setDepartment={setDepartment}
-
                 role={role}
                 setRole={setRole}
 
                 status={status}
                 setStatus={setStatus}
-
-                departments={departments}
 
                 roles={roles}
 

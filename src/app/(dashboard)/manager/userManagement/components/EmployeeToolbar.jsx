@@ -14,16 +14,12 @@ export default function EmployeeToolbar({
     search,
     setSearch,
 
-    department,
-    setDepartment,
-
     role,
     setRole,
 
     status,
     setStatus,
 
-    departments = [],
     roles = [],
 
 }) {
@@ -33,8 +29,6 @@ export default function EmployeeToolbar({
     function resetFilters() {
 
         setSearch("");
-
-        setDepartment("All");
 
         setRole("All");
 
@@ -103,52 +97,6 @@ export default function EmployeeToolbar({
                         />
 
                     </div>
-
-                    {/* Department */}
-
-                    <select
-
-                        value={department}
-
-                        onChange={(e)=>
-
-                            setDepartment(e.target.value)
-
-                        }
-
-                        className="
-                            h-12
-                            rounded-xl
-                            border
-                            border-slate-200
-                            px-4
-                        "
-
-                    >
-
-                        <option value="All">
-
-                            All Departments
-
-                        </option>
-
-                        {departments.map((item)=>(
-
-                            <option
-
-                                key={item}
-
-                                value={item}
-
-                            >
-
-                                {item}
-
-                            </option>
-
-                        ))}
-
-                    </select>
 
                     {/* Role */}
 

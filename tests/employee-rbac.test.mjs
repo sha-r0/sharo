@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildEmployeeLoginEmail, canonicalEmployeeId, employeeMatchesIdentifier, normalizeEmployeeId, resolveEmployeeRoleId, resolvePermissionOverrides } from "../src/app/allservice/rbac/employeeAuth.js";
 import { calculateEffectivePermissions } from "../src/app/allservice/rbac/permissionCatalog.js";
+import { ALL_PERMISSIONS, ROUTE_PERMISSIONS } from "../src/app/allservice/rbac/permissionCatalog.js";
+import { can, canAccessPath, resolveAccess } from "../src/app/allservice/rbac/AuthorizationService.js";
 
 test("employee login email preserves leading zeroes and normalizes corporate identifiers", () => {
   assert.equal(normalizeEmployeeId(" 00000015 "), "00000015");
@@ -38,4 +40,47 @@ test("legacy employee access locations remain readable", () => {
 test("employee compatibility resolvers tolerate a missing employee session", () => {
   assert.equal(resolveEmployeeRoleId(null, null), "employee");
   assert.deepEqual(resolvePermissionOverrides(null), { grant: [], deny: [] });
+});
+
+test("verified company owner receives every permission despite missing employee access and deny overrides", () => {
+  const access = resolveAccess({
+    currentUser: { uid: "owner-a" },
+    company: { id: "company-a", ownerUid: "owner-a" },
+    employee: { access: { permissionOverrides: { deny: [...ALL_PERMISSIONS] }, effectivePermissions: [] } },
+    role: null,
+  });
+
+  assert.equal(access.isOwner, true);
+  assert.equal(access.roleId, "owner");
+  assert.deepEqual(access.permissions, ALL_PERMISSIONS);
+  assert.equal(can(access, "future-company-module.manage"), true);
+  for (const permission of ALL_PERMISSIONS) assert.equal(can(access, permission), true, permission);
+});
+
+test("verified company owner can access every registered manager route", () => {
+  const access = resolveAccess({ currentUser: { uid: "owner-a" }, company: { ownerUid: "owner-a" }, employee: null, role: null });
+  for (const [route] of ROUTE_PERMISSIONS) assert.equal(canAccessPath(access, route), true, route);
+});
+
+test("owner role spoofing cannot grant owner access or bypass denied permissions", () => {
+  const access = resolveAccess({
+    currentUser: { uid: "employee-a", role: "owner" },
+    company: { id: "company-a", ownerUid: "owner-a" },
+    employee: { access: { roleId: "owner", effectivePermissions: ["projects.view"] } },
+    role: { id: "owner", permissions: ALL_PERMISSIONS },
+  });
+
+  assert.equal(access.isOwner, false);
+  assert.equal(access.roleId, "employee");
+  assert.equal(can(access, "projects.view"), true);
+  assert.equal(can(access, "employee.delete"), false);
+  assert.equal(can(access, "future-company-module.manage"), false);
+});
+
+test("owner identity is scoped to the company whose ownerUid matches", () => {
+  const companyA = resolveAccess({ currentUser: { uid: "owner-a" }, company: { id: "company-a", ownerUid: "owner-a" }, employee: null, role: null });
+  const companyB = resolveAccess({ currentUser: { uid: "owner-a", role: "owner" }, company: { id: "company-b", ownerUid: "owner-b" }, employee: null, role: null });
+  assert.equal(companyA.isOwner, true);
+  assert.equal(companyB.isOwner, false);
+  assert.equal(can(companyB, "company.manage"), false);
 });

@@ -48,14 +48,14 @@ export default function NewQuotationForm() {
     let active = true;
     (async () => {
       try {
-        const data = await QuotationService.getDashboard(company.id);
+        const data = await QuotationService.getNewQuotationData(company.id, quotationId || "");
         let next;
         if (quotationId) {
-          const saved = await QuotationService.getQuotation(company.id, quotationId);
+          const saved = data.quotation;
           if (!saved) throw new Error("Quotation not found.");
           next = { ...initialForm, ...saved, taxMode: taxModeFor(saved), items: normalizeItems(saved.items), terms: Array.isArray(saved.terms) ? saved.terms : legacyTerms(saved), template: saved.template || "modern" };
         } else {
-          const quotationNumber = await QuotationService.generateQuotationNumber(company.id);
+          const quotationNumber = data.nextQuotationNumber;
           const validUntil = new Date();
           validUntil.setDate(validUntil.getDate() + Number(data.settings?.defaultValidityDays || 30));
           const defaults = data.settings?.terms || {};

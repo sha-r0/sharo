@@ -10,6 +10,7 @@ import {
   TrendingUp, UserCheck, Users, Wallet,
 } from "lucide-react";
 import { EmptyState, MiniMetric, ProgressRow, SectionCard, StatCard, neo } from "@/app/(dashboard)/manager/dashboard/DashboardWidgets";
+import { getProjectProfit } from "../portfolio/ProjectPortfolioDashboard";
 
 const BarChart = dynamic(() => import("@/app/(dashboard)/manager/dashboard/DashboardWidgets").then((module) => module.BarChart), { loading: () => <div className="h-52 animate-pulse rounded-2xl bg-slate-100" /> });
 const LineChart = dynamic(() => import("@/app/(dashboard)/manager/dashboard/DashboardWidgets").then((module) => module.LineChart), { loading: () => <div className="h-52 animate-pulse rounded-2xl bg-slate-100" /> });
@@ -17,6 +18,27 @@ const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { maxi
 const percent = (value) => `${Number(value || 0).toFixed(0)}%`;
 const date = (value) => value ? new Date(value?.toDate?.() || value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "Insufficient data";
 const severity = { critical: "border-red-200 bg-red-50 text-red-700", high: "border-orange-200 bg-orange-50 text-orange-700", medium: "border-amber-200 bg-amber-50 text-amber-700", low: "border-blue-200 bg-blue-50 text-blue-700" };
+const lower = (value) => String(value || "").trim().toLowerCase();
+const isValidFieldExpense = (expense) => {
+  const status = lower(expense.status || "pending");
+  return !["rejected", "cancelled", "deleted"].includes(status) && !lower(expense.module).includes("vendor-payment") && !lower(expense.type).includes("vendor payment");
+};
+const paymentDateValue = (item) => {
+  const value = item.date || item.createdAt || item.updatedAt;
+  if (!value) return 0;
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  if (Number.isFinite(value?.seconds)) return value.seconds * 1000;
+  const dateValue = new Date(value).getTime();
+  return Number.isNaN(dateValue) ? 0 : dateValue;
+};
+const vendorPaymentIdentity = (item, index = 0) => {
+  const vendorId = String(item.vendorId || item.firestoreId || "").trim();
+  if (vendorId) return `id:${vendorId}`;
+  const vendorName = lower(item.vendorName || item.vendor || item.companyName || item.name);
+  if (vendorName) return `name:${vendorName}`;
+  return `fallback:${index}`;
+};
+const vendorPaymentLabel = (item) => item.vendorName || item.vendor || item.companyName || item.name || "Unknown vendor";
 
 export function ProjectIntelligenceSkeleton() {
   return <div className="animate-pulse space-y-6 px-2 py-2 sm:px-6"><div className="h-44 rounded-3xl bg-white/70" /><div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{Array.from({ length: 8 }, (_, i) => <div key={i} className="h-28 rounded-3xl bg-white/70" />)}</div><div className="grid gap-6 lg:grid-cols-3"><div className="h-80 rounded-3xl bg-white/70 lg:col-span-2" /><div className="h-80 rounded-3xl bg-white/70" /></div></div>;
@@ -25,6 +47,37 @@ export function ProjectIntelligenceSkeleton() {
 export default function ProjectIntelligenceDashboard({ intelligence, refreshing, error, onRefresh }) {
   const router = useRouter(); const [search, setSearch] = useState(""); const [panel, setPanel] = useState("overview");
   const { project, analytics: a, predictions: p, health, alerts } = intelligence;
+  const projectBudget = Number(project.budget || 0);
+  const projectProfit = getProjectProfit({ budget: projectBudget, totalExpense: a.finance.actualExpense });
+  const projectProfitMargin = projectBudget ? projectProfit / projectBudget * 100 : 0;
+  const initialBudget = a.finance.budget;
+  const totalPoAmount = a.finance.contract;
+  const totalExpense = a.finance.actualExpense;
+  const remainingBudget = a.finance.remainingBudget;
+  const receivedFromClient = a.finance.received;
+  const validFieldExpenses = (intelligence.expenses || []).filter(isValidFieldExpense);
+  const fieldExpenseTotal = validFieldExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const vendorPaymentRows = [...(a.vendors.payments || [])].sort((left, right) => paymentDateValue(right) - paymentDateValue(left));
+  const vendorSummary = useMemo(() => {
+    const summaryMap = new Map();
+    vendorPaymentRows.forEach((item, index) => {
+      const key = vendorPaymentIdentity(item, index);
+      const current = summaryMap.get(key) || {
+        key,
+        vendorName: vendorPaymentLabel(item),
+        totalPaid: 0,
+        paymentCount: 0,
+        lastPaymentDate: 0,
+      };
+      const amount = Number(item.amount || 0);
+      current.totalPaid += amount;
+      current.paymentCount += 1;
+      current.vendorName = current.vendorName || vendorPaymentLabel(item);
+      current.lastPaymentDate = Math.max(current.lastPaymentDate, paymentDateValue(item));
+      summaryMap.set(key, current);
+    });
+    return [...summaryMap.values()].sort((left, right) => right.totalPaid - left.totalPaid || right.paymentCount - left.paymentCount || left.vendorName.localeCompare(right.vendorName));
+  }, [vendorPaymentRows]);
   const searchResults = useMemo(() => {
     const text = search.trim().toLowerCase(); if (!text) return [];
     return [
@@ -46,12 +99,13 @@ export default function ProjectIntelligenceDashboard({ intelligence, refreshing,
     ["Failure probability", percent(p.failureProbability), AlertTriangle],
   ];
   const summary = [
-    ["Monthly cost", a.finance.monthlyCost, TrendingDown, "red", "currency"],
-    ["Remaining budget", a.finance.remainingBudget, BadgeIndianRupee, a.finance.remainingBudget < 0 ? "red" : "green", "currency"],
-    ["Pending payment", a.finance.pendingPayment, Clock3, "amber", "currency"],
-    ["Received", a.finance.received, CheckCircle2, "green", "currency"],
+    ["TOTAL PO AMOUNT", totalPoAmount, CircleDollarSign, "blue", "currency"],
+    ["TOTAL EXPENSE", totalExpense, TrendingDown, "red", "currency"],
+    ["REMAINING BUDGET", remainingBudget, BadgeIndianRupee, remainingBudget < 0 ? "red" : "green", "currency", `(Initial Budget ${money(initialBudget)})`],
+    ["PENDING PAYMENT", a.finance.pendingPayment, Clock3, "amber", "currency", `(Total PO ${money(totalPoAmount)})`],
+    ["RECEIVED FROM CLIENT", receivedFromClient, CheckCircle2, "green", "currency"],
   ];
-  const panels = [["overview", "Overview"], ["employees", "Employees"], ["vendors", "Vendors"], ["work", "Work Logs"], ["expenses", "Expenses"], ["vendor-payments", "Vendor Payments"], ["client-payments", "Client Payments"], ["documents", "Documents"], ["activity", "Activity"], ["analytics", "Analytics"], ["timeline", "Timeline"]];
+  const panels = [["overview", "Overview"], ["employees", "Employees"], ["vendors", "Vendors"], ["work", "Work Logs"], ["expenses", "Field Expense"], ["vendor-payments", "Vendor Payments"], ["client-payments", "Client Payments"], ["documents", "Documents"], ["activity", "Activity"], ["analytics", "Analytics"]];
 
   return <div className="space-y-6 px-2 py-2 sm:px-4 lg:px-6">
     <button onClick={() => router.back()} className="flex items-center gap-2 text-sm font-bold text-blue-600"><ArrowLeft size={17} />Back to projects</button>
@@ -151,24 +205,103 @@ export default function ProjectIntelligenceDashboard({ intelligence, refreshing,
     </header>
     {error && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-700">{error}</div>}
     {alerts[0]?.severity === "critical" && <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700"><AlertTriangle className="mt-0.5 shrink-0" size={19} /><div><p className="font-bold">{alerts[0].title}</p><p className="text-sm">{alerts[0].message}</p></div></div>}
-    <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">{summary.map(([title, value, Icon, tone, format]) => <StatCard key={title} title={title} value={value} icon={Icon} tone={tone} format={format} />)}</section>
+    <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">{summary.map(([title, value, Icon, tone, format, hint]) => <StatCard key={title} title={title} value={value} icon={Icon} tone={tone} format={format} hint={hint} />)}</section>
     <nav className={`${neo} flex gap-2 overflow-x-auto rounded-2xl p-2`}>{panels.map(([id, label]) => <button key={id} onClick={() => setPanel(id)} className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold ${panel === id ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`}>{label}</button>)}</nav>
 
-    {panel === "overview" && <div className="space-y-6"><div className="grid gap-6 xl:grid-cols-3"><SectionCard title="Project health intelligence" subtitle={`${health.label} • ${health.score}/100`} className="xl:col-span-2"><div className="grid gap-4 sm:grid-cols-2"><MiniMetric label="Profit" value={a.finance.profit} format="currency" tone={a.finance.profit >= 0 ? "text-emerald-600" : "text-red-600"} /><MiniMetric label="Profit margin" value={a.finance.profitPercent} format="percent" /><MiniMetric label="Average productivity" value={a.employees.averageProductivity} format="percent" /><MiniMetric label="Attendance" value={a.employees.attendancePercent} format="percent" /></div></SectionCard><SectionCard title="Smart alerts" subtitle={`${alerts.length} active signal(s)`}><div className="max-h-72 space-y-2 overflow-y-auto">{alerts.map((alert) => <div key={alert.id} className={`rounded-2xl border p-3 ${severity[alert.severity]}`}><div className="flex items-center justify-between gap-2"><strong className="text-sm">{alert.title}</strong><span className="text-[9px] font-bold uppercase">{alert.severity}</span></div><p className="mt-1 text-xs leading-5 opacity-80">{alert.message}</p></div>)}</div></SectionCard></div><div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Expense trend" subtitle="Actual daily project spend"><LineChart data={a.charts.expenses} color="#7c3aed" /></SectionCard><SectionCard title="Employee performance" subtitle="Productivity score by employee"><BarChart data={a.charts.employee} color="#2563eb" valueFormat={percent} /></SectionCard></div><SectionCard title="Deterministic predictions" subtitle={`Confidence ${p.confidence.toFixed(0)}% • Based on current project signals`}><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{predictions.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-slate-100 bg-white p-4"><div className="flex items-center gap-2 text-slate-500"><Icon size={16} /><span className="text-xs font-semibold">{label}</span></div><p className="mt-2 truncate text-lg font-bold text-slate-800">{value}</p></div>)}</div></SectionCard></div>}
+    {panel === "overview" && <div className="space-y-6"><div className="grid gap-6 xl:grid-cols-3"><SectionCard title="Project health intelligence" subtitle={`${health.label} • ${health.score}/100`} className="xl:col-span-2"><div className="grid gap-4 sm:grid-cols-2"><MiniMetric label="Profit" value={projectProfit} format="currency" tone={projectProfit >= 0 ? "text-emerald-600" : "text-red-600"} /><MiniMetric label="Profit margin" value={projectProfitMargin} format="percent" /><MiniMetric label="Average productivity" value={a.employees.averageProductivity} format="percent" /><MiniMetric label="Attendance" value={a.employees.attendancePercent} format="percent" /></div></SectionCard><SectionCard title="Smart alerts" subtitle={`${alerts.length} active signal(s)`}><div className="max-h-72 space-y-2 overflow-y-auto">{alerts.map((alert) => <div key={alert.id} className={`rounded-2xl border p-3 ${severity[alert.severity]}`}><div className="flex items-center justify-between gap-2"><strong className="text-sm">{alert.title}</strong><span className="text-[9px] font-bold uppercase">{alert.severity}</span></div><p className="mt-1 text-xs leading-5 opacity-80">{alert.message}</p></div>)}</div></SectionCard></div><div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Expense trend" subtitle="Actual daily project spend"><LineChart data={a.charts.expenses} color="#7c3aed" /></SectionCard><SectionCard title="Employee performance" subtitle="Productivity score by employee"><BarChart data={a.charts.employee} color="#2563eb" valueFormat={percent} /></SectionCard></div><SectionCard title="Deterministic predictions" subtitle={`Confidence ${p.confidence.toFixed(0)}% • Based on current project signals`}><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{predictions.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-slate-100 bg-white p-4"><div className="flex items-center gap-2 text-slate-500"><Icon size={16} /><span className="text-xs font-semibold">{label}</span></div><p className="mt-2 truncate text-lg font-bold text-slate-800">{value}</p></div>)}</div></SectionCard></div>}
 
     {panel === "analytics" && <div className="space-y-6"><section className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MiniMetric label="Employee cost" value={a.finance.employeeCost} format="currency" /><MiniMetric label="Vendor cost" value={a.finance.vendorCost} format="currency" /><MiniMetric label="Expense cost" value={a.finance.expenseCost} format="currency" /><MiniMetric label="Total project cost" value={a.finance.totalCost} format="currency" /><MiniMetric label="Remaining budget" value={a.finance.remainingBudget} format="currency" tone={a.finance.remainingBudget < 0 ? "text-red-600" : "text-emerald-600"} /><MiniMetric label="Expected profit" value={a.finance.expectedProfit} format="currency" /><MiniMetric label="Budget used" value={a.finance.budgetUsed} format="percent" /><MiniMetric label="Average employee cost/hour" value={a.finance.averageCostPerHour} format="currency" /></section><div className="grid gap-6 lg:grid-cols-3"><SectionCard title="Project cost mix"><BarChart data={a.charts.costMix} /></SectionCard><SectionCard title="Profit trend"><LineChart data={a.charts.profit} color="#10b981" /></SectionCard><SectionCard title="Vendor payment trend"><LineChart data={a.charts.vendorPayments} color="#7c3aed" /></SectionCard></div><SectionCard title="Department cost"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(a.finance.departmentCost || {}).map(([label, value]) => <MiniMetric key={label} label={label} value={value} format="currency" />)}</div></SectionCard></div>}
     {panel === "employees" && <div className="space-y-6"><section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">{[["Assigned", a.employees.assigned], ["Working", a.employees.working], ["Idle", a.employees.idle], ["Absent", a.employees.absent], ["On leave", a.employees.onLeave], ["Late", a.employees.late], ["Employee hours", a.finance.employeeHours], ["Employee cost", a.finance.employeeCost]].map(([label, value], index) => <MiniMetric key={label} label={label} value={value} format={index === 6 ? "hours" : index === 7 ? "currency" : undefined} />)}</section><SectionCard title="Employee analytics" subtitle={`Top performer: ${a.employees.top?.fullName || "Insufficient data"}`}>{a.employees.list.length ? <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left text-xs uppercase tracking-wider text-slate-400"><th className="p-3">Employee</th><th>Designation</th><th>State</th><th>Hours</th><th>Attendance</th><th>Productivity</th></tr></thead><tbody>{a.employees.list.map((item) => <tr key={item.firestoreId || item.employeeId} className="border-b border-slate-100"><td className="p-3 font-bold text-slate-700">{item.fullName}</td><td>{item.designation || "—"}</td><td className="capitalize">{item.status}</td><td>{item.hours.toFixed(1)}h</td><td>{percent(item.attendance)}</td><td className="min-w-40 pr-3"><ProgressRow label="" value={item.productivity} /></td></tr>)}</tbody></table></div> : <EmptyState label="No assigned employees" />}</SectionCard></div>}
     {panel === "work" && <div className="grid gap-6 lg:grid-cols-3"><SectionCard title="Live work status"><div className="grid grid-cols-2 gap-3"><MiniMetric label="Working" value={a.work.working} /><MiniMetric label="Paused" value={a.work.paused} /><MiniMetric label="Today hours" value={a.work.todayHours} format="hours" /><MiniMetric label="Total hours" value={a.work.totalHours} format="hours" /><MiniMetric label="Completed tasks" value={a.work.completedTasks} /><MiniMetric label="Running tasks" value={a.work.runningTasks} /></div></SectionCard><SectionCard title="Realtime work logs" subtitle="Latest employee project work" className="lg:col-span-2">{a.work.logs.length ? <DataList items={a.work.logs.slice(0, 20)} title={(item) => item.title || item.description || item.employeeName || "Work log"} detail={(item) => `${item.status || "Recorded"} • ${item.hoursWorked || item.totalHours || 0}h`} /> : <EmptyState label="No project work logs" />}</SectionCard></div>}
-    {panel === "timeline" && <SectionCard title="Project timeline" subtitle={`${date(project.startDate)} → ${date(project.endDate)}`}>{a.timeline.length ? <div className="space-y-3">{a.timeline.map((item) => <div key={item.id} className="flex gap-4 rounded-2xl border border-slate-100 bg-white p-4"><span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${String(item.status).toLowerCase() === "completed" ? "bg-emerald-500" : item.dueDate && new Date(item.dueDate) < new Date() ? "bg-red-500" : "bg-blue-500"}`} /><div><p className="font-bold text-slate-700">{item.title || item.name || "Milestone"}</p><p className="text-sm text-slate-500">{date(item.dueDate || item.date)} • {item.status || "Pending"}</p></div></div>)}</div> : <EmptyState label="No project milestones found" />}</SectionCard>}
     {panel === "vendors" && <SectionCard title="Assigned vendors" subtitle={`Allocated ${money(a.vendors.allocated)} • Paid ${money(a.vendors.paid)}`}>{a.vendors.list.length ? <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead><tr className="border-b text-left text-xs uppercase text-slate-400"><th className="p-3">Vendor</th><th>Contract</th><th>Paid</th><th>Remaining</th><th>Payment</th><th>Progress</th><th>Status</th><th>Contact</th></tr></thead><tbody>{a.vendors.list.map((item) => <tr key={item.vendorId} className="border-b"><td className="p-3"><button onClick={() => router.push(`/manager/vendors/${item.firestoreId || item.vendorId}`)} className="font-bold text-blue-600">{item.vendorName}</button></td><td>{money(item.allocatedAmount)}</td><td>{money(item.paidAmount)}</td><td>{money(item.remainingAmount)}</td><td>{percent(item.paymentPercent)}</td><td>{percent(item.progress)}</td><td className="capitalize">{item.status}</td><td>{item.contactPerson || item.phone || "—"}</td></tr>)}</tbody></table></div> : <EmptyState label="No vendors assigned" />}</SectionCard>}
+    {panel === "vendor-payments" && (
+      <div className="space-y-6">
+        <SectionCard title="Vendor summary" subtitle="Grouped by vendor">
+          {vendorSummary.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase tracking-wider text-slate-400">
+                    <th className="p-3">Vendor</th>
+                    <th className="p-3 text-right">Total paid</th>
+                    <th className="p-3 text-right">Payments</th>
+                    <th className="p-3">Last payment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendorSummary.map((item) => (
+                    <tr key={item.key} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="p-3 font-semibold text-slate-700">{item.vendorName}</td>
+                      <td className="p-3 text-right font-bold text-slate-800">{money(item.totalPaid)}</td>
+                      <td className="p-3 text-right text-slate-600">{item.paymentCount} payment{item.paymentCount === 1 ? "" : "s"}</td>
+                      <td className="p-3 text-slate-600">{item.lastPaymentDate ? date(item.lastPaymentDate) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState label="No vendor payments found" />
+          )}
+        </SectionCard>
+
+        <SectionCard title="Payment history" subtitle={`Total paid ${money(a.vendors.paid)}`}>
+          {vendorPaymentRows.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1120px] text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase tracking-wider text-slate-400">
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Vendor</th>
+                    <th className="p-3 text-right">Amount</th>
+                    <th className="p-3">Project</th>
+                    <th className="p-3">Reference</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Approved by</th>
+                    <th className="p-3">Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendorPaymentRows.map((item, index) => {
+                    const paymentStatus = lower(item.status || "paid");
+                    const statusClass = paymentStatus === "paid" || paymentStatus === "completed" || paymentStatus === "approved"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : paymentStatus === "pending" || paymentStatus === "submitted"
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-slate-100 text-slate-600";
+                    const approvedBy = item.approvedBy?.name || item.approvedBy?.displayName || item.approvedBy?.email || "—";
+                    return (
+                      <tr key={item.id || `${item.vendorId || "vendor"}-${index}`} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 text-slate-600">{date(item.date || item.createdAt)}</td>
+                        <td className="p-3 font-semibold text-slate-700">{vendorPaymentLabel(item)}</td>
+                        <td className="p-3 text-right font-bold text-slate-800">{money(item.amount)}</td>
+                        <td className="p-3 text-slate-600">{item.projectName || project.projectName || "—"}</td>
+                        <td className="p-3 text-slate-600">{item.referenceNumber || item.reference || "—"}</td>
+                        <td className="p-3">
+                          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold capitalize ${statusClass}`}>{paymentStatus}</span>
+                        </td>
+                        <td className="p-3 text-slate-600">{approvedBy}</td>
+                        <td className="max-w-[240px] p-3">
+                          <p className="truncate text-slate-600">{item.remarks || "—"}</p>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState label="No vendor payments found" />
+          )}
+        </SectionCard>
+      </div>
+    )}
     {panel === "expenses" && (
       <SectionCard
-        title="Project expenses"
-        subtitle={`Approved expense cost ${money(
-          a.finance.expenseCost
-        )}`}
+        title="Field Expenses"
+        subtitle={`Field expense total ${money(fieldExpenseTotal)}`}
       >
-        {intelligence.expenses.length ? (
+        {validFieldExpenses.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-sm">
               <thead>
@@ -183,7 +316,7 @@ export default function ProjectIntelligenceDashboard({ intelligence, refreshing,
               </thead>
 
               <tbody>
-                {intelligence.expenses.map(
+                {validFieldExpenses.map(
                   (item, index) => {
                     const status = String(
                       item.status || "pending"
@@ -256,7 +389,6 @@ export default function ProjectIntelligenceDashboard({ intelligence, refreshing,
         )}
       </SectionCard>
     )}
-    {panel === "vendor-payments" && <SectionCard title="Vendor payments" subtitle={`Total paid ${money(a.vendors.paid)}`}>{a.vendors.payments.length ? <DataList items={a.vendors.payments} title={(item) => item.vendorName || "Vendor payment"} detail={(item) => `${item.referenceNumber || item.status || "Payment"} • ${money(item.amount)}`} /> : <EmptyState label="No vendor payments" />}</SectionCard>}
     {panel === "client-payments" && <div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Client information">{a.client ? <div className="grid grid-cols-2 gap-3"><Info label="Client" value={a.client.clientName || a.client.companyName} /><Info label="Contact" value={a.client.contactPerson} /><Info label="Phone" value={a.client.phone} /><Info label="Email" value={a.client.email} /><Info label="Outstanding" value={money(a.finance.outstanding)} /><Info label="Received" value={money(a.finance.received)} /></div> : <EmptyState label="No linked client record" />}</SectionCard><SectionCard title="Client payment history">{a.payments.history.length ? <DataList items={a.payments.history} title={(item) => item.referenceNumber || item.invoiceNumber || "Client payment"} detail={(item) => `${item.status || "Received"} • ${money(item.amount)}`} /> : <EmptyState label="No client payments" />}</SectionCard></div>}
     {panel === "documents" && <div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Project documents" subtitle="Drawings, contracts, BOQ, invoices, photos and reports">{a.documents.length ? <DataList items={a.documents} title={(item) => item.name || item.fileName || "Document"} detail={(item) => item.type || item.category || "Project file"} /> : <EmptyState label="No project documents found" />}</SectionCard><SectionCard title="Project map & GPS" subtitle="Location and employee punch status"><div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center"><MapPin className="mx-auto text-blue-500" size={30} /><p className="mt-3 font-bold text-slate-700">{typeof a.map.location === "string" ? a.map.location : "No project coordinates"}</p><p className="mt-1 text-sm text-slate-500">{a.map.gps.length} GPS record(s) • Radius {a.map.radius || "—"}m</p></div></SectionCard></div>}
     {panel === "activity" && <SectionCard title="Activity timeline" subtitle="Work, expenses, payments and project events">{a.activity.length ? <DataList items={a.activity.slice(0, 40)} title={(item) => item.title} detail={(item) => `${item.detail || "Activity"} • ${date(item.date)}`} /> : <EmptyState label="No project activity found" />}</SectionCard>}

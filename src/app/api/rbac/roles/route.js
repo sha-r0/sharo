@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { adminDb } from "@/lib/firebase-admin";
 import { ALL_PERMISSIONS, DEFAULT_ROLE_LEVELS, calculateEffectivePermissions, normalizeRoleId } from "@/app/allservice/rbac/permissionCatalog";
 import { resolvePermissionOverrides } from "@/app/allservice/rbac/employeeAuth";
+import { authorizeCompanyRequest } from "@/lib/server/authorizeCompanyRequest";
 
 export async function PUT(request) {
   try {
-    const header = request.headers.get("authorization") || "";
-    if (!header.startsWith("Bearer ")) throw new Error("UNAUTHENTICATED");
-    const token = await adminAuth.verifyIdToken(header.slice(7), true);
-    const root = await adminDb.collection("Usermanagement").where("uid", "==", token.uid).limit(1).get();
-    if (root.empty) throw new Error("UNAUTHENTICATED");
-    const companyId = root.docs[0].data().companyId;
+    const context = await authorizeCompanyRequest(request);
+    if (!context.isOwner) throw new Error("FORBIDDEN");
+    const { token, companyId } = context;
     const companyRef = adminDb.collection("Companies").doc(companyId);
     const companySnap = await companyRef.get();
     if (!companySnap.exists || companySnap.data().ownerUid !== token.uid) throw new Error("FORBIDDEN");
