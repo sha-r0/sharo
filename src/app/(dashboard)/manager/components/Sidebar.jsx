@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  BanknoteArrowDown, Bell, Building2, CalendarCheck2, ChevronRight, ClipboardList,
+  BanknoteArrowDown, BarChart3, Bell, Building2, CalendarCheck2, ChevronRight, ClipboardList,
   FileCheck2, FilePlus2, FolderKanban, LayoutDashboard, LogOut, MapPinned, Menu,
   ReceiptIndianRupee, Settings2, ShieldCheck, Store, UserPlus, Users, WalletCards,
 } from "lucide-react";
@@ -22,17 +23,16 @@ const navigation = [
     label: "People & Workforce",
     items: [
       { label: "Employees", href: "/manager/userManagement", icon: Users, children: [
-        { label: "Employee Directory", href: "/manager/userManagement" },
         { label: "Add Employee", href: "/manager/userManagement/add", icon: UserPlus },
       ] },
       { label: "Workforce", href: "/manager/Workforce", icon: CalendarCheck2, children: [
-        { label: "Workforce Overview", href: "/manager/Workforce" },
         { label: "Attendance", href: "/manager/Workforce/attendance" },
         { label: "GPS Approval", href: "/manager/Workforce/gps-approval", icon: MapPinned },
         { label: "Leave Policy", href: "/manager/Workforce/leave-policy" },
         { label: "Shift Policy", href: "/manager/Workforce/shift-policy" },
         { label: "Payroll", href: "/manager/Workforce/payroll", icon: WalletCards },
       ] },
+      { label: "Performance", href: "/manager/performance", icon: BarChart3 },
     ],
   },
   {
@@ -49,14 +49,15 @@ const navigation = [
     label: "Finance & Sales",
     items: [
       { label: "Billing & Invoices", href: "/manager/billing", icon: WalletCards, children: [
-        { label: "Billing Dashboard", href: "/manager/billing" },
         { label: "Create Invoice", href: "/manager/billing/new", icon: FilePlus2 },
         { label: "Billing Settings", href: "/manager/billing/settings", icon: Settings2 },
       ] },
       { label: "Quotations", href: "/manager/quotation-builder", icon: FileCheck2, children: [
-        { label: "Quotation Dashboard", href: "/manager/quotation-builder" },
         { label: "New Quotation", href: "/manager/quotation-builder/new" },
         { label: "Quotation Setup", href: "/manager/quotation-builder/setup" },
+      ] },
+      { label: "Purchase Orders", href: "/manager/purchase-orders", icon: ClipboardList, children: [
+        { label: "Create Purchase Order", href: "/manager/purchase-orders/new", icon: FilePlus2 },
       ] },
     ],
   },
@@ -75,11 +76,32 @@ export default function Sidebar({ expanded, onExpandedChange }) {
   const pathname = usePathname();
   const router = useRouter();
   const { company, currentUser, access } = useAuth();
-  const scopedNavigation = navigation.map((group) => ({ ...group, items: group.items.map((item) => ({ ...item, children: item.children?.filter((child) => canAccessPath(access, child.href)) })).filter((item) => canAccessPath(access, item.href) || item.children?.length) })).filter((group) => group.items.length);
+  const [openGroups, setOpenGroups] = useState({});
+  const scopedNavigation = useMemo(() => navigation
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .map((item) => ({ ...item, children: item.children?.filter((child) => canAccessPath(access, child.href)) }))
+        .filter((item) => canAccessPath(access, item.href) || item.children?.length),
+    }))
+    .filter((group) => group.items.length), [access]);
+  const activeParentRoutes = useMemo(() => {
+    const routes = {};
+    scopedNavigation.forEach((group) => {
+      group.items.forEach((item) => {
+        const childActive = item.children?.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`));
+        if (childActive) routes[item.href] = true;
+      });
+    });
+    return routes;
+  }, [pathname, scopedNavigation]);
 
   const active = (item) => item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
   const navigate = (href) => router.push(href);
   const logout = async () => { try { if (company?.id && currentUser?.uid) await activityLogRepository.record(company.id, { type: "user.logout", actorId: currentUser.uid, targetUserId: currentUser.uid }); sessionStorage.removeItem(`rbac-session-${currentUser?.uid}`); await signOut(auth); router.replace("/login"); } catch (error) { console.error(error); } };
+  const toggleGroup = (href) => {
+    setOpenGroups((current) => ({ ...current, [href]: !current[href] }));
+  };
 
   return <aside
     onMouseEnter={() => onExpandedChange(true)}
@@ -105,7 +127,7 @@ export default function Sidebar({ expanded, onExpandedChange }) {
         </div>
         {!expanded && <div className="mx-auto mb-2 h-px w-7 bg-slate-200"/>}
         <div className="space-y-1">
-          {group.items.map((item) => <NavItem key={item.href} item={item} expanded={expanded} active={active(item)} pathname={pathname} navigate={navigate}/>) }
+          {group.items.map((item) => <NavItem key={item.href} item={item} expanded={expanded} active={active(item)} pathname={pathname} navigate={navigate} open={Object.prototype.hasOwnProperty.call(openGroups, item.href) ? openGroups[item.href] : Boolean(activeParentRoutes[item.href])} onToggle={() => toggleGroup(item.href)}/>) }
         </div>
       </section>)}
     </nav>
@@ -119,23 +141,41 @@ export default function Sidebar({ expanded, onExpandedChange }) {
   </aside>;
 }
 
-function NavItem({ item, expanded, active, pathname, navigate }) {
+function NavItem({ item, expanded, active, pathname, navigate, open, onToggle }) {
   const Icon = item.icon;
   const childActive = item.children?.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`));
   const selected = active || childActive;
+  const isOpen = Boolean(open);
+  const toggleGroup = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onToggle?.();
+  };
   return <div>
-    <button
+    <div
       onClick={() => navigate(item.href)}
+      role="button"
+      tabIndex={0}
       title={!expanded ? item.label : undefined}
       aria-current={selected ? "page" : undefined}
-      className={`group/item relative flex h-11 w-full items-center rounded-xl border transition-all duration-200 ${expanded ? "px-3" : "justify-center"} ${selected ? `${neoShadow} border-white bg-[#F9FAFC] text-blue-600` : "border-transparent text-slate-500 hover:border-white hover:bg-[#F9FAFC] hover:text-blue-600 hover:shadow-sm"}`}
+      className={`group/item relative flex h-11 w-full cursor-pointer items-center rounded-xl border transition-all duration-200 ${expanded ? "px-3" : "justify-center"} ${selected ? `${neoShadow} border-white bg-[#F9FAFC] text-blue-600` : "border-transparent text-slate-500 hover:border-white hover:bg-[#F9FAFC] hover:text-blue-600 hover:shadow-sm"}`}
     >
       {selected && <span className="absolute -left-2 h-7 w-1 rounded-r-full bg-blue-600"/>}
       <Icon size={19} strokeWidth={selected ? 2.35 : 2} className="shrink-0"/>
       <span className={`ml-3 min-w-0 flex-1 truncate text-left text-sm font-bold transition-all duration-200 ${expanded ? "translate-x-0 opacity-100" : "hidden -translate-x-2 opacity-0"}`}>{item.label}</span>
-      {expanded && item.children?.length > 0 && <ChevronRight size={15} className={`shrink-0 transition-transform ${childActive ? "rotate-90 text-blue-500" : "text-slate-300"}`}/>}
-    </button>
-    {expanded && item.children?.length > 0 && <div className="relative ml-[21px] mt-1 space-y-0.5 border-l border-slate-200 pl-4">
+      {expanded && item.children?.length > 0 && (
+        <button
+          type="button"
+          onClick={toggleGroup}
+          aria-label={`Toggle ${item.label}`}
+          aria-expanded={isOpen}
+          className="ml-2 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-white hover:text-blue-500"
+        >
+          <ChevronRight size={15} className={`transition-transform ${isOpen ? "rotate-90 text-blue-500" : ""}`} />
+        </button>
+      )}
+    </div>
+    {expanded && item.children?.length > 0 && isOpen && <div className="relative ml-[21px] mt-1 space-y-0.5 border-l border-slate-200 pl-4">
       {item.children.map((child) => {
         const isChildActive = pathname === child.href || (child.href !== item.href && pathname.startsWith(`${child.href}/`));
         const ChildIcon = child.icon;

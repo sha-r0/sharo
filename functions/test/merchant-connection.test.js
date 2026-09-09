@@ -38,6 +38,8 @@ function companyHarness(settingsData = null) {
 test("Company A can connect only its own payout settings", async () => {
   const harness = companyHarness();
   const stagedCompanies = [];
+  harness.request.data.publicKey = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnExampleKeyForTestsOnly\n-----END PUBLIC KEY-----";
+  harness.request.data.authMode = "PUBLIC_KEY";
   const result = await connectMerchantPayout(harness.db, harness.request, {
     secretStore: { stageCredentials: async (companyId) => { stagedCompanies.push(companyId); return { secretRef: "projects/p/secrets/company-a", versionName: "versions/1" }; }, activateVersion: async () => {}, discardVersion: async () => {} },
     provider: { verifyConnection: async () => ({ ok: true }) },
@@ -47,6 +49,10 @@ test("Company A can connect only its own payout settings", async () => {
   assert.equal(harness.settings.status, "CONNECTED");
   assert.equal(harness.settings.payoutsEnabled, true);
   assert.equal(harness.settings.secretRef, "projects/p/secrets/company-a");
+  assert.equal(harness.settings.authMode, "PUBLIC_KEY");
+  assert.equal(JSON.stringify(harness.writes).includes("publicKey"), false);
+  assert.equal(JSON.stringify(harness.writes).includes("secret-a"), false);
+  assert.equal(harness.writes.some((write) => write.ref?.collectionName === "Payouts"), false);
 });
 
 test("invalid credentials never mark payout settings connected", async () => {
@@ -58,6 +64,16 @@ test("invalid credentials never mark payout settings connected", async () => {
   assert.equal(result.verified, false);
   assert.notEqual(harness.settings.status, "CONNECTED");
   assert.equal(harness.settings.payoutsEnabled, false);
+});
+
+test("invalid public key is rejected", async () => {
+  const harness = companyHarness();
+  harness.request.data.publicKey = "not-a-valid-key";
+  harness.request.data.authMode = "PUBLIC_KEY";
+  await assert.rejects(connectMerchantPayout(harness.db, harness.request, {
+    secretStore: { stageCredentials: async () => ({ secretRef: "projects/p/secrets/company-a", versionName: "versions/1" }), activateVersion: async () => {}, discardVersion: async () => {} },
+    provider: { verifyConnection: async () => assert.fail("invalid public key must not verify") },
+  }), /INVALID_PUBLIC_KEY|INVALID_CONNECTION_INPUT/);
 });
 
 test("disconnect changes only the authenticated company settings", async () => {
@@ -94,8 +110,9 @@ test("valid mocked Cashfree verification succeeds", async () => {
   const result = await provider.verifyConnection({ environment: "sandbox", authMode: "MERCHANT" }, { clientId: "client-a", clientSecret: "secret-a" });
   assert.equal(result.ok, true);
   assert.equal(result.code, "VERIFIED");
-  assert.equal(request.url, "https://payout-gamma.cashfree.com/api/v1/credentials/verify");
+  assert.equal(String(request.url).startsWith("https://sandbox.cashfree.com/payout/beneficiary?beneficiary_id=SHARO_VERIFY_"), true);
   assert.equal(request.options.method, "GET");
+  assert.equal(request.options.headers["x-api-version"], "2024-01-01");
 });
 
 test("invalid mocked Cashfree credentials return ERROR result", async () => {

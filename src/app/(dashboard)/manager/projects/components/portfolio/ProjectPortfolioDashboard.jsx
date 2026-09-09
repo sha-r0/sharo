@@ -31,13 +31,14 @@ export default function ProjectPortfolioDashboard({ projects, allProjects, clien
   const visible = projects.slice((page - 1) * pageSize, page * pageSize);
   const stats = {
     total: allProjects.length,
+    poAmount: allProjects.reduce((sum, item) => sum + Number(item.contractValue || item.poAmount || 0), 0),
     running: allProjects.filter((item) => effectiveProjectStatus(item).toLowerCase() === "running").length,
     completed: allProjects.filter((item) => effectiveProjectStatus(item).toLowerCase() === "completed").length,
     delayed: allProjects.filter(isProjectDelayed).length,
     budget: allProjects.reduce((sum,item)=>sum+Number(item.budget||0),0),
     profit: allProjects.reduce((sum,item)=>sum+getProjectProfit(item),0),
   };
-  const cards = [["Total Projects",stats.total,FolderKanban,"blue"],["Portfolio Budget",stats.budget,BadgeIndianRupee,"amber","currency"],["Portfolio Profit",stats.profit,TrendingUp,stats.profit>=0?"green":"red","currency"]];
+  const cards = [["Total PO Amount",stats.poAmount,BadgeIndianRupee,"green","currency"],["Portfolio Budget",stats.budget,BadgeIndianRupee,"amber","currency"],["Portfolio Profit",stats.profit,TrendingUp,stats.profit>=0?"green":"red","currency"]];
   const smart = [
     ["all","All","all",stats.total],
     ["pending","Pending","status",allProjects.filter((item)=>effectiveProjectStatus(item).toLowerCase()==="pending").length],

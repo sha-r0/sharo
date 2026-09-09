@@ -9,7 +9,13 @@ function credentialPayload(credentials) {
   const clientId = String(credentials?.clientId || "").trim();
   const clientSecret = String(credentials?.clientSecret || "").trim();
   if (!clientId || !clientSecret) throw new Error("INVALID_MERCHANT_CREDENTIALS");
-  return { clientId, clientSecret };
+  const publicKey = credentials?.publicKey == null || credentials.publicKey === ""
+    ? null
+    : String(credentials.publicKey).trim();
+  if (credentials?.publicKey != null && !publicKey) throw new Error("INVALID_PUBLIC_KEY");
+  if (publicKey && !/BEGIN PUBLIC KEY/.test(publicKey)) throw new Error("INVALID_PUBLIC_KEY");
+  if (publicKey && !/END PUBLIC KEY/.test(publicKey)) throw new Error("INVALID_PUBLIC_KEY");
+  return publicKey ? { clientId, clientSecret, publicKey } : { clientId, clientSecret };
 }
 
 class GoogleSecretManagerStore {

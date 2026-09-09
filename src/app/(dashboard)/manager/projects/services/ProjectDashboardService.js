@@ -4,17 +4,41 @@ import projectRepository from "./projectRepository";
 import ProjectAnalyticsService from "./ProjectAnalyticsService";
 import ProjectPredictionService from "./ProjectPredictionService";
 import ProjectAlertService from "./ProjectAlertService";
+import PurchaseOrderService from "../../purchase-orders/services/PurchaseOrderService";
 import notificationService from "@/app/allservice/notification/notificationService";
 
 class ProjectDashboardService {
     constructor() { this.cache = new Map(); }
 
-    async load(companyId, projectId, force = false) {
+    async load(companyId, projectId, force = false, firebaseUser = null) {
         const key = `${companyId}:${projectId}`;
         const cached = this.cache.get(key);
-        if (!force && cached && Date.now() - cached.savedAt < 60_000) return cached.value;
-        const data = await projectRepository.getIntelligenceData(companyId, projectId, force);
+        let data = !force && cached && Date.now() - cached.savedAt < 60_000
+            ? { ...cached.value }
+            : await projectRepository.getIntelligenceData(companyId, projectId, force);
         if (!data) return null;
+        if (firebaseUser) {
+            try {
+                const response = await PurchaseOrderService.getList(firebaseUser);
+                data.purchaseOrders = (Array.isArray(response.purchaseOrders) ? response.purchaseOrders : []).filter((order) => {
+                    const projectIds = new Set([projectId, data.project?.projectId, data.project?.id].filter(Boolean).map((value) => String(value).trim()));
+                    const orderProjectIds = new Set([
+                        order?.projectFirestoreId,
+                        order?.projectId,
+                        order?.project?.id,
+                        order?.project?.projectId,
+                    ].filter(Boolean).map((value) => String(value).trim()));
+                    const orderName = String(order?.projectNameSnapshot || order?.projectName || "").trim().toLowerCase();
+                    const projectName = String(data.project?.projectName || "").trim().toLowerCase();
+                    return [...orderProjectIds].some((value) => projectIds.has(value)) || (orderName && orderName === projectName);
+                });
+            } catch (error) {
+                console.warn("Project intelligence could not load purchase orders:", error);
+                data.purchaseOrders = [];
+            }
+        } else {
+            data.purchaseOrders = [];
+        }
         const analytics = ProjectAnalyticsService.analyze(data);
         const predictions = ProjectPredictionService.predict(data.project, analytics);
         const alerts = ProjectAlertService.generate(data.project, analytics, predictions);
@@ -37,12 +61,12 @@ class ProjectDashboardService {
         return value;
     }
 
-    subscribe(companyId, projectId, callback, onError) {
+    subscribe(companyId, projectId, firebaseUser, callback, onError) {
         let timer;
         let active = true;
         const refresh = () => {
             clearTimeout(timer);
-            timer = setTimeout(() => this.load(companyId, projectId, true).then((value) => active && callback(value)).catch(onError), 250);
+            timer = setTimeout(() => this.load(companyId, projectId, true, firebaseUser).then((value) => active && callback(value)).catch(onError), 250);
         };
         const paths = [doc(db, "Companies", companyId, "Projectmanagement", projectId), collection(db, "Companies", companyId, "Expenses"), collection(db, "Companies", companyId, "WorkLogs"), collection(db, "Companies", companyId, "VendorPayments"), collection(db, "Companies", companyId, "Payments")];
         const unsubscribers = paths.map((reference) => onSnapshot(reference, refresh, onError));

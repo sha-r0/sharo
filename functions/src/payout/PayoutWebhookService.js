@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const { FieldValue } = require("firebase-admin/firestore");
+const { isCashfreePayoutAuthMode } = require("./PayoutPolicy");
 
 const SUPPORTED_EVENTS = new Set([
   "TRANSFER_ACKNOWLEDGED",
@@ -210,7 +211,7 @@ async function handlePayoutWebhook(db, request, { secretStore, notificationServi
   ]);
   if (!settingsSnapshot.exists || !payoutSnapshot.exists) return { httpStatus: 404, body: { ok: false } };
   const settings = settingsSnapshot.data() || {};
-  if (settings.authMode !== "MERCHANT" || settings.environment !== "sandbox" || !settings.secretRef) return { httpStatus: 403, body: { ok: false } };
+  if (!isCashfreePayoutAuthMode(settings.authMode) || settings.environment !== "sandbox" || !settings.secretRef) return { httpStatus: 403, body: { ok: false } };
   const credentials = await secretStore.resolveAllEnabled(settings.secretRef, { companyId: route.companyId });
   if (!verifyWebhookSignature(rawBody, timestamp, signature, credentials)) return { httpStatus: 401, body: { ok: false } };
 

@@ -55,6 +55,18 @@ export default class AdvanceService {
     return result.data;
   }
 
+  static async retryQueuedPayout(advanceId) {
+    const retry = httpsCallable(functions, "retryQueuedAdvancePayout");
+    const result = await retry({ advanceId });
+    return result.data;
+  }
+
+  static async reconcilePayout(advanceId) {
+    const reconcile = httpsCallable(functions, "reconcileAdvancePayout");
+    const result = await reconcile({ advanceId });
+    return result.data;
+  }
+
   static async recordSettlement(companyId, advance, amount) {
     const settledAmount = Math.min(Number(advance.amount || 0), Number(advance.settledAmount || 0) + Number(amount || 0));
     const remainingAmount = Math.max(0, Number(advance.amount || 0) - settledAmount);

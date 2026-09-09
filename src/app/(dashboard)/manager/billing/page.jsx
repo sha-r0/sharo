@@ -15,7 +15,7 @@ const asDate = (value) => value?.toDate?.() || (value ? new Date(value) : null);
 export default function BillingPage() {
   const { company } = useAuth();
   const router = useRouter();
-  const data = useBillingData(company?.id);
+  const data = useBillingData(company?.id, { includeSettings: false });
   const [tab, setTab] = useState("invoices");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");

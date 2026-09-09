@@ -1,3 +1,22 @@
+const paidStatuses = new Set(["paid", "completed", "approved"]);
+const activeStatuses = new Set(["paid", "completed", "approved", "pending", "submitted", "processing"]);
+const inactiveStatuses = new Set(["failed", "cancelled", "rejected", "void"]);
+
+const lower = (value) => String(value || "").trim().toLowerCase();
+
+export function isVendorPaymentFinanciallyPaid(payment = {}) {
+  return paidStatuses.has(lower(payment?.status));
+}
+
+export function isVendorPaymentActiveAllocation(payment = {}) {
+  const status = lower(payment?.status);
+  return activeStatuses.has(status);
+}
+
+export function isVendorPaymentInactive(payment = {}) {
+  return inactiveStatuses.has(lower(payment?.status));
+}
+
 export function evaluateVendorPayment({ allocatedAmount, paidAmount, paymentAmount, managerApproved }) {
   const allocated = Number(allocatedAmount || 0); const paid = Number(paidAmount || 0); const amount = Number(paymentAmount || 0);
   if (!(amount > 0)) return { allowed: false, reason: "Payment amount must be greater than zero." };

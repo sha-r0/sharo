@@ -98,6 +98,16 @@ service cloud.firestore {
         'correctedByUid', 'correctedByName', 'correctedByRole', 'correctedAt'
       ]);
     }
+    function validVendorPaymentClientWrite() {
+      return request.resource.data.paymentSource == 'project_vendor'
+        && (!('purchaseOrderId' in request.resource.data) || request.resource.data.purchaseOrderId == '')
+        && (!('purchaseOrderBillId' in request.resource.data) || request.resource.data.purchaseOrderBillId == '')
+        && (!('purchaseOrderNumber' in request.resource.data) || request.resource.data.purchaseOrderNumber == '')
+        && (!('purchaseOrderBillNumber' in request.resource.data) || request.resource.data.purchaseOrderBillNumber == '')
+        && (!('billTotal' in request.resource.data) || request.resource.data.billTotal == 0)
+        && (!('billPaidAmount' in request.resource.data) || request.resource.data.billPaidAmount == 0)
+        && (!('billOutstandingAmount' in request.resource.data) || request.resource.data.billOutstandingAmount == 0);
+    }
 
     match /Usermanagement/{userId} {
       allow read: if signedIn() && resource.data.uid == request.auth.uid;
@@ -166,7 +176,11 @@ service cloud.firestore {
       match /WorkLogs/{id} { allow read: if isOwner(companyId) || has(companyId, 'projects.view'); allow write: if canWrite(companyId, 'projects'); }
       match /Clients/{id} { allow read: if has(companyId, 'clients.view'); allow write: if canWrite(companyId, 'clients'); }
       match /Vendors/{id} { allow read: if has(companyId, 'vendors.view'); allow write: if canWrite(companyId, 'vendors'); }
-      match /VendorPayments/{id} { allow read: if has(companyId, 'vendors.view'); allow write: if canWrite(companyId, 'vendors'); }
+      match /VendorPayments/{id} {
+        allow read: if has(companyId, 'vendors.view');
+        allow create, update: if canWrite(companyId, 'vendors') && validVendorPaymentClientWrite();
+        allow delete: if canWrite(companyId, 'vendors');
+      }
       match /Invoices/{id} { allow read: if has(companyId, 'invoices.view') || has(companyId, 'billing.view'); allow write: if canWrite(companyId, 'invoices') || canWrite(companyId, 'billing'); }
       match /Payments/{id} { allow read: if has(companyId, 'billing.view'); allow write: if canWrite(companyId, 'billing'); }
       match /PayoutSettings/{id} {

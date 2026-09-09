@@ -22,8 +22,8 @@ export const payoutSettingsService = {
     return result.data;
   },
 
-  async connect({ clientId, clientSecret }) {
-    const result = await connectMerchantPayout({ clientId, clientSecret, environment: "sandbox" });
+  async connect({ clientId, clientSecret, publicKey, authMode }) {
+    const result = await connectMerchantPayout({ clientId, clientSecret, publicKey, authMode, environment: "sandbox" });
     return result.data;
   },
 

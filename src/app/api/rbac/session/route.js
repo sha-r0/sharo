@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { refreshPerformancePermissions } from "@/lib/server/refreshPerformancePermissions";
 
 const unauthenticated = () =>
   NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
@@ -90,6 +91,10 @@ export async function GET(request) {
       if (matches.empty) return unauthenticated();
       employeeId = matches.docs[0].id;
     }
+
+    // AuthContext reads the employee snapshot after this response. Complete
+    // the targeted backfill first so sidebar, route guards and APIs agree.
+    await refreshPerformancePermissions(companyId, employeeId, token.uid);
 
     return NextResponse.json({
       rootUserId: rootUser.id,

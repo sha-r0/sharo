@@ -13,8 +13,8 @@ export default function ProjectDetailsPage({
 
     const { id } = use(params);
 
-    const { company } = useAuth();
-    const { data, loading, refreshing, error, refresh } = useProjectIntelligence(company?.id, id);
+    const { company, firebaseUser } = useAuth();
+    const { data, loading, refreshing, error, refresh } = useProjectIntelligence(company?.id, id, firebaseUser);
 
     if (loading) {
 

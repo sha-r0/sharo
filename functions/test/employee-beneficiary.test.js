@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const CashfreePayoutProvider = require("../src/payout/providers/CashfreePayoutProvider");
 const {
   assertVerifiedMerchantSettings,
@@ -109,10 +110,30 @@ test("credentials and bank account are absent from provider result", async () =>
   assert.equal(JSON.stringify(normalized).includes(bank.accountNumber), false);
 });
 
-function syncHarness({ employeeExists = true } = {}) {
+test("PUBLIC_KEY beneficiary requests include x-cf-signature", async () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: "spki", format: "pem" },
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  });
+  let request;
+  const provider = new CashfreePayoutProvider(null, async (url, options) => {
+    request = { url: String(url), options };
+    return response(404, {});
+  }, { nowProvider: () => 1720000000 });
+  await provider.getBeneficiary({ environment: "sandbox", authMode: "PUBLIC_KEY" }, { clientId: "client-a", clientSecret: "secret-a", publicKey }, { beneficiaryId: "bene-safe" });
+  assert.equal(typeof request.options.headers["x-cf-signature"], "string");
+  const decrypted = crypto.privateDecrypt({
+    key: privateKey,
+    padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+  }, Buffer.from(request.options.headers["x-cf-signature"], "base64")).toString("utf8");
+  assert.equal(decrypted, "client-a.1720000000");
+});
+
+function syncHarness({ employeeExists = true, settingsOverrides = {} } = {}) {
   const collections = [];
   let employeeData = { bankDetails: bank };
-  const settings = { provider: "cashfree", environment: "sandbox", authMode: "MERCHANT", status: "CONNECTED", payoutsEnabled: true, secretRef: "projects/p/secrets/company-a" };
+  const settings = { provider: "cashfree", environment: "sandbox", authMode: "MERCHANT", status: "CONNECTED", payoutsEnabled: true, secretRef: "projects/p/secrets/company-a", ...settingsOverrides };
   const document = (collectionName, id) => ({
     collectionName,
     id,
@@ -153,6 +174,28 @@ test("valid backend sync stores only safe beneficiary metadata and creates no pa
   assert.equal(Object.hasOwn(harness.employee.payoutBeneficiary, "accountNumber"), false);
   assert.equal(JSON.stringify(harness.employee.payoutBeneficiary).includes(bank.accountNumber), false);
   assert.equal(harness.collections.includes("Payouts"), false);
+});
+
+test("PUBLIC_KEY beneficiary sync is accepted and sends x-cf-signature", async () => {
+  const harness = syncHarness({ settingsOverrides: { authMode: "PUBLIC_KEY" } });
+  harness.request.data.employeeFirestoreId = "employee-a";
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: "spki", format: "pem" },
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  });
+  let request;
+  const result = await syncEmployeePayoutBeneficiary(harness.db, harness.request, {
+    credentialResolver: { resolve: async (_settings, context) => ({ configured: context.companyId === "company-a", authMode: "PUBLIC_KEY", credentials: { clientId: "private", clientSecret: "private", publicKey } }) },
+    provider: new CashfreePayoutProvider(null, async (url, options) => {
+      request = { url: String(url), options };
+      return options.method === "GET" ? response(404, { code: "BENEFICIARY_NOT_FOUND" }) : response(201, providerRecord(beneficiaryId("company-a", "employee-a", bankFingerprint(bank))));
+    }, { nowProvider: () => 1720000000 }),
+  });
+  assert.equal(result.payoutReady, true);
+  assert.equal(request.options.headers["x-api-version"], "2024-01-01");
+  const decrypted = crypto.privateDecrypt({ key: privateKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING }, Buffer.from(request.options.headers["x-cf-signature"], "base64")).toString("utf8");
+  assert.equal(decrypted, "private.1720000000");
 });
 
 test("Company A cannot synchronize a Company B employee", async () => {

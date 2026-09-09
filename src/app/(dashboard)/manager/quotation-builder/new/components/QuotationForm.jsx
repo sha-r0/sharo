@@ -59,7 +59,7 @@ export default function NewQuotationForm() {
           const validUntil = new Date();
           validUntil.setDate(validUntil.getDate() + Number(data.settings?.defaultValidityDays || 30));
           const defaults = data.settings?.terms || {};
-          next = { ...initialForm, quotationNumber, validUntil: validUntil.toISOString().slice(0, 10), salesPerson: company.ownerName || "", paymentTerms: defaults.paymentTerms || "", deliveryTerms: defaults.deliveryTerms || "", warranty: defaults.warranty || "", notes: defaults.notes || "", declaration: defaults.declaration || "", terms: legacyTerms(defaults), items: [newItem()] };
+          next = { ...initialForm, quotationNumber, validUntil: validUntil.toISOString().slice(0, 10), salesPerson: "", paymentTerms: defaults.paymentTerms || "", deliveryTerms: defaults.deliveryTerms || "", warranty: defaults.warranty || "", notes: defaults.notes || "", declaration: defaults.declaration || "", terms: legacyTerms(defaults), items: [newItem()] };
         }
         if (active) { setSettings(data.settings); setClients(data.clients || []); setForm(next); setSaveState("saved"); }
       } catch (error) { toast.error(error.message || "Unable to load quotation."); }
@@ -81,7 +81,36 @@ export default function NewQuotationForm() {
   const updateSubDescription = (id, subIndex, value) => update("items", form.items.map((item) => item.id === id ? { ...item, subDescriptions: item.subDescriptions.map((sub, index) => index === subIndex ? value : sub) } : item));
   const removeSubDescription = (id, subIndex) => update("items", form.items.map((item) => item.id === id ? { ...item, subDescriptions: item.subDescriptions.filter((_, index) => index !== subIndex) } : item));
   const updateTerm = (index, value) => update("terms", form.terms.map((term, termIndex) => termIndex === index ? value : term));
-  const selectClient = (id) => { const client = clients.find((item) => item.id === id); if (!client) return update("clientId", ""); setForm((current) => ({ ...current, clientId: client.id, clientName: client.companyName || client.clientName || client.name || "", contactPerson: client.contactPerson || "", phone: client.phone || "", email: client.email || "", gstNumber: client.gstNumber || client.gst || "", billingAddress: addressText(client.address || client.billingAddress), shippingAddress: addressText(client.address || client.shippingAddress) })); setSaveState("unsaved"); };
+  const selectClient = (id) => {
+    const client = clients.find((item) => item.id === id);
+    if (!client) {
+      setForm((current) => ({
+        ...current,
+        clientId: "",
+        clientName: "",
+        contactPerson: "",
+        phone: "",
+        email: "",
+        gstNumber: "",
+        billingAddress: "",
+        shippingAddress: "",
+      }));
+      setSaveState("unsaved");
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      clientId: client.id,
+      clientName: client.companyName || client.clientName || client.name || "",
+      contactPerson: client.contactPerson || "",
+      phone: client.phone || "",
+      email: client.email || "",
+      gstNumber: client.gstNumber || client.gst || "",
+      billingAddress: addressText(client.address || client.billingAddress),
+      shippingAddress: addressText(client.address || client.shippingAddress),
+    }));
+    setSaveState("unsaved");
+  };
   const validate = () => { if (!form.clientId || !form.clientName) return "Select a client."; if (!form.subject.trim()) return "Enter a quotation subject."; if (!form.items.length || form.items.some((item) => !item.description.trim() || Number(item.qty) <= 0)) return "Complete every quotation item."; return ""; };
   const persist = async (status) => { const error = validate(); if (error) return toast.error(error); setSaving(true); setSaveState("saving"); try { const payload = { ...form, status, ...total, gstType: form.taxMode === "igst" ? "IGST" : form.taxMode === "none" ? "NONE" : "CGST", terms: form.terms.map((term) => term.trim()).filter(Boolean), items: total.items.map((item) => ({ ...item, subDescriptions: (item.subDescriptions || []).map((description) => description.trim()).filter(Boolean) })), template: form.template || "modern" }; if (quotationId) await QuotationService.updateQuotation(company.id, quotationId, payload); else await QuotationService.createQuotation(company.id, payload); setSaveState("saved"); toast.success(status === "Draft" ? "Draft saved." : "Quotation saved."); router.push("/manager/quotation-builder"); } catch (saveError) { setSaveState("unsaved"); toast.error(saveError.message || "Could not save quotation."); } finally { setSaving(false); } };
   const exportPDF = async () => { setExporting(true); try { await QuotationExportService.exportPDF(previewRef.current, form.quotationNumber); toast.success("Quotation PDF exported."); } catch (error) { console.error(error); toast.error("PDF export failed."); } finally { setExporting(false); } };
@@ -94,7 +123,7 @@ export default function NewQuotationForm() {
 
     <section className={`${neo} rounded-3xl p-5 sm:p-7`}><div className="mb-6 flex items-center gap-3"><span className="rounded-2xl bg-indigo-100 p-3 text-indigo-600"><FileText /></span><div><h2 className="text-xl font-bold">Quotation details</h2><p className="text-sm text-slate-500">Client, validity and commercial reference</p></div></div><div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4"><Field label="Quotation number" value={form.quotationNumber} readOnly /><Field label="Quotation date" type="date" value={form.quotationDate} disabled={readOnly} onChange={(e) => update("quotationDate", e.target.value)} /><Field label="Valid until" type="date" value={form.validUntil} disabled={readOnly} onChange={(e) => update("validUntil", e.target.value)} /><Field label="Sales person" value={form.salesPerson} disabled={readOnly} onChange={(e) => update("salesPerson", e.target.value)} /><Field label="Subject *" value={form.subject} disabled={readOnly} onChange={(e) => update("subject", e.target.value)} /><Select label="Template" value={form.template} disabled={readOnly} onChange={(e) => update("template", e.target.value)} options={[["modern", "Modern Blue"], ["classic", "Classic Executive"], ["minimal", "Minimal Professional"]]} /></div></section>
 
-    <section className={`${neo} rounded-3xl p-5 sm:p-7`}><div className="mb-6 flex items-center gap-3"><span className="rounded-2xl bg-emerald-100 p-3 text-emerald-600"><Building2 /></span><div><h2 className="text-xl font-bold">Client information</h2><p className="text-sm text-slate-500">Select an existing client</p></div></div><div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4"><Select label="Client *" value={form.clientId} disabled={readOnly} onChange={(e) => selectClient(e.target.value)} options={[["", "Select client"], ...clients.map((client) => [client.id, client.companyName || client.clientName || client.name || "Unnamed client"])]} /><Field label="Contact person" value={form.contactPerson} readOnly /><Field label="Phone" value={form.phone} readOnly /><Field label="Email" value={form.email} readOnly /><div className="md:col-span-2 xl:col-span-4"><Field label="Billing address" value={addressText(form.billingAddress)} readOnly /></div></div></section>
+    <section className={`${neo} rounded-3xl p-5 sm:p-7`}><div className="mb-6 flex items-center gap-3"><span className="rounded-2xl bg-emerald-100 p-3 text-emerald-600"><Building2 /></span><div><h2 className="text-xl font-bold">Client information</h2><p className="text-sm text-slate-500">Select an existing client</p></div></div><div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4"><Select label="Client *" value={form.clientId} disabled={readOnly} onChange={(e) => selectClient(e.target.value)} options={[["", "Select client"], ...clients.map((client) => [client.id, client.companyName || client.clientName || client.name || "Unnamed client"])]} /><Field label="Contact person" value={form.contactPerson} onChange={(e) => update("contactPerson", e.target.value)} /><Field label="Phone" value={form.phone} onChange={(e) => update("phone", e.target.value)} /><Field label="Email" value={form.email} onChange={(e) => update("email", e.target.value)} /><div className="md:col-span-2 xl:col-span-4"><Field label="Billing address" value={addressText(form.billingAddress)} onChange={(e) => update("billingAddress", e.target.value)} /></div></div></section>
 
     <section className={`${neo} rounded-3xl p-5 sm:p-7`}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -117,7 +146,47 @@ export default function NewQuotationForm() {
             <div className="grid gap-3 md:grid-cols-12">
               <div className="hidden items-center justify-center text-sm font-bold text-slate-500 md:flex md:col-span-1">{index + 1}</div>
               <div className="md:col-span-4">
-                <Field label="Description" value={item.description} disabled={readOnly} onChange={(e) => updateItem(item.id, "description", e.target.value)} />
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Description
+                  </label>
+
+                  <textarea
+                    value={item.description}
+                    disabled={readOnly}
+                    rows={1}
+                    onChange={(e) => {
+                      updateItem(item.id, "description", e.target.value);
+
+                      // Auto increase height as text grows
+                      e.target.style.height = "auto";
+                      e.target.style.height = `${e.target.scrollHeight}px`;
+                    }}
+                    onInput={(e) => {
+                      e.currentTarget.style.height = "auto";
+                      e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                    }}
+                    placeholder="Enter description"
+                    className="
+      min-h-[52px]
+      w-full
+      resize-none
+      overflow-hidden
+      rounded-xl
+      border
+      border-slate-200
+      bg-white
+      px-4
+      py-3
+      text-sm
+      leading-6
+      outline-none
+      transition
+      focus:border-indigo-500
+      disabled:bg-slate-50
+    "
+                  />
+                </div>
                 <div className="mt-3 space-y-2">{(item.subDescriptions || []).map((sub, subIndex) => <div key={subIndex} className="flex items-center gap-2"><input value={sub} disabled={readOnly} onChange={(e) => updateSubDescription(item.id, subIndex, e.target.value)} placeholder={`Sub description ${subIndex + 1}`} className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-500" />{!readOnly && <button type="button" onClick={() => removeSubDescription(item.id, subIndex)} className="rounded-lg p-2 text-red-500 hover:bg-red-50" aria-label={`Remove sub description ${subIndex + 1}`}><Trash2 size={15} /></button>}</div>)}</div>
                 {!readOnly && <button type="button" onClick={() => addSubDescription(item.id)} className="mt-2 flex items-center gap-1 text-sm font-bold text-indigo-600 hover:text-indigo-700"><Plus size={15} />Add Sub</button>}
               </div>

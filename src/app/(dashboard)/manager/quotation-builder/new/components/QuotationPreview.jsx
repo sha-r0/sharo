@@ -26,15 +26,15 @@ const money = (value) =>
 const addressText = (value) =>
     typeof value === "object" && value
         ? [
-              value.line1,
-              value.line2,
-              value.city,
-              value.state,
-              value.pincode,
-              value.country,
-          ]
-              .filter(Boolean)
-              .join(", ")
+            value.line1,
+            value.line2,
+            value.city,
+            value.state,
+            value.pincode,
+            value.country,
+        ]
+            .filter(Boolean)
+            .join(", ")
         : value || "";
 
 const proxiedImage = (url) =>
@@ -57,10 +57,10 @@ const formatDate = (value) => {
     const date = localDate(value);
     return date
         ? date.toLocaleDateString("en-GB", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-          })
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+        })
         : "—";
 };
 
@@ -155,7 +155,7 @@ export default function QuotationPreview({
 
     useEffect(() => {
         let active = true;
-        let restorePreparedImages = () => {};
+        let restorePreparedImages = () => { };
         const preview = document.getElementById("quotation-preview");
 
         QuotationExportService.prepareDocument(preview).then((restore) => {
@@ -206,7 +206,7 @@ export default function QuotationPreview({
                                     />
                                 )}
                                 <div className="min-w-0">
-                                    <h1 className="text-2xl font-bold tracking-tight" style={{ color: palette.dark }}>
+                                    <h1 className="text-3xl font-bold tracking-tight" style={{ color: palette.dark }}>
                                         {companyName}
                                     </h1>
                                     {branding.tagline && (
@@ -231,7 +231,7 @@ export default function QuotationPreview({
                         </div>
 
                         <div className="quotation-info-block border-t border-slate-200 pt-6 md:col-span-2 md:border-t-0 md:border-l md:pt-0 md:pl-8">
-                            <p className="text-3xl font-bold tracking-[0.12em]" style={{ color: palette.primary }}>
+                            <p className="text-xl font-bold tracking-[0.12em]" style={{ color: palette.primary }}>
                                 QUOTATION
                             </p>
                             <div className="mt-6 space-y-3">
@@ -319,20 +319,73 @@ export default function QuotationPreview({
                             </div>
                         </div>
 
-                        <div className="self-start overflow-hidden border border-slate-200 md:col-span-2">
-                            <div className="space-y-3 px-7 py-[22px] text-xs">
-                                <div className="flex justify-between gap-4 text-lg font-bold" style={{ color: palette.dark }}><span>Subtotal</span><strong className="whitespace-nowrap">₹{money(total.subtotal)}</strong></div>
-                                {total.taxMode === "igst" && <div className="flex justify-between gap-4"><span>IGST 18%</span><span>₹{money(total.igst)}</span></div>}
-                                {total.taxMode === "cgst_sgst" && <>
-                                    <div className="flex justify-between gap-4"><span>CGST 9%</span><span>₹{money(total.cgst)}</span></div>
-                                    <div className="flex justify-between gap-4"><span>SGST 9%</span><span>₹{money(total.sgst)}</span></div>
-                                </>}
-                                {total.extraCharges > 0 && <div className="flex justify-between gap-4"><span>Other charges</span><span>₹{money(total.extraCharges)}</span></div>}
+                        <div className="self-start overflow-hidden rounded-xl border border-slate-200 md:col-span-2">
+
+                            {/* Highlighted Subtotal */}
+                            <div
+                                className="flex items-center justify-between gap-4 px-7 py-5"
+                                style={{ backgroundColor: `${palette.dark}20` }}
+                            >
+                                <span
+                                    className="text-[15px] font-bold uppercase tracking-wide"
+                                    style={{ color: palette.dark }}
+                                >
+                                    Subtotal
+                                </span>
+
+                                <strong
+                                    className="whitespace-nowrap text-[22px] font-extrabold"
+                                    style={{ color: palette.dark }}
+                                >
+                                    ₹{money(total.subtotal)}
+                                </strong>
                             </div>
-                            <div className="flex min-h-[30px] items-center justify-between gap-4 px-6 py-3 text-white" style={{ backgroundColor: palette.dark }}>
-                                <span className="text-[12px] font-bold tracking-wider">TOTAL AMOUNT</span>
-                                <strong className="whitespace-nowrap text-[15px]">₹{money(total.grandTotal)}</strong>
+
+                            {/* Tax Details */}
+                            <div className="space-y-3 border-t border-slate-200 px-7 py-4 text-xs text-slate-600">
+                                {total.taxMode === "igst" && (
+                                    <div className="flex justify-between gap-4">
+                                        <span>IGST 18%</span>
+                                        <span>₹{money(total.igst)}</span>
+                                    </div>
+                                )}
+
+                                {total.taxMode === "cgst_sgst" && (
+                                    <>
+                                        <div className="flex justify-between gap-4">
+                                            <span>CGST 9%</span>
+                                            <span>₹{money(total.cgst)}</span>
+                                        </div>
+
+                                        <div className="flex justify-between gap-4">
+                                            <span>SGST 9%</span>
+                                            <span>₹{money(total.sgst)}</span>
+                                        </div>
+                                    </>
+                                )}
+
+                                {total.extraCharges > 0 && (
+                                    <div className="flex justify-between gap-4">
+                                        <span>Other charges</span>
+                                        <span>₹{money(total.extraCharges)}</span>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Less Highlighted Total */}
+                            <div className="flex items-center justify-between gap-4 border-t border-slate-200 px-7 py-4">
+                                <span className="text-[12px] uppercase tracking-wider text-slate-500">
+                                    Total Amount
+                                </span>
+
+                                <strong
+                                    className="whitespace-nowrap text-[14px]"
+                                    style={{ color: palette.dark }}
+                                >
+                                    ₹{money(total.grandTotal)}
+                                </strong>
+                            </div>
+
                         </div>
                     </section>
 
@@ -373,7 +426,7 @@ export default function QuotationPreview({
                         </section>
                     )}
 
-                    <section className="quotation-signatures relative mt-9 grid grid-cols-1 gap-6 border-t border-slate-200 pt-7 text-center sm:grid-cols-3">
+                    <section className="quotation-signatures relative justify-between mt-9 grid grid-cols-1 gap-6 border-t border-slate-200 pt-7 text-center sm:grid-cols-2">
                         <div className="flex min-h-28 flex-col items-center justify-end">
                             <p className="mb-auto text-[10px] font-bold uppercase tracking-wider text-slate-500">Prepared By</p>
                             {signature.preparedBySignature && <img src={proxiedImage(signature.preparedBySignature)} crossOrigin="anonymous" alt="Prepared By signature" onError={(event) => { event.currentTarget.style.display = "none"; }} className="mb-1 max-h-20 max-w-40 object-contain" />}
@@ -381,10 +434,10 @@ export default function QuotationPreview({
                             <p className="mt-2 text-xs font-bold" style={{ color: palette.dark }}>{form.salesPerson || companyName}</p>
                             <p className="text-[10px] text-slate-500">{companyName}</p>
                         </div>
-                        <div className="flex min-h-28 flex-col items-center justify-between">
+                        {/* <div className="flex min-h-28 flex-col items-center justify-between">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Company Stamp</p>
                             {signature.seal && <img src={proxiedImage(signature.seal)} crossOrigin="anonymous" alt="Company stamp" className="max-h-20 max-w-32 object-contain" />}
-                        </div>
+                        </div> */}
                         <div className="flex min-h-28 flex-col items-center justify-end">
                             <p className="mb-auto text-[10px] font-bold uppercase tracking-wider text-slate-500">Authorized Signatory</p>
                             {signature.signature && <img src={proxiedImage(signature.signature)} crossOrigin="anonymous" alt="Authorized signature" className="mb-1 max-h-14 max-w-32 object-contain" />}

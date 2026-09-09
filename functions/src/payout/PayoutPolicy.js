@@ -2,12 +2,16 @@
 
 const ALLOWED_PROVIDERS = new Set(["cashfree"]);
 const ALLOWED_ENVIRONMENTS = new Set(["sandbox", "production"]);
-const ALLOWED_AUTH_MODES = new Set(["PARTNER", "MERCHANT"]);
+const ALLOWED_AUTH_MODES = new Set(["PARTNER", "MERCHANT", "PUBLIC_KEY"]);
 const ALLOWED_INPUT_FIELDS = new Set(["provider", "environment", "authMode", "merchantId"]);
-const SECRET_FIELDS = new Set(["secretRef", "clientSecret", "clientId", "apiKey", "apiSecret", "credentials", "secret"]);
+const SECRET_FIELDS = new Set(["secretRef", "clientSecret", "clientId", "apiKey", "apiSecret", "credentials", "secret", "publicKey"]);
 
 function canManagePayoutSettings(actor) {
   return Boolean(actor?.isOwner || actor?.permissions?.includes("company.manage"));
+}
+
+function isCashfreePayoutAuthMode(authMode) {
+  return authMode === "MERCHANT" || authMode === "PUBLIC_KEY";
 }
 
 function authorizePayoutSettings(actor) {
@@ -46,4 +50,5 @@ module.exports = {
   authorizePayoutSettings,
   canManagePayoutSettings,
   validatePayoutSettingsInput,
+  isCashfreePayoutAuthMode,
 };

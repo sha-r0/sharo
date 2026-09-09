@@ -6,7 +6,8 @@ const { resolveCompanyActor } = require("../auth/CompanyActor");
 const { assertCompanyScope } = require("./PayoutPolicy");
 
 const ENVIRONMENTS = new Set(["sandbox", "production"]);
-const INPUT_FIELDS = new Set(["clientId", "clientSecret", "environment"]);
+const INPUT_FIELDS = new Set(["clientId", "clientSecret", "publicKey", "environment", "authMode"]);
+const AUTH_MODES = new Set(["MERCHANT", "PUBLIC_KEY"]);
 
 function validateConnectInput(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("INVALID_CONNECTION_INPUT");
@@ -14,10 +15,17 @@ function validateConnectInput(input) {
   const clientId = String(input.clientId || "").trim();
   const clientSecret = String(input.clientSecret || "").trim();
   const environment = String(input.environment || "").trim().toLowerCase();
-  if (!clientId || clientId.length > 256 || !clientSecret || clientSecret.length > 512 || !ENVIRONMENTS.has(environment)) {
+  let publicKey = input.publicKey == null || input.publicKey === "" ? null : String(input.publicKey).trim();
+  if (publicKey && (!/BEGIN PUBLIC KEY/.test(publicKey) || !/END PUBLIC KEY/.test(publicKey))) {
+    throw new Error("INVALID_PUBLIC_KEY");
+  }
+  let authMode = input.authMode == null || input.authMode === "" ? null : String(input.authMode).trim().toUpperCase();
+  if (!authMode) authMode = publicKey ? "PUBLIC_KEY" : "MERCHANT";
+  if (!clientId || clientId.length > 256 || !clientSecret || clientSecret.length > 512 || !ENVIRONMENTS.has(environment) || !AUTH_MODES.has(authMode)) {
     throw new Error("INVALID_CONNECTION_INPUT");
   }
-  return { clientId, clientSecret, environment };
+  if (authMode === "PUBLIC_KEY" && !publicKey) throw new Error("INVALID_CONNECTION_INPUT");
+  return { clientId, clientSecret, publicKey, environment, authMode };
 }
 
 function sanitizedResult(verified, status, message) {
@@ -33,7 +41,7 @@ function verifiedSettings(latest, input, secretRef) {
     ...latest,
     provider: "cashfree",
     environment: input.environment,
-    authMode: "MERCHANT",
+    authMode: input.authMode || "MERCHANT",
     secretRef,
     status: "CONNECTED",
     payoutsEnabled: true,
@@ -60,7 +68,7 @@ function failedSettings(latest, input, verification, preservePrevious) {
     ...latest,
     provider: "cashfree",
     environment: input.environment,
-    authMode: "MERCHANT",
+    authMode: input.authMode || latest.authMode || "MERCHANT",
     secretRef: latest.secretRef || null,
     status: "ERROR",
     payoutsEnabled: false,
@@ -87,6 +95,7 @@ async function connectMerchantPayout(db, request, { secretStore, provider }) {
   const actor = await resolveCompanyActor(db, request.auth);
   const companyId = assertCompanyScope(actor, request.data?.companyId);
   const input = validateConnectInput(request.data || {});
+  const authMode = input.authMode || (input.publicKey ? "PUBLIC_KEY" : "MERCHANT");
   const companyRef = db.collection("Companies").doc(companyId);
   const settingsRef = companyRef.collection("PayoutSettings").doc("default");
   const previousSnapshot = await settingsRef.get();
@@ -96,7 +105,7 @@ async function connectMerchantPayout(db, request, { secretStore, provider }) {
   const verification = await provider.verifyConnection({
     provider: "cashfree",
     environment: input.environment,
-    authMode: "MERCHANT",
+    authMode,
     merchantId: previous.merchantId || null,
   }, input);
 
@@ -115,7 +124,7 @@ async function connectMerchantPayout(db, request, { secretStore, provider }) {
           actorId: actor.uid,
           actorEmployeeId: actor.employeeId,
           companyId,
-          metadata: { settingsId: "default", provider: "cashfree", environment: input.environment, authMode: "MERCHANT" },
+          metadata: { settingsId: "default", provider: "cashfree", environment: input.environment, authMode },
           createdAt: FieldValue.serverTimestamp(),
         }, { merge: false });
       });
@@ -141,7 +150,7 @@ async function connectMerchantPayout(db, request, { secretStore, provider }) {
       actorId: actor.uid,
       actorEmployeeId: actor.employeeId,
       companyId,
-      metadata: { settingsId: "default", provider: "cashfree", environment: input.environment, authMode: "MERCHANT", resultCode: verification?.code || "VERIFICATION_FAILED", previousConnectionPreserved: Boolean(preserved) },
+      metadata: { settingsId: "default", provider: "cashfree", environment: input.environment, authMode, resultCode: verification?.code || "VERIFICATION_FAILED", previousConnectionPreserved: Boolean(preserved) },
       createdAt: FieldValue.serverTimestamp(),
     }, { merge: false });
   });

@@ -8,7 +8,7 @@ const { PayoutCredentialResolver } = require("./PayoutCredentialResolver");
 const { GoogleSecretManagerStore } = require("./GoogleSecretManagerStore");
 const { connectMerchantPayout, disconnectMerchantPayout } = require("./MerchantConnectionService");
 const { syncEmployeePayoutBeneficiary } = require("./EmployeeBeneficiaryService");
-const { initiateAdvancePayout } = require("./AdvancePayoutService");
+const { initiateAdvancePayout, reconcileAdvancePayout, retryQueuedAdvancePayout } = require("./AdvancePayoutService");
 const CashfreePayoutProvider = require("./providers/CashfreePayoutProvider");
 
 const OPTIONS = { region: "asia-south1", cors: true, enforceAppCheck: false };
@@ -18,7 +18,9 @@ function callableError(error) {
   if (code === "UNAUTHENTICATED") return new HttpsError("unauthenticated", "Authentication required.");
   if (["FORBIDDEN", "BROWSER_COMPANY_ID_FORBIDDEN"].includes(code)) return new HttpsError("permission-denied", "You are not allowed to manage payouts.");
   if (["PAYOUT_SETTINGS_NOT_FOUND", "PAYOUT_CONFIG_CHANGED", "PAYOUT_CONNECTION_REQUIRED", "PAYOUT_CREDENTIALS_REQUIRED", "EMPLOYEE_BANK_CHANGED", "BENEFICIARY_NOT_VERIFIED", "BENEFICIARY_BANK_CHANGED", "BENEFICIARY_ENVIRONMENT_MISMATCH", "ADVANCE_NOT_APPROVED", "PAYOUT_ALREADY_INITIATED", "PRODUCTION_DISPATCH_BLOCKED"].includes(code)) return new HttpsError("failed-precondition", "The payout is not eligible or has already been initiated.");
-  if (["EMPLOYEE_NOT_FOUND", "ADVANCE_NOT_FOUND"].includes(code)) return new HttpsError("not-found", "The requested payout source was not found.");
+  if (["EMPLOYEE_NOT_FOUND", "ADVANCE_NOT_FOUND", "PAYOUT_NOT_FOUND", "PAYOUT_SOURCE_NOT_FOUND"].includes(code)) return new HttpsError("not-found", "The requested payout source was not found.");
+  if (["PAYOUT_NOT_PROCESSING", "PAYOUT_NOT_QUEUED"].includes(code)) return new HttpsError("failed-precondition", "The payout is not eligible or has already been initiated.");
+  if (["PAYOUT_NOT_QUEUED"].includes(code)) return new HttpsError("failed-precondition", "The payout is not eligible or has already been initiated.");
   if (code.includes("INVALID") || code === "SECRET_FIELD_FORBIDDEN") return new HttpsError("invalid-argument", "The payout settings are invalid.");
   console.error("Payout settings function failed", { code, name: error?.name || "Error" });
   return new HttpsError("internal", "Unable to process payout settings.");
@@ -84,6 +86,20 @@ function createPayoutSettingsFunctions(db, dependencies = createPayoutDependenci
     initiateAdvancePayout: onCall(OPTIONS, async (request) => {
       try {
         return await initiateAdvancePayout(db, request);
+      } catch (error) {
+        throw callableError(error);
+      }
+    }),
+    reconcileAdvancePayout: onCall(OPTIONS, async (request) => {
+      try {
+        return await reconcileAdvancePayout(db, request, { credentialResolver, provider });
+      } catch (error) {
+        throw callableError(error);
+      }
+    }),
+    retryQueuedAdvancePayout: onCall(OPTIONS, async (request) => {
+      try {
+        return await retryQueuedAdvancePayout(db, request, { credentialResolver, provider });
       } catch (error) {
         throw callableError(error);
       }

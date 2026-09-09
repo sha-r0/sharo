@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { matchesProjectExpense } from "./projectExpenseMatcher";
 
 class ProjectRepository {
 
@@ -227,7 +228,7 @@ class ProjectRepository {
         const assignedVendorIds = new Set((project.vendors || []).flatMap((item) => [item.firestoreId, item.vendorId]).filter(Boolean).map(String));
         const data = {
             project,
-            expenses: expenses.filter(matches), workLogs: [...workLogs, ...legacyWork].filter(matches),
+            expenses: expenses.filter((item) => matchesProjectExpense(item, project)), workLogs: [...workLogs, ...legacyWork].filter(matches),
             attendance, leaves, advances: advances.filter(matches),
             client: clients.find((item) => item.id === project.clientId || item.clientId === project.clientId || item.clientName === project.clientName) || null,
             quotations: quotations.filter((item) => matches(item) || item.clientId === project.clientId),

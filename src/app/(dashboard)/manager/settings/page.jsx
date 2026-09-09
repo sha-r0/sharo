@@ -25,7 +25,7 @@ export default function CompanySettingsPage() {
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
-  const [credentials, setCredentials] = useState({ clientId: "", clientSecret: "" });
+  const [credentials, setCredentials] = useState({ clientId: "", clientSecret: "", publicKey: "", authMode: "PUBLIC_KEY" });
 
   const refreshSettings = async () => {
     const settings = await payoutSettingsService.get();
@@ -69,16 +69,25 @@ export default function CompanySettingsPage() {
       toast.error("Enter the Cashfree sandbox client ID and client secret.");
       return;
     }
+    if (credentials.authMode === "PUBLIC_KEY" && !credentials.publicKey.trim()) {
+      toast.error("Enter the Cashfree public key PEM.");
+      return;
+    }
     setConnecting(true);
     try {
-      const result = await payoutSettingsService.connect({ clientId: credentials.clientId.trim(), clientSecret: credentials.clientSecret });
+      const result = await payoutSettingsService.connect({
+        clientId: credentials.clientId.trim(),
+        clientSecret: credentials.clientSecret,
+        publicKey: credentials.publicKey.trim(),
+        authMode: credentials.authMode,
+      });
       if (!result?.verified) throw new Error("Connection verification failed.");
       await refreshSettings();
       toast.success("Cashfree Payouts connected.");
     } catch {
       toast.error("Unable to verify the Cashfree sandbox connection.");
     } finally {
-      setCredentials({ clientId: "", clientSecret: "" });
+      setCredentials({ clientId: "", clientSecret: "", publicKey: "", authMode: "PUBLIC_KEY" });
       setConnecting(false);
     }
   };
@@ -96,7 +105,7 @@ export default function CompanySettingsPage() {
     }
   };
 
-  const connected = form.status === "CONNECTED" && form.authMode === "MERCHANT" && form.environment === "sandbox";
+  const connected = form.status === "CONNECTED" && (form.authMode === "MERCHANT" || form.authMode === "PUBLIC_KEY") && form.environment === "sandbox";
 
   if (!authorized) {
     return <div className="m-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-800">Company settings require the Company Manage permission.</div>;
@@ -123,7 +132,7 @@ export default function CompanySettingsPage() {
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <Field label="Payout Provider"><select value={form.provider} onChange={(event) => update("provider", event.target.value)} className={inputClass}><option value="cashfree">Cashfree</option></select></Field>
           <Field label="Environment"><select value={form.environment} onChange={(event) => update("environment", event.target.value)} className={inputClass}><option value="sandbox">Sandbox</option><option value="production">Production</option></select></Field>
-          <Field label="Authentication Mode"><select value={form.authMode} onChange={(event) => update("authMode", event.target.value)} className={inputClass}><option value="">Not configured</option><option value="PARTNER">Partner</option><option value="MERCHANT">Merchant</option></select></Field>
+          <Field label="Authentication Mode"><select value={form.authMode} onChange={(event) => update("authMode", event.target.value)} className={inputClass}><option value="">Not configured</option><option value="PARTNER">Partner</option><option value="MERCHANT">Merchant</option><option value="PUBLIC_KEY">Public Key</option></select></Field>
           <Field label="Merchant ID"><input value={form.merchantId} onChange={(event) => update("merchantId", event.target.value)} maxLength={128} placeholder="Not configured" className={inputClass}/></Field>
         </div>
 
@@ -148,15 +157,17 @@ export default function CompanySettingsPage() {
       </div>
 
       {connected && !connectOpen ? <div className="mt-4 grid gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm sm:grid-cols-3">
-        <div><p className="text-xs font-semibold uppercase text-emerald-700">Connection</p><p className="font-bold text-emerald-900">Connected</p></div>
+        <div><p className="text-xs font-semibold uppercase text-emerald-700">Authentication Mode</p><p className="font-bold text-emerald-900">{form.authMode || "PUBLIC_KEY"}</p></div>
         <div><p className="text-xs font-semibold uppercase text-emerald-700">Environment</p><p className="font-bold text-emerald-900">Sandbox</p></div>
         <div><p className="text-xs font-semibold uppercase text-emerald-700">Status</p><p className="font-bold text-emerald-900">Connected</p></div>
       </div> : <form onSubmit={connect} autoComplete="off" className="mt-4 grid gap-4 sm:grid-cols-2">
         <Field label="Environment"><input value="Sandbox" disabled readOnly className={`${inputClass} bg-slate-100 text-slate-600`}/></Field>
+        <Field label="Authentication Mode"><select value={credentials.authMode} onChange={(event) => setCredentials((current) => ({ ...current, authMode: event.target.value }))} className={inputClass}><option value="PUBLIC_KEY">Public Key</option><option value="MERCHANT">Merchant</option></select></Field>
         <Field label="Cashfree Payout Client ID"><input value={credentials.clientId} onChange={(event) => setCredentials((current) => ({ ...current, clientId: event.target.value }))} autoComplete="off" maxLength={256} required className={inputClass}/></Field>
         <div className="sm:col-span-2"><Field label="Cashfree Payout Client Secret"><input type="password" value={credentials.clientSecret} onChange={(event) => setCredentials((current) => ({ ...current, clientSecret: event.target.value }))} autoComplete="new-password" maxLength={512} required className={inputClass}/></Field></div>
+        {credentials.authMode === "PUBLIC_KEY" && <div className="sm:col-span-2"><Field label="Cashfree Public Key PEM"><textarea value={credentials.publicKey} onChange={(event) => setCredentials((current) => ({ ...current, publicKey: event.target.value }))} autoComplete="off" spellCheck={false} rows={6} required className={`${inputClass} h-auto py-3 font-mono text-xs leading-5`}/></Field></div>}
         <div className="flex justify-end gap-2 sm:col-span-2">
-          {connected && <button type="button" onClick={() => { setCredentials({ clientId: "", clientSecret: "" }); setConnectOpen(false); }} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700">Cancel</button>}
+          {connected && <button type="button" onClick={() => { setCredentials({ clientId: "", clientSecret: "", publicKey: "", authMode: "PUBLIC_KEY" }); setConnectOpen(false); }} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700">Cancel</button>}
           <button disabled={connecting} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"><Link2 size={16}/>{connecting ? "Connecting…" : "Connect Cashfree Payouts"}</button>
         </div>
       </form>}

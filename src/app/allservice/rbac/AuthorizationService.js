@@ -25,6 +25,6 @@ export const can = (access, permission) => Boolean(access?.isOwner || !permissio
 export const canAccessPath = (access, pathname) => can(access, permissionForPath(pathname));
 
 export function defaultRouteForAccess(access) {
-  const routes = ["/manager", "/manager/userManagement", "/manager/Workforce/attendance", "/manager/projects", "/manager/expenses", "/manager/advance", "/manager/billing", "/manager/quotation-builder", "/manager/notifications"];
+  const routes = ["/manager", "/manager/userManagement", "/manager/Workforce/attendance", "/manager/performance", "/manager/projects", "/manager/expenses", "/manager/advance", "/manager/billing", "/manager/quotation-builder", "/manager/purchase-orders", "/manager/notifications"];
   return routes.find((route) => canAccessPath(access, route)) || "/manager";
 }

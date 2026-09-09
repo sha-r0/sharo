@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { Trash2, Plus } from "lucide-react";
 
 const neo =
@@ -23,11 +24,18 @@ export default function ProjectEmployeeStep({
   removeEmployee,
   updateEmployee,
 }) {
-  function handleAdd(id) {
-    const emp = employees.find(
-      (employee) => employee.id === id,
-    );
+  const employeePickerRef = useRef(null);
 
+  const sortedEmployees = [...employees].sort((left, right) =>
+    String(left.employeeId || left.id || "").localeCompare(
+      String(right.employeeId || right.id || ""),
+      undefined,
+      { numeric: true, sensitivity: "base" },
+    ),
+  );
+
+  function handleAdd(id) {
+    const emp = employees.find((employee) => employee.id === id);
     if (!emp) return;
 
     const alreadyAdded = form.employees.some(
@@ -35,7 +43,6 @@ export default function ProjectEmployeeStep({
         employee.firestoreId === emp.id ||
         employee.employeeId === emp.employeeId,
     );
-
     if (alreadyAdded) return;
 
     const monthlyGrossSalary = Number(
@@ -48,235 +55,183 @@ export default function ProjectEmployeeStep({
     addEmployee({
       firestoreId: emp.id,
       employeeId: emp.employeeId || emp.id,
-      fullName:
-        emp.fullName ||
-        emp.personalInfo?.fullName ||
-        "Employee",
-      designation:
-        emp.designation ||
-        emp.employment?.designation ||
-        "",
+      fullName: emp.fullName || emp.personalInfo?.fullName || "Employee",
+      designation: emp.designation || emp.employment?.designation || "",
       salary: monthlyGrossSalary,
       hours: 160,
     });
   }
 
-  const totalCost = form.employees.reduce(
-    (sum, employee) => {
-      const monthlySalary = Number(
-        employee.salary || 0,
-      );
+  function openEmployeePicker() {
+    const picker = employeePickerRef.current;
+    if (!picker) return;
+    if (typeof picker.showPicker === "function") {
+      picker.showPicker();
+      return;
+    }
+    picker.click?.();
+  }
 
-      const assignedHours = Number(
-        employee.hours || 0,
-      );
-
-      const hourlyCost =
-        monthlySalary / MONTHLY_WORKING_HOURS;
-
-      return sum + hourlyCost * assignedHours;
-    },
-    0,
-  );
+  const totalCost = form.employees.reduce((sum, employee) => {
+    const monthlySalary = Number(employee.salary || 0);
+    const assignedHours = Number(employee.hours || 0);
+    const hourlyCost = monthlySalary / MONTHLY_WORKING_HOURS;
+    return sum + hourlyCost * assignedHours;
+  }, 0);
 
   return (
     <div className="space-y-8">
       <div className="px-7 py-2">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-xl font-bold">
-              Assign Employees
-            </h3>
-
-            <p className="mt-1 text-slate-500">
-              Select project team
-            </p>
-          </div>
-
-          <select
-            defaultValue=""
-            onChange={(event) => {
-              if (event.target.value) {
-                handleAdd(event.target.value);
-                event.target.value = "";
-              }
-            }}
-            className={`${input} w-full sm:w-72`}
-          >
-            <option value="">+ Add Employee</option>
-
-            {employees.map((employee) => {
-              const employeeSalary = Number(
-                employee.salaryStructure
-                  ?.grossSalary ||
-                  employee.grossSalary ||
-                  employee.salary ||
-                  0,
-              );
-
-              return (
-                <option
-                  key={employee.id}
-                  value={employee.id}
-                >
-                  {employee.fullName ||
-                    employee.personalInfo
-                      ?.fullName ||
-                    "Employee"}{" "}
-                  — ₹
-                  {employeeSalary.toLocaleString(
-                    "en-IN",
-                  )}
-                </option>
-              );
-            })}
-          </select>
+        <div className="mb-6">
+          <h3 className="text-xl font-bold">Assign Employees</h3>
+          <p className="mt-1 text-slate-500">Select project team</p>
         </div>
 
         <div className="space-y-5">
-          {form.employees.length === 0 && (
-            <div className="rounded-2xl border-2 border-dashed border-slate-200 py-16 text-center">
-              <Plus
-                size={40}
-                className="mx-auto text-slate-300"
-              />
-
-              <p className="mt-3 text-slate-500">
-                No employees assigned
+          {form.employees.length === 0 ? (
+            <button
+              type="button"
+              onClick={openEmployeePicker}
+              className="w-full rounded-2xl border-2 border-dashed border-slate-200 py-16 text-center transition hover:border-blue-300 hover:bg-white/60"
+            >
+              <Plus size={40} className="mx-auto text-slate-300" />
+              <p className="mt-3 text-slate-500">No employees assigned</p>
+              <p className="mt-1 text-sm font-semibold text-slate-400">
+                Click to add employees
               </p>
-            </div>
+            </button>
+          ) : (
+            <>
+              {form.employees.map((employee) => {
+                const monthlySalary = Number(employee.salary || 0);
+                const assignedHours = Number(employee.hours || 0);
+                const hourlyCost = monthlySalary / MONTHLY_WORKING_HOURS;
+                const estimatedCost = hourlyCost * assignedHours;
+
+                return (
+                  <div
+                    key={employee.firestoreId || employee.employeeId}
+                    className={`${neo} rounded-2xl bg-[#F9FAFC] p-6`}
+                  >
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-6 lg:items-center">
+                      <div>
+                        <div className="font-bold">{employee.fullName}</div>
+                        <div className="text-sm text-slate-500">
+                          {employee.designation || "No designation"}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-500">
+                          Monthly Gross Salary
+                        </div>
+                        <div>₹{monthlySalary.toLocaleString("en-IN")}</div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-500">
+                          Assigned Hours
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={employee.hours}
+                          onChange={(event) =>
+                            updateEmployee(
+                              employee.employeeId,
+                              "hours",
+                              event.target.value,
+                            )
+                          }
+                          className={`${input} w-24`}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-500">
+                          Hourly Cost
+                        </div>
+                        ₹
+                        {hourlyCost.toLocaleString("en-IN", {
+                          maximumFractionDigits: 2,
+                        })}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-500">
+                          Estimated Cost
+                        </div>
+                        <div className="font-bold text-emerald-600">
+                          ₹
+                          {estimatedCost.toLocaleString("en-IN", {
+                            maximumFractionDigits: 2,
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => removeEmployee(employee.employeeId)}
+                          aria-label={`Remove ${employee.fullName}`}
+                          className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-600"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={openEmployeePicker}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 py-4 text-sm font-semibold text-slate-500 transition hover:border-blue-300 hover:bg-white/60"
+              >
+                <Plus size={18} className="text-slate-400" />
+                Add more employees
+              </button>
+            </>
           )}
+        </div>
 
-          {form.employees.map((employee) => {
-            const monthlySalary = Number(
-              employee.salary || 0,
+        <select
+          ref={employeePickerRef}
+          defaultValue=""
+          onChange={(event) => {
+            if (event.target.value) {
+              handleAdd(event.target.value);
+              event.target.value = "";
+            }
+          }}
+          className="sr-only"
+          aria-label="Add Employee"
+        >
+          <option value="">Select employee</option>
+          {sortedEmployees.map((employee) => {
+            const employeeSalary = Number(
+              employee.salaryStructure?.grossSalary ||
+                employee.grossSalary ||
+                employee.salary ||
+                0,
             );
-
-            const assignedHours = Number(
-              employee.hours || 0,
-            );
-
-            const hourlyCost =
-              monthlySalary /
-              MONTHLY_WORKING_HOURS;
-
-            const estimatedCost =
-              hourlyCost * assignedHours;
 
             return (
-              <div
-                key={
-                  employee.firestoreId ||
-                  employee.employeeId
-                }
-                className={`${neo} rounded-2xl bg-[#F9FAFC] p-6`}
-              >
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-6 lg:items-center">
-                  <div>
-                    <div className="font-bold">
-                      {employee.fullName}
-                    </div>
-
-                    <div className="text-sm text-slate-500">
-                      {employee.designation ||
-                        "No designation"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-slate-500">
-                      Monthly Gross Salary
-                    </div>
-
-                    <div>
-                      ₹
-                      {monthlySalary.toLocaleString(
-                        "en-IN",
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-slate-500">
-                      Assigned Hours
-                    </div>
-
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={employee.hours}
-                      onChange={(event) =>
-                        updateEmployee(
-                          employee.employeeId,
-                          "hours",
-                          event.target.value,
-                        )
-                      }
-                      className={`${input} w-24`}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-slate-500">
-                      Hourly Cost
-                    </div>
-
-                    ₹
-                    {hourlyCost.toLocaleString(
-                      "en-IN",
-                      {
-                        maximumFractionDigits: 2,
-                      },
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-slate-500">
-                      Estimated Cost
-                    </div>
-
-                    <div className="font-bold text-emerald-600">
-                      ₹
-                      {estimatedCost.toLocaleString(
-                        "en-IN",
-                        {
-                          maximumFractionDigits: 2,
-                        },
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        removeEmployee(
-                          employee.employeeId,
-                        )
-                      }
-                      aria-label={`Remove ${employee.fullName}`}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-600"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <option key={employee.id} value={employee.id}>
+                {employee.fullName || employee.personalInfo?.fullName || "Employee"} — ₹
+                {employeeSalary.toLocaleString("en-IN")}
+              </option>
             );
           })}
-        </div>
+        </select>
       </div>
 
-      <div
-        className={`${neo} rounded-3xl bg-white p-7`}
-      >
+      <div className={`${neo} rounded-3xl bg-white p-7`}>
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
           <div>
-            <div className="text-sm text-slate-500">
-              Employees
-            </div>
-
+            <div className="text-sm text-slate-500">Employees</div>
             <div className="mt-2 text-3xl font-bold">
               {form.employees.length}
             </div>
@@ -286,15 +241,11 @@ export default function ProjectEmployeeStep({
             <div className="text-sm text-slate-500">
               Estimated Labour Cost
             </div>
-
             <div className="mt-2 text-3xl font-bold text-blue-600">
               ₹
-              {totalCost.toLocaleString(
-                "en-IN",
-                {
-                  maximumFractionDigits: 2,
-                },
-              )}
+              {totalCost.toLocaleString("en-IN", {
+                maximumFractionDigits: 2,
+              })}
             </div>
           </div>
 
@@ -302,14 +253,10 @@ export default function ProjectEmployeeStep({
             <div className="text-sm text-slate-500">
               Average Cost / Employee
             </div>
-
             <div className="mt-2 text-3xl font-bold text-emerald-600">
               ₹
               {(
-                form.employees.length
-                  ? totalCost /
-                    form.employees.length
-                  : 0
+                form.employees.length ? totalCost / form.employees.length : 0
               ).toLocaleString("en-IN", {
                 maximumFractionDigits: 2,
               })}

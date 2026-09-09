@@ -3,7 +3,7 @@
 const crypto = require("node:crypto");
 const { FieldValue } = require("firebase-admin/firestore");
 const { resolveCompanyActor } = require("../auth/CompanyActor");
-const { assertCompanyScope } = require("./PayoutPolicy");
+const { assertCompanyScope, isCashfreePayoutAuthMode } = require("./PayoutPolicy");
 
 const SAFE_STATUSES = new Set(["NOT_CONNECTED", "CONFIGURED", "CONNECTED", "ERROR"]);
 
@@ -95,7 +95,7 @@ async function verifyPayoutConnection(db, request, { credentialResolver, provide
     const status = SAFE_STATUSES.has(outcome.status) ? outcome.status : "ERROR";
     transaction.update(settingsRef, {
       status,
-      payoutsEnabled: status === "CONNECTED" && latest.authMode === "MERCHANT",
+      payoutsEnabled: status === "CONNECTED" && isCashfreePayoutAuthMode(latest.authMode),
       productionSecurityReady: false,
       verificationFingerprint: outcome.fingerprint,
       verifiedAt: status === "CONNECTED" ? FieldValue.serverTimestamp() : null,

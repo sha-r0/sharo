@@ -44,22 +44,27 @@ function billingImageUrl(value) {
 }
 
 class BillingRepository {
-  async load(companyId) {
+  async load(companyId, options = {}) {
+    const includeSettings = options.includeSettings ?? true;
     const companyRef = doc(db, "Companies", companyId);
     const read = async (name) => (await getDocs(collection(companyRef, name))).docs.map((item) => normalizeDocument(item.id, item.data()));
-    const [company, projects, clients, invoices, payments, expenses, workLogs, vendorPayments, settings, templates] = await Promise.all([
+    const requests = [
       getDoc(companyRef), read("Projectmanagement"), read("Clients"), read("Invoices"), read("Payments"),
       read("Expenses"), read("WorkLogs"), read("VendorPayments"),
-      getDoc(doc(companyRef, "BillingSettings", "default")), read("InvoiceTemplates"),
-    ]);
+      includeSettings ? getDoc(doc(companyRef, "BillingSettings", "default")) : Promise.resolve(null),
+      read("InvoiceTemplates"),
+    ];
+    const [company, projects, clients, invoices, payments, expenses, workLogs, vendorPayments, settings, templates] = await Promise.all(requests);
     return {
       company: company.exists() ? normalizeDocument(company.id, company.data()) : null,
       projects, clients, invoices, payments, expenses, workLogs, vendorPayments,
-      settings: settings.exists() ? settings.data() : null, templates,
+      settings: settings && settings.exists ? settings.exists() ? settings.data() : null : null,
+      templates,
     };
   }
 
-  subscribe(companyId, callback, onError) {
+  subscribe(companyId, callback, onError, options = {}) {
+    const includeSettings = options.includeSettings ?? true;
     const names = ["Projectmanagement", "Clients", "Invoices", "Payments", "Expenses", "WorkLogs", "VendorPayments"];
     const state = Object.fromEntries(names.map((name) => [name, []]));
     let company = null; let settings = null;
@@ -76,9 +81,11 @@ class BillingRepository {
     stops.push(onSnapshot(doc(db, "Companies", companyId), (snapshot) => {
       company = snapshot.exists() ? normalizeDocument(snapshot.id, snapshot.data()) : null; publish();
     }, onError));
-    stops.push(onSnapshot(doc(db, "Companies", companyId, "BillingSettings", "default"), (snapshot) => {
-      settings = snapshot.exists() ? snapshot.data() : null; publish();
-    }, onError));
+    if (includeSettings) {
+      stops.push(onSnapshot(doc(db, "Companies", companyId, "BillingSettings", "default"), (snapshot) => {
+        settings = snapshot.exists() ? snapshot.data() : null; publish();
+      }, onError));
+    }
     return () => stops.forEach((stop) => stop());
   }
 }

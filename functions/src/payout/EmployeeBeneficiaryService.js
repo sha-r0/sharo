@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 const { FieldValue } = require("firebase-admin/firestore");
 const { resolveCompanyActor } = require("../auth/CompanyActor");
+const { isCashfreePayoutAuthMode } = require("./PayoutPolicy");
 
 const BENEFICIARY_STATUSES = new Set(["VERIFIED", "INITIATED", "INVALID", "FAILED", "CANCELLED", "DELETED"]);
 
@@ -50,7 +51,7 @@ function normalizeProviderBeneficiary(value) {
 }
 
 function assertVerifiedMerchantSettings(settings) {
-  if (settings?.status !== "CONNECTED" || settings.payoutsEnabled !== true || settings.authMode !== "MERCHANT") {
+  if (settings?.status !== "CONNECTED" || settings.payoutsEnabled !== true || !["MERCHANT", "PUBLIC_KEY"].includes(settings.authMode)) {
     throw new Error("PAYOUT_CONNECTION_REQUIRED");
   }
   if (!["sandbox", "production"].includes(settings.environment)) throw new Error("INVALID_PAYOUT_ENVIRONMENT");
@@ -119,8 +120,8 @@ async function syncEmployeePayoutBeneficiary(db, request, { credentialResolver, 
   const fingerprint = bankFingerprint(bank);
   const desiredId = beneficiaryId(companyId, employeeFirestoreId, fingerprint);
   const resolved = await credentialResolver.resolve(settings, { companyId });
-  if (!resolved?.configured || resolved.authMode !== "MERCHANT") throw new Error("PAYOUT_CREDENTIALS_REQUIRED");
-  const result = await reconcileBeneficiary(provider, { environment: settings.environment, authMode: "MERCHANT" }, resolved.credentials, {
+  if (!resolved?.configured || !isCashfreePayoutAuthMode(resolved.authMode)) throw new Error("PAYOUT_CREDENTIALS_REQUIRED");
+  const result = await reconcileBeneficiary(provider, { environment: settings.environment, authMode: settings.authMode }, resolved.credentials, {
     beneficiaryId: desiredId,
     ...bank,
   });

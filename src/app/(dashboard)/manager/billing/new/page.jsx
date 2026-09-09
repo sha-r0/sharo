@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Eye, Plus, Save, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
+import { auth } from "@/lib/firebase";
 import useBillingData from "../hooks/useBillingData";
 import invoiceService from "../services/InvoiceService";
 import InvoiceCalculationService from "../services/InvoiceCalculationService";
@@ -20,9 +21,9 @@ const input = "mt-1.5 h-12 w-full rounded-xl border border-slate-200 bg-white px
 
 export default function InvoiceBuilderPage({ searchParams }) {
   const query = use(searchParams);
-  const { company, currentUser } = useAuth();
+  const { company, currentUser, firebaseUser } = useAuth();
   const router = useRouter();
-  const data = useBillingData(company?.id);
+  const data = useBillingData(company?.id, { includeSettings: false });
   const existing = data.invoices.find((item) => item.id === query.editId);
   const editing = Boolean(query.editId);
   const [saving, setSaving] = useState(false);
@@ -30,7 +31,55 @@ export default function InvoiceBuilderPage({ searchParams }) {
   const [confirmEdit, setConfirmEdit] = useState(false);
   const [projectId, setProjectId] = useState(query.projectId || "");
   const [form, setForm] = useState(initialForm);
+  const [billingInit, setBillingInit] = useState({ settings: null, nextInvoiceNumber: "Draft" });
+  const [initLoading, setInitLoading] = useState(true);
   const hydratedId = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBillingInit() {
+      if (!company?.id) {
+        if (!cancelled) setInitLoading(false);
+        return;
+      }
+
+      const user = firebaseUser || auth.currentUser;
+      if (!user) {
+        if (!cancelled) setInitLoading(false);
+        return;
+      }
+
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch("/api/billing/init", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error((await response.json()).error || "BILLING_INIT_FAILED");
+        const payload = await response.json();
+        if (!cancelled) {
+          setBillingInit({
+            settings: payload.settings || null,
+            nextInvoiceNumber: payload.nextInvoiceNumber || "Draft",
+          });
+        }
+      } catch (error) {
+        console.error("Billing init failed", error);
+        if (!cancelled) {
+          setBillingInit({ settings: null, nextInvoiceNumber: "Draft" });
+        }
+      } finally {
+        if (!cancelled) setInitLoading(false);
+      }
+    }
+
+    setInitLoading(true);
+    loadBillingInit();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [company?.id, firebaseUser]);
 
   useEffect(() => {
     if (!editing || !existing || hydratedId.current === existing.id) return;
@@ -43,11 +92,16 @@ export default function InvoiceBuilderPage({ searchParams }) {
   const client = data.clients.find((item) => item.id === project?.clientId || item.clientId === project?.clientId);
   useEffect(() => {
     if (!project || editing) return;
-    setForm((current) => ({ ...current, items: [{ ...current.items[0], description: `Professional services for ${project.projectName}`, rate: project.remainingBillable }], bankDetails: { ...current.bankDetails, ...data.settings?.bank }, terms: data.settings?.terms || current.terms }));
-  }, [project?.id, editing]);
+    setForm((current) => ({
+      ...current,
+      items: [{ ...current.items[0], description: `Professional services for ${project.projectName}`, rate: project.remainingBillable }],
+      bankDetails: { ...current.bankDetails, ...(billingInit.settings?.bank || {}) },
+      terms: billingInit.settings?.terms || current.terms,
+    }));
+  }, [project?.id, editing, billingInit.settings]);
 
   const totals = useMemo(() => InvoiceCalculationService.calculate(form), [form]);
-  const snapshot = useMemo(() => ({ ...form, ...totals, invoiceNumber: existing?.invoiceNumber || "Draft", projectName: project?.projectName || existing?.projectName || "", projectBusinessId: project?.projectId || existing?.projectBusinessId || "", poNumber: project?.poNumber || existing?.poNumber || "", companySnapshot: existing?.companySnapshot || { companyName: company?.companyName, address: company?.companyAddress, email: company?.companyEmail, phone: company?.phone, gstNumber: company?.gstNumber, logoUrl: company?.logoUrl, signatureUrl: data.settings?.signatureUrl || "" }, clientSnapshot: existing?.clientSnapshot || { name: client?.companyName || client?.clientName || project?.clientName || "", contactPerson: client?.contactPerson || "", address: client?.address || "", email: client?.email || "", phone: client?.phone || "", gstNumber: client?.gstNo || client?.gstNumber || "" } }), [form, totals, existing, project, client, company, data.settings]);
+  const snapshot = useMemo(() => ({ ...form, ...totals, invoiceNumber: existing?.invoiceNumber || billingInit.nextInvoiceNumber || "Draft", projectName: project?.projectName || existing?.projectName || "", projectBusinessId: project?.projectId || existing?.projectBusinessId || "", poNumber: project?.poNumber || existing?.poNumber || "", companySnapshot: existing?.companySnapshot || { companyName: company?.companyName, address: company?.companyAddress, email: company?.companyEmail, phone: company?.phone, gstNumber: company?.gstNumber, logoUrl: company?.logoUrl, signatureUrl: billingInit.settings?.signatureUrl || "" }, clientSnapshot: existing?.clientSnapshot || { name: client?.companyName || client?.clientName || project?.clientName || "", contactPerson: client?.contactPerson || "", address: client?.address || "", email: client?.email || "", phone: client?.phone || "", gstNumber: client?.gstNo || client?.gstNumber || "" } }), [form, totals, existing, project, client, company, billingInit]);
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const itemUpdate = (id, key, value) => setForm((current) => ({ ...current, items: current.items.map((item) => item.id === id ? { ...item, [key]: value } : item) }));
   const percentage = (value) => { if (!project) return; const amount = Math.min(project.remainingBillable, project.contractValue * value / 100); itemUpdate(form.items[0].id, "rate", amount); update("type", value === 100 ? "Final Invoice" : "Partial Invoice"); };
@@ -75,7 +129,7 @@ export default function InvoiceBuilderPage({ searchParams }) {
     await persist();
   };
 
-  if (data.loading) return <div className="space-y-4 p-5">{Array.from({ length: 5 }, (_, index) => <div key={index} className="h-24 animate-pulse rounded-2xl bg-white/70" />)}</div>;
+  if (data.loading || initLoading) return <div className="space-y-4 p-5">{Array.from({ length: 5 }, (_, index) => <div key={index} className="h-24 animate-pulse rounded-2xl bg-white/70" />)}</div>;
   if (editing && !existing) return <div className="p-10">Invoice not found.</div>;
   return <form onSubmit={submit} className="invoice-no-print min-h-screen bg-slate-50/70 px-3 py-4 sm:px-6">
     <header className="mb-5 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">

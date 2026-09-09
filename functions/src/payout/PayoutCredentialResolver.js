@@ -25,6 +25,15 @@ class PayoutCredentialResolver {
       return { configured: true, authMode: "MERCHANT", merchantId: settings.merchantId || null, credentials };
     }
 
+    if (settings.authMode === "PUBLIC_KEY") {
+      if (!settings.secretRef) return { configured: false, code: "PUBLIC_KEY_SECRET_REF_REQUIRED" };
+      const credentials = await this.merchantSecretStore?.resolve?.(settings.secretRef, context);
+      if (!validCredentials(credentials) || !String(credentials.publicKey || "").trim()) {
+        return { configured: false, code: "PUBLIC_KEY_SECRET_NOT_CONFIGURED" };
+      }
+      return { configured: true, authMode: "PUBLIC_KEY", merchantId: settings.merchantId || null, credentials };
+    }
+
     return { configured: false, code: "AUTH_MODE_REQUIRED" };
   }
 }

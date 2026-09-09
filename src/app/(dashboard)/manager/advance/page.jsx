@@ -99,7 +99,7 @@ export default function AdvancePage() {
 
     useEffect(() => {
         if (!company?.id) return;
-        if (!canApprove && !companyEmployee?.id) return;
+        if (!canApprove && !canExecutePayout && !companyEmployee?.id) return;
 
         AdvanceService.getReferenceData()
             .then(
@@ -130,11 +130,11 @@ export default function AdvancePage() {
 
                     setLoading(false);
                 },
-                canApprove ? null : companyEmployee?.id
+                canApprove || canExecutePayout ? null : companyEmployee?.id
             );
 
         return unsubscribe;
-    }, [company?.id, companyEmployee?.id, canApprove]);
+    }, [company?.id, companyEmployee?.id, canApprove, canExecutePayout]);
 
     const filtered = useMemo(() => {
         return records.filter((item) => {
@@ -298,6 +298,32 @@ export default function AdvancePage() {
         } catch (payoutError) {
             console.error(payoutError);
             toast.error("Unable to initiate payout.");
+        } finally {
+            setInitiatingPayout(null);
+        }
+    }
+
+    async function retryPayout(item) {
+        try {
+            setInitiatingPayout(item.id);
+            await AdvanceService.retryQueuedPayout(item.id);
+            toast.success("Advance payout retried.");
+        } catch (payoutError) {
+            console.error(payoutError);
+            toast.error("Unable to retry payout.");
+        } finally {
+            setInitiatingPayout(null);
+        }
+    }
+
+    async function reconcilePayout(item) {
+        try {
+            setInitiatingPayout(item.id);
+            await AdvanceService.reconcilePayout(item.id);
+            toast.success("Advance payout status refreshed.");
+        } catch (payoutError) {
+            console.error(payoutError);
+            toast.error("Unable to check payout status.");
         } finally {
             setInitiatingPayout(null);
         }
@@ -824,6 +850,19 @@ export default function AdvancePage() {
 
                                                     {canExecutePayout &&
                                                         lower(item.status) === "approved" &&
+                                                        String(item.payoutStatus || "NOT_INITIATED").toUpperCase() === "PROCESSING" && (
+                                                            <button
+                                                                type="button"
+                                                                disabled={initiatingPayout === item.id}
+                                                                onClick={() => reconcilePayout(item)}
+                                                                className="rounded-lg bg-slate-100 px-3 py-2 font-bold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                {initiatingPayout === item.id ? "Checking…" : "Check Payout Status"}
+                                                            </button>
+                                                        )}
+
+                                                    {canExecutePayout &&
+                                                        lower(item.status) === "approved" &&
                                                         String(item.payoutStatus || "NOT_INITIATED").toUpperCase() === "NOT_INITIATED" && (
                                                             <button
                                                                 type="button"
@@ -832,6 +871,19 @@ export default function AdvancePage() {
                                                                 className="rounded-lg bg-emerald-600 px-3 py-2 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                                                             >
                                                                 {initiatingPayout === item.id ? "Queuing…" : "Initiate Payout"}
+                                                            </button>
+                                                        )}
+
+                                                    {canExecutePayout &&
+                                                        lower(item.status) === "approved" &&
+                                                        String(item.payoutStatus || "NOT_INITIATED").toUpperCase() === "QUEUED" && (
+                                                            <button
+                                                                type="button"
+                                                                disabled={initiatingPayout === item.id}
+                                                                onClick={() => retryPayout(item)}
+                                                                className="rounded-lg bg-amber-500 px-3 py-2 font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                {initiatingPayout === item.id ? "Retrying…" : "Retry Payout"}
                                                             </button>
                                                         )}
 
