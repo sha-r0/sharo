@@ -16,12 +16,12 @@ export default function ExpenseHeader({
 
       <div>
 
-        <h1 className="text-[38px] font-bold tracking-tight text-slate-900">
-          Expense Approval
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+          Expenses
         </h1>
 
-        <p className=" text-[16px] text-slate-500">
-          Review, approve and manage employee expense claims.
+        <p className=" text-sm text-slate-500">
+          Review claims, policy guidance and reimbursements.
         </p>
 
       </div>
@@ -40,7 +40,7 @@ export default function ExpenseHeader({
           bg-[#F9FAFC]
           border
           border-white/80
-          px-6
+          px-3
           py-3
           text-slate-700
           font-medium

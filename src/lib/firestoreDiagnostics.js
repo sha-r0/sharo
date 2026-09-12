@@ -1,13 +1,14 @@
 export function logFirestoreFailure({ feature, operation, path, query = "", companyId = null, isOwner = false, error }) {
-  console.error("[FirestoreAuth]", {
+  console.error("[FirestoreAuth]", JSON.stringify({
     feature,
-    operation,
-    path,
-    query,
+    operation: error?.operation || operation,
+    path: error?.path || path,
+    query: error?.query || query,
     companyId,
     isOwner: Boolean(isOwner),
-    code: error?.code || "unknown",
-  });
+    code: error?.code ?? "unknown",
+    message: error?.message || String(error || "Unknown error"),
+  }));
 }
 
 export function firestoreUserMessage(error, fallback) {

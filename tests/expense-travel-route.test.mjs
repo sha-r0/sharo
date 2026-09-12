@@ -1,0 +1,60 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import { initializeApp, deleteApp } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { travelRouteEnabled, resolveTravelRoute } from '../src/lib/expenses/travelRoute.js';
+import { validateCategory } from '../src/lib/expense-settings/categoryModel.js';
+import { createExpenseCreationService } from '../src/lib/server/expenseCreationService.js';
+import { createExpenseCategoryService } from '../src/lib/server/expenseCategoryService.js';
+import lifecycle from '../functions/src/expense/lifecycle.js';
+const category=(extra={})=>({name:'Food',description:'',active:true,calculationType:'actual',conditions:{locationEnabled:false,gstEnabled:false},rules:[{id:'all_all',locationType:null,gstType:null,amount:0,basis:'per_expense'}],...extra});
+test('explicit route flag works for any category; legacy fallback only for missing Travel flag',()=>{
+ assert.equal(validateCategory(category()).travelRouteEnabled,false);
+ assert.equal(travelRouteEnabled({name:'Travel'}),true);
+ assert.equal(travelRouteEnabled({name:'Travel',travelRouteEnabled:false}),false);
+ assert.equal(travelRouteEnabled({name:'Site Visit',travelRouteEnabled:true}),true);
+ assert.throws(()=>validateCategory(category({travelRouteEnabled:'true'})),/boolean/);
+ const values={travelFrom:' Delhi ',travelTo:' Jaipur '};
+ assert.deepEqual(resolveTravelRoute({travelRouteEnabled:true},values),{travelFrom:'Delhi',travelTo:'Jaipur'});
+ assert.deepEqual(resolveTravelRoute({name:'Food'},values),{});
+ for(const invalid of [{},{travelFrom:'Delhi'},{travelFrom:' ',travelTo:'Jaipur'},{travelFrom:'x'.repeat(301),travelTo:'Jaipur'}]) assert.throws(()=>resolveTravelRoute({travelRouteEnabled:true},invalid),/required/);
+});
+test('UI category switch clears route values and only resolves configured routes for submission',()=>{
+ const source=fs.readFileSync(new URL('../src/app/(dashboard)/manager/expenses/add/page.jsx',import.meta.url),'utf8');
+ assert.match(source,/categoryId: event.target.value[^\n]*travelFrom: "", travelTo: ""/);
+ assert.match(source,/resolveTravelRoute\(category, form\)/);
+ assert.match(source,/travelRouteEnabled\(category\) &&/);
+ assert.match(source,/From \*<input required/);assert.match(source,/To \*<input required/);
+});
+test('server category config, canonical/mirror create and route edits', {skip:!process.env.FIRESTORE_EMULATOR_HOST},async()=>{
+ const app=initializeApp({projectId:'demo-sharo'},'travel-route');const db=getFirestore(app);const parent=db.collection('Companies').doc('travel-route');
+ const context={companyId:'travel-route',token:{uid:'route-user'},employee:{id:'worker',employeeId:'E1',access:{roleId:'employee'}},permissions:['expense.create','expense.edit','expense.view']};
+ const owner={...context,isOwner:true};const service=createExpenseCreationService(db,()=>FieldValue.serverTimestamp());
+ const input=(extra={})=>({requestId:randomUUID(),categoryId:'travel',projectFirestoreId:'project',date:'2026-09-10',amount:100,...extra});
+ const expense=(id)=>parent.collection('Expenses').doc(id);
+ const edit=(id,fields)=>lifecycle.mutateExpense(db,{...context,uid:context.token.uid},id,'edit',fields,FieldValue);
+ try{
+  await parent.set({ownerUid:'route-owner'});
+  await parent.collection('Usermanagement').doc('worker').set({employeeId:'E1',access:{authUid:'route-user',roleId:'employee'},personalInfo:{fullName:'Worker'}});
+  await parent.collection('Projectmanagement').doc('project').set({projectName:'Site',projectId:'P1'});
+  await parent.collection('ExpenseCategories').doc('travel').set(category({name:'Travel'}));
+  await parent.collection('ExpenseCategories').doc('food').set(validateCategory(category()));
+  const categories=createExpenseCategoryService(db,()=>FieldValue.serverTimestamp());
+  assert.equal((await categories.list(owner)).find(c=>c.id==='travel').travelRouteEnabled,true);
+  assert.equal((await parent.collection('ExpenseCategories').doc('travel').get()).data().travelRouteEnabled,undefined);
+  await assert.rejects(service.create(context,input()),/From and To/);
+  await assert.rejects(service.create(context,input({travelRouteEnabled:false})),/protected/);
+  const {expenseId}=await service.create(context,input({travelFrom:' Delhi ',travelTo:' Jaipur '}));
+  let data=(await expense(expenseId).get()).data();assert.equal(data.travelFrom,'Delhi');assert.equal(data.travelTo,'Jaipur');
+  assert.deepEqual(data,(await parent.collection('Usermanagement').doc('worker').collection('Expenses').doc(expenseId).get()).data());
+  await edit(expenseId,{travelTo:' Agra '});assert.equal((await expense(expenseId).get()).data().travelTo,'Agra');
+  await assert.rejects(edit(expenseId,{travelFrom:''}),/From and To/);
+  await edit(expenseId,{categoryId:'food',travelFrom:'stale',travelTo:'stale'});data=(await expense(expenseId).get()).data();assert.equal(data.travelFrom,undefined);assert.equal(data.travelTo,undefined);
+  const food=await service.create(context,input({categoryId:'food',travelFrom:'stale',travelTo:'stale'}));assert.equal((await expense(food.expenseId).get()).data().travelFrom,undefined);
+  await expense('legacy').set({employeeId:'E1',employeeFirestoreId:'worker',category:'Travel',amount:100,status:'pending'});
+  await edit('legacy',{amount:120});assert.equal((await expense('legacy').get()).data().travelFrom,undefined);
+  await edit('legacy',{travelFrom:' Delhi ',travelTo:' Jaipur '});assert.equal((await expense('legacy').get()).data().travelFrom,'Delhi');
+ }finally{await db.terminate();await deleteApp(app);}
+});

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuth } from "@/app/(auth)/context/AuthContext";
+import { syncExpenseSession } from "@/app/allservice/expense/expensePageClient";
 import { useState } from "react";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Sidebar from "./components/Sidebar";
@@ -8,6 +10,8 @@ import { NotificationProvider } from "@/app/allservice/notification/Notification
 import FirstLoginGate from "@/components/auth/FirstLoginGate";
 
 export default function ManagerLayout({ children }) {
+  const { company, firebaseUser } = useAuth();
+  syncExpenseSession(JSON.stringify([company?.id, firebaseUser?.uid]));
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   return (
     <ProtectedRoute>

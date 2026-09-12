@@ -30,7 +30,6 @@ function Card({
         transition-all
         duration-300
         hover:-translate-y-1
-        mb-8
       `}
     >
       <div className="flex items-start justify-between">
@@ -71,14 +70,14 @@ export default function ExpenseSummaryCards({
   totalExpense,
   approvedExpense,
   pendingExpense,
-  totalAdvance,
-  remainingAmount,
+  rejectedExpense,
+  overPolicy,
 }) {
   return (
     <div className="grid gap-5 xl:grid-cols-5 lg:grid-cols-3 md:grid-cols-2 grid-cols-1">
 
       <Card
-        title="Total Expense"
+        title="Total Requested"
         value={totalExpense}
         color="text-blue-600"
         bg="bg-blue-50"
@@ -86,7 +85,7 @@ export default function ExpenseSummaryCards({
       />
 
       <Card
-        title="Approved Expense"
+        title="Approved"
         value={approvedExpense}
         color="text-emerald-600"
         bg="bg-emerald-50"
@@ -94,7 +93,7 @@ export default function ExpenseSummaryCards({
       />
 
       <Card
-        title="Pending Expense"
+        title="Pending"
         value={pendingExpense}
         color="text-amber-500"
         bg="bg-amber-50"
@@ -102,23 +101,23 @@ export default function ExpenseSummaryCards({
       />
 
       <Card
-        title="Total Advance"
-        value={totalAdvance}
+        title="Rejected"
+        value={rejectedExpense}
         color="text-violet-600"
         bg="bg-violet-50"
         icon={Landmark}
       />
 
       <Card
-        title="Remaining Amount"
-        value={remainingAmount}
+        title="Over Policy (excess)"
+        value={overPolicy}
         color={
-          remainingAmount >= 0
+          overPolicy === 0
             ? "text-green-600"
             : "text-red-600"
         }
         bg={
-          remainingAmount >= 0
+          overPolicy === 0
             ? "bg-green-50"
             : "bg-red-50"
         }

@@ -32,12 +32,13 @@ test("web expense content flow has no direct Firestore write or Admin API fallba
   assert.doesNotMatch(reviewRouteSource, /updateAmount|previousAmount|editedAfterApproval/);
 });
 
-test("edit button closes, refetches backend data, and reports success", () => {
+test("edit button closes, reconciles one row, and reports success", () => {
   assert.match(pageSource, /onEdit=\{canEditExpense \? handleEdit : null\}/);
   const handler = pageSource.slice(pageSource.indexOf("async function updateExpenseAmount"), pageSource.indexOf("async function handleApprove"));
   assert.match(handler, /expenseService\.updateAmount/);
   assert.match(handler, /setEditOpen\(false\)/);
-  assert.match(handler, /await loadData\(\)/);
+  assert.match(handler, /reconcileExpense\(selectedExpense.id\)/);
+  assert.doesNotMatch(handler, /await loadData\(\)/);
   assert.match(handler, /toast\.success\("Expense updated successfully\."\)/);
 });
 
@@ -50,19 +51,20 @@ test("callable failures are caught and shown as safe UI errors", () => {
 
 test("approval and rejection remain on the authenticated review API", () => {
   assert.match(serviceSource, /return reviewExpense\(expenseId, \{ action: "approve" \}\)/);
-  assert.match(serviceSource, /return reviewExpense\(expenseId, \{ action: "reject" \}\)/);
+  assert.match(serviceSource, /return reviewExpense\(expenseId, \{ action: "reject", managerRemarks \}\)/);
   assert.deepEqual(validateExpenseMutationInput({ action: "approve" }), { action: "approve" });
-  assert.deepEqual(validateExpenseMutationInput({ action: "reject" }), { action: "reject" });
+  assert.deepEqual(validateExpenseMutationInput({ action: "reject", managerRemarks: "Missing receipt" }), { action: "reject", managerRemarks: "Missing receipt" });
   assert.throws(() => validateExpenseMutationInput({ action: "updateAmount", amount: 25 }), /INVALID_REQUEST/);
 });
 
 test("review API remains owner/manager-only and company-scoped", () => {
-  assert.match(reviewRouteSource, /doc\(context\.companyId\)/);
+  assert.match(reviewRouteSource, /authorizeCompanyRequest\(request\)/);
+  assert.match(reviewRouteSource, /lifecycle\.mutateExpense/);
   assert.doesNotMatch(reviewRouteSource, /input\.companyId/);
-  assert.doesNotThrow(() => assertExpenseMutationAuthorized({ isOwner: true }, "approve", {}));
-  assert.doesNotThrow(() => assertExpenseMutationAuthorized({ permissions: ["expense.approve"], employee: { access: { roleId: "manager" } } }, "approve", {}));
-  assert.throws(() => assertExpenseMutationAuthorized({ permissions: ["expense.view"], employee: { access: { roleId: "manager" } } }, "approve", {}), /FORBIDDEN/);
-  assert.throws(() => assertExpenseMutationAuthorized({ permissions: ["expense.approve"], employee: { access: { roleId: "employee" } } }, "approve", {}), /FORBIDDEN/);
+  assert.doesNotThrow(() => assertExpenseMutationAuthorized({ isOwner: true }, "approve", { status: "pending" }));
+  assert.doesNotThrow(() => assertExpenseMutationAuthorized({ permissions: ["expense.approve"], employee: { access: { roleId: "manager" } } }, "approve", { status: "pending" }));
+  assert.throws(() => assertExpenseMutationAuthorized({ permissions: ["expense.view"], employee: { access: { roleId: "manager" } } }, "approve", { status: "pending" }), /FORBIDDEN/);
+  assert.throws(() => assertExpenseMutationAuthorized({ permissions: ["expense.approve"], employee: { access: { roleId: "employee" } } }, "approve", { status: "pending" }), /FORBIDDEN/);
 });
 
 test("development diagnostics cover edit, submit, callable and response without secrets", () => {

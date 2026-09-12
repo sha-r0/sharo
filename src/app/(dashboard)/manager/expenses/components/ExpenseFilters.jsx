@@ -12,6 +12,7 @@ const neoShadow =
   "shadow-[0px_0.706592px_0.706592px_-0.666667px_rgba(0,0,0,0.08),0px_1.80656px_1.80656px_-1.33333px_rgba(0,0,0,0.08),0px_3.62176px_3.62176px_-2px_rgba(0,0,0,0.07),0px_6.8656px_6.8656px_-2.66667px_rgba(0,0,0,0.07),0px_13.6468px_13.6468px_-3.33333px_rgba(0,0,0,0.05),0px_30px_30px_-4px_rgba(0,0,0,0.02),inset_0px_3px_1px_0px_rgb(255,255,255)]";
 
 export default function ExpenseFilters({
+  periodStart, periodEnd,
   fromDate,
   toDate,
 
@@ -31,7 +32,10 @@ export default function ExpenseFilters({
   projects,
   categories,
 
-  onExport,
+  onExport, exporting,
+  search, setSearch,
+  statusFilter,
+  setStatusFilter,
 }) {
   return (
     <div
@@ -49,6 +53,8 @@ export default function ExpenseFilters({
 
           <input
             type="date"
+            min={periodStart}
+            max={periodEnd}
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             className={`${neoShadow} w-full rounded-2xl border border-white bg-[#F9FAFC] px-4 py-3 outline-none`}
@@ -65,6 +71,8 @@ export default function ExpenseFilters({
 
           <input
             type="date"
+            min={periodStart}
+            max={periodEnd}
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             className={`${neoShadow} w-full rounded-2xl border border-white bg-[#F9FAFC] px-4 py-3 outline-none`}
@@ -89,9 +97,9 @@ export default function ExpenseFilters({
             {employees.map((employee) => (
               <option
                 key={employee.id}
-                value={employee.employeeId}
+                value={employee.id}
               >
-                {employee.fullName}
+                {employee.name}
               </option>
             ))}
           </select>
@@ -113,7 +121,7 @@ export default function ExpenseFilters({
             <option value="">All Projects</option>
 
             {projects.map((project) => (
-              <option key={project.id} value={project.name}>
+              <option key={project.id} value={project.id}>
                 {project.name}
               </option>
             ))}
@@ -136,23 +144,31 @@ export default function ExpenseFilters({
             <option value="">All Categories</option>
 
             {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
+              <option key={category.id} value={category.id}>
+                {category.name}
               </option>
             ))}
           </select>
         </div>
 
+        <div><label className="mb-2 block text-sm font-medium text-slate-500" htmlFor="expense-status-filter">Status</label>
+          <select id="expense-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={`${neoShadow} w-full rounded-2xl border border-white bg-[#F9FAFC] px-4 py-3`}>
+            <option value="">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <label className="text-sm font-medium text-slate-500 lg:col-span-2">Search
+          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Employee, project, description or route" className={`${neoShadow} mt-2 w-full rounded-2xl bg-[#F9FAFC] px-4 py-3`} />
+        </label>
         {/* Export */}
 
         {onExport && <div className="flex items-end">
 
-          <button
+          <button type="button" disabled={exporting}
             onClick={onExport}
-            className={`${neoShadow} flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-white transition-all duration-300 hover:-translate-y-1 hover:bg-emerald-600`}
+            className={`${neoShadow} flex h-[46px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 disabled:opacity-60`}
           >
             <Download size={18} />
-            Export Excel
+            {exporting ? "Exporting…" : "Export Expenses"}
           </button>
 
         </div>}

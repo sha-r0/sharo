@@ -167,10 +167,31 @@ service cloud.firestore {
         allow update: if validEmployeeAdvanceUpdate(companyId) || validAdvanceEditorUpdate(companyId) || validAdvanceSettlement(companyId);
         allow delete: if has(companyId, 'advance.delete') || has(companyId, 'advance.manage');
       }
+      match /ExpenseCategories/{id} { allow read, write: if false; }
+      match /ExpensePeriods/{periodId} {
+        allow read: if has(companyId, 'expense.view');
+        allow write: if false;
+      }
+      match /ExpenseCreateRequests/{id} { allow read, write: if false; }
+      match /ExpenseCategoryNames/{id} { allow read, write: if false; }
+      match /Expenses/{id}/Reimbursements/{reimbursementId} { allow read, write: if false; }
+      match /Expenses/{id}/EditHistory/{historyId} { allow read: if isOwner(companyId); allow write: if false; }
       match /Expenses/{id} {
         allow read: if has(companyId, 'expense.view') && (managerScope(companyId) || ownExpense(companyId, resource.data));
-        allow create: if canWrite(companyId, 'expense') && (managerScope(companyId) || ownExpense(companyId, request.resource.data));
-        allow update, delete: if canWrite(companyId, 'expense') && (managerScope(companyId) || ownExpense(companyId, resource.data));
+        // Keep Flutter's legacy create authorization, evaluating account activity once.
+        allow create: if request.resource.data.get('reimbursed', false) == false
+          && request.resource.data.get('reimbursedAmount', 0) == 0
+          && request.resource.data.get('reimbursementStatus', 'unpaid') == 'unpaid'
+          && request.resource.data.get('reimbursable', true) == true
+          && !request.resource.data.keys().hasAny(['reimbursedAt', 'reimbursedBy', 'outstandingAmount', 'reimbursement', 'reimbursementLedgerVersion', 'reconciliationRequired'])
+          && (!('date' in request.resource.data) || !exists(/databases/$(database)/documents/Companies/$(companyId)/ExpensePeriods/$(request.resource.data.date.substring(0, 7))) || get(/databases/$(database)/documents/Companies/$(companyId)/ExpensePeriods/$(request.resource.data.date.substring(0, 7))).data.get('status', 'open') != 'locked')
+          && (isOwner(companyId) || (active(companyId)
+          && ('expense.create' in employee(companyId).data.access.effectivePermissions
+            || 'expense.manage' in employee(companyId).data.access.effectivePermissions)
+          && (employee(companyId).data.access.roleId != 'employee'
+            || request.resource.data.employeeId == employee(companyId).data.get('employeeId', ''))));
+        // Mutations must use the trusted API/callable to preserve decisions, policy and mirrors.
+        allow update, delete: if false;
       }
       match /Projectmanagement/{id} { allow read: if has(companyId, 'projects.view'); allow write: if canWrite(companyId, 'projects'); }
       match /WorkLogs/{id} { allow read: if isOwner(companyId) || has(companyId, 'projects.view'); allow write: if canWrite(companyId, 'projects'); }
@@ -206,10 +227,10 @@ service cloud.firestore {
         }
       }
       match /{collection}/{document} {
-        allow read, write: if isOwner(companyId) && !(collection in ['PayoutSettings', 'Payouts', 'Usermanagement', 'advance_requests', 'UserNotifications', 'Roles', 'Permissions', 'QuotationSettings']);
+        allow read, write: if isOwner(companyId) && !(collection in ['PayoutSettings', 'Payouts', 'Usermanagement', 'advance_requests', 'UserNotifications', 'Roles', 'Permissions', 'QuotationSettings', 'ExpenseCategories', 'ExpenseCategoryNames', 'ExpenseCreateRequests', 'Expenses']);
       }
       match /{collection}/{document}/{nested=**} {
-        allow read, write: if isOwner(companyId) && !(collection in ['PayoutSettings', 'Payouts', 'Usermanagement', 'advance_requests', 'UserNotifications', 'Roles', 'Permissions', 'QuotationSettings']);
+        allow read, write: if isOwner(companyId) && !(collection in ['PayoutSettings', 'Payouts', 'Usermanagement', 'advance_requests', 'UserNotifications', 'Roles', 'Permissions', 'QuotationSettings', 'ExpenseCategories', 'ExpenseCategoryNames', 'ExpenseCreateRequests', 'Expenses']);
       }
     }
   }

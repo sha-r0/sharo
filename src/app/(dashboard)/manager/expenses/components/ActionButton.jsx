@@ -10,15 +10,18 @@ export default function ActionButton({
   children,
   className,
   onClick,
+  disabled = false,
+  immediate = false,
 }) {
   const [show, setShow] = useState(false);
 
   const handleClick = () => {
+    if (disabled) return;
     setShow(true);
+    if (immediate) onClick?.();
+    else setTimeout(() => onClick?.(), 300);
 
-    setTimeout(() => {
-      if (onClick) onClick();
-    }, 300);
+
 
     setTimeout(() => {
       setShow(false);
@@ -29,6 +32,8 @@ export default function ActionButton({
     <div className="relative flex justify-center">
 
       <button
+        disabled={disabled}
+        aria-label={label}
         onClick={handleClick}
         className={`
           ${neoShadow}
@@ -38,6 +43,7 @@ export default function ActionButton({
           flex
           items-center
           justify-center
+          disabled:opacity-40 disabled:cursor-not-allowed
           transition-all
           hover:-translate-y-1
           ${className}

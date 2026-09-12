@@ -41,7 +41,10 @@ const navigation = [
       { label: "Projects", href: "/manager/projects", icon: FolderKanban },
       { label: "Clients", href: "/manager/clients", icon: Building2 },
       { label: "Vendors", href: "/manager/vendors", icon: Store },
-      { label: "Expenses", href: "/manager/expenses", icon: ReceiptIndianRupee },
+      { label: "Expenses", href: "/manager/expenses", icon: ReceiptIndianRupee, children: [
+        { label: "Add Expense", href: "/manager/expenses/add", icon: FilePlus2 },
+        { label: "Expense Setup", href: "/manager/expenses/setup", icon: Settings2 },
+      ] },
       { label: "Advances", href: "/manager/advance", icon: BanknoteArrowDown },
     ],
   },

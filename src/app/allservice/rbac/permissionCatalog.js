@@ -24,6 +24,8 @@ export const normalizeRoleId = (value) => String(value || "employee").trim().toL
 export const permissionsForRole = (roleId) => ROLE_TEMPLATES[normalizeRoleId(roleId)]?.permissions || [];
 
 export const ROUTE_PERMISSIONS = [
+  ["/manager/expenses/add", "expense.create"],
+  ["/manager/expenses/setup", "expense.manage"],
   ["/manager/userManagement/add", "employee.create"], ["/manager/userManagement/edit", "employee.edit"],
   ["/manager/billing/new", "billing.create"], ["/manager/billing/settings", "billing.manage"],
   ["/manager/performance", "performance.view"],

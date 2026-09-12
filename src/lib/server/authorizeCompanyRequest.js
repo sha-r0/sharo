@@ -67,6 +67,4 @@ export async function authorizeCompanyRequest(request) {
   };
 }
 
-export function requireCompanyPermission(context, ...permissions) {
-  if (!context.isOwner && !permissions.some((permission) => context.permissions.includes(permission))) error("FORBIDDEN");
-}
+export { requireCompanyPermission } from "./companyPermission.js";

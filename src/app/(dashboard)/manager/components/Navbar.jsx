@@ -21,19 +21,15 @@ import { auth } from "@/lib/firebase";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
 import NotificationBell from "../notifications/components/NotificationBell";
 
-// import AddExpenseForm from "@/components/AddExpenseForm";
-
-export default function Navbar({ onExpenseAdded }) {
+export default function Navbar() {
 
   const router = useRouter();
 
   const {
     company,
     currentUser,
+    can,
   } = useAuth();
-
-  const [showExpenseForm, setShowExpenseForm] =
-    useState(false);
 
   const [openMenu, setOpenMenu] =
     useState(false);
@@ -225,8 +221,8 @@ export default function Navbar({ onExpenseAdded }) {
 
           {/* Add Expense */}
 
-          <button
-            onClick={() => setShowExpenseForm(true)}
+          {can("expense.create") && <button
+            onClick={() => router.push("/manager/expenses/add")}
             className="
                 h-11
                 px-5
@@ -249,7 +245,7 @@ export default function Navbar({ onExpenseAdded }) {
 
             Add Expense
 
-          </button>
+          </button>}
 
           {/* Notification */}
 
@@ -511,17 +507,6 @@ export default function Navbar({ onExpenseAdded }) {
         </div>
 
       </div>
-
-      {/* =====================================
-ADD EXPENSE MODAL
-===================================== */}
-
-      {showExpenseForm && (
-        <AddExpenseForm
-          onClose={() => setShowExpenseForm(false)}
-          onAdded={onExpenseAdded}
-        />
-      )}
 
     </>
   );

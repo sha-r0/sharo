@@ -29,6 +29,7 @@ class Query {
 class Collection {
   constructor(store, path) { this.store = store; this.path = path; }
   doc(id = `auto-${++this.store.sequence}`) { return new Ref(this.store, `${this.path}/${id}`); }
+  limit(max) { return new Query(this, "__missing__", undefined, max); }
   where(field, operator, value) { assert.equal(operator, "=="); return new Query(this, field, value); }
 }
 class FakeFirestore {
@@ -37,6 +38,7 @@ class FakeFirestore {
   async runTransaction(callback) {
     const transaction = {
       get: (ref) => ref.get(),
+      set: (ref, value) => { this.docs.set(ref.path, value); },
       update: (ref, value) => { this.docs.set(ref.path, { ...this.docs.get(ref.path), ...value }); },
       create: (ref, value) => { if (this.docs.has(ref.path)) throw new Error("ALREADY_EXISTS"); this.docs.set(ref.path, value); },
     };
