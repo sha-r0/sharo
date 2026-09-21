@@ -107,6 +107,9 @@ export async function GET(request) {
       code: error?.code,
       message: error?.message,
     });
-    return unauthenticated();
+    if (["auth/id-token-revoked", "auth/id-token-expired", "auth/user-disabled", "auth/user-not-found", "auth/invalid-id-token", "auth/argument-error"].includes(error?.code)) {
+      return unauthenticated();
+    }
+    return NextResponse.json({ error: "SESSION_VALIDATION_UNAVAILABLE" }, { status: 503 });
   }
 }

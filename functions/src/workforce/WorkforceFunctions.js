@@ -3,6 +3,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { resolveCompanyActor, clean } = require("../auth/CompanyActor");
+const { resolveEffectiveShift, snapshot: shiftSnapshot, lateMinutes, workingMinutes, statusFor } = require("../shift_policy_resolver");
 
 const normalize = (value) => clean(value).toLowerCase().replace(/[ _-]/g, "");
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -27,13 +28,108 @@ function audit(transaction, companyRef, actor, action, entityType, entityId, det
   });
 }
 
+function gpsDurationFields(shift, start, end, current) {
+  const minutes = workingMinutes(shift, start, end);
+  const exceeded = minutes > shift.maximumWorkingMinutes;
+  const payable = Math.min(minutes, shift.maximumWorkingMinutes);
+  return {
+    actualWorkingMinutes: minutes, payableWorkingMinutes: payable,
+    workedMinutes: payable, totalHours: payable / 60,
+    status: exceeded ? "pending" : statusFor(shift, payable, current.checkInStatus === "late" || number(current.lateMinutes) > 0),
+    requiresManagerReview: exceeded, durationExceededMaximum: exceeded,
+    missingCheckout: shift.missingCheckout,
+    overtimeMinutes: shift.allowOvertime ? Math.max(0, minutes - shift.overtimeAfterMinutes) : 0,
+  };
+}
+
+async function syncApprovedGpsAttendance({ transaction, companyRef, employeeRef, employeeSnapshot, employeeId, punch, actor, reviewedAt, remarks, updates }) {
+  const isOut = normalize(punch.type) === "out";
+  const date = clean(punch.date || punch.dateKey || punch.attendanceDate);
+  const time = punch.time || (isOut ? punch.checkOut : punch.checkIn) || punch.createdAt;
+  const checkIn = time?.toDate?.() || new Date(time);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !time || Number.isNaN(checkIn.getTime())) fail("INVALID_GPS_ATTENDANCE");
+  const attendanceRef = companyRef.collection("Attendance").doc(`${employeeId}_${date}`);
+  const employeeAttendanceRef = employeeRef.collection("Attendance").doc(date);
+  const attendanceSnapshot = await transaction.get(attendanceRef);
+  const employeeAttendanceSnapshot = await transaction.get(employeeAttendanceRef);
+  const existing = attendanceSnapshot.data() || {};
+  const employeeAttendance = employeeAttendanceSnapshot.data() || {};
+  if (isOut) {
+    const current = { ...employeeAttendance, ...existing };
+    const originalIn = existing.checkIn || employeeAttendance.checkIn;
+    const originalOut = existing.checkOut || employeeAttendance.checkOut;
+    const start = originalIn?.toDate?.() || new Date(originalIn);
+    // An OUT must close a real check-in on this workday, never fabricate one.
+    if (originalIn && Number.isFinite(start.getTime()) && checkIn >= start) {
+      let checkoutUpdate = {};
+      if (!originalOut) {
+        const companySnapshot = await transaction.get(companyRef);
+        const shifts = await transaction.get(companyRef.collection("ShiftPolicies"));
+        const shift = current.shiftPolicy || resolveEffectiveShift(employeeSnapshot.data(), companySnapshot.data(), shifts.docs.map((doc) => ({ ...doc.data(), id: doc.id })));
+        if (!shift) fail("INVALID_GPS_SHIFT");
+        checkoutUpdate = {
+          checkOut: Timestamp.fromDate(checkIn), checkOutSource: "gps",
+          checkOutLocation: punch.location || null,
+          ...gpsDurationFields(shift, start, checkIn, current),
+          updatedAt: reviewedAt,
+        };
+      }
+      // Fill missing mirror fields without replacing either copy's recorded punches.
+      for (const [target, data] of [[attendanceRef, existing], [employeeAttendanceRef, employeeAttendance]]) {
+        transaction.set(target, {
+          ...current, ...data, ...checkoutUpdate,
+          checkIn: data.checkIn || originalIn,
+          checkOut: data.checkOut || originalOut || checkoutUpdate.checkOut,
+        }, { merge: true });
+      }
+      updates.attendanceMarked = true;
+      updates.attendanceId = date;
+    }
+  } else if (existing.checkIn || employeeAttendance.checkIn) {
+    // Never replace an existing check-in, checkout, or attendance decision.
+    if (!attendanceSnapshot.exists) transaction.set(attendanceRef, employeeAttendance);
+    if (!employeeAttendanceSnapshot.exists) transaction.set(employeeAttendanceRef, existing);
+    if (attendanceSnapshot.exists && !existing.checkIn) transaction.set(attendanceRef, { checkIn: employeeAttendance.checkIn }, { merge: true });
+    if (employeeAttendanceSnapshot.exists && !employeeAttendance.checkIn) transaction.set(employeeAttendanceRef, { checkIn: existing.checkIn }, { merge: true });
+  } else {
+    const companySnapshot = await transaction.get(companyRef);
+    const shifts = await transaction.get(companyRef.collection("ShiftPolicies"));
+    const shift = resolveEffectiveShift(employeeSnapshot.data(), companySnapshot.data(), shifts.docs.map((doc) => ({ ...doc.data(), id: doc.id })));
+    if (!shift) fail("INVALID_GPS_SHIFT");
+    const local = new Date(checkIn.getTime() + 330 * 60 * 1000);
+    const late = lateMinutes(shift, { hour: local.getUTCHours(), minute: local.getUTCMinutes() });
+    const employee = employeeSnapshot.data();
+    const attendance = {
+      companyId: actor.companyId, employeeFirestoreId: employeeId,
+      employeeId: employee.employeeId || punch.employeeId || "",
+      employeeName: punch.employeeName || employee.personalInfo?.fullName || employee.name || "Employee",
+      date, dateKey: date, month: date.slice(0, 7), year: Number(date.slice(0, 4)),
+      checkIn: Timestamp.fromDate(checkIn), checkInLocation: punch.location || null,
+      checkInSource: "gps", attendanceSource: "gps", gpsValid: false,
+      shiftPolicy: shiftSnapshot(shift), shiftPolicyId: shift.id,
+      shiftCode: shift.code, shiftName: shift.name, shiftStartTime: shift.startTime, shiftEndTime: shift.endTime,
+      checkInStatus: late > 0 ? "late" : "present", lateMinutes: late,
+      status: "present", approvalStatus: "approved", requiresManagerReview: false,
+      approvedBy: actor.uid, approvedByUid: actor.uid, approvedByName: actorName(actor),
+      approvedAt: reviewedAt, reviewRemarks: remarks, overtimeMinutes: 0,
+      createdAt: existing.createdAt || employeeAttendance.createdAt || reviewedAt, updatedAt: reviewedAt,
+    };
+    transaction.set(attendanceRef, attendance, { merge: true });
+    transaction.set(employeeAttendanceRef, attendance, { merge: true });
+  }
+  if (!isOut) {
+    updates.attendanceMarked = true;
+    updates.attendanceId = date;
+  }
+}
+
 function createDecideGpsPunch(db) {
   return onCall(async (request) => {
     const actor = await actorFor(db, request, ["gps.approve", "gps.manage"]);
     const gpsPunchId = clean(request.data?.gpsPunchId);
     const decision = normalize(request.data?.decision);
     const remarks = clean(request.data?.remarks).slice(0, 500);
-    if (!gpsPunchId || !["approved", "rejected"].includes(decision)) fail("INVALID_GPS_DECISION");
+    if (!gpsPunchId || gpsPunchId.includes("/") || !["approved", "rejected"].includes(decision)) fail("INVALID_GPS_DECISION");
     const companyRef = db.collection("Companies").doc(actor.companyId);
     const ref = companyRef.collection("GPSPunches").doc(gpsPunchId);
     await db.runTransaction(async (transaction) => {
@@ -42,13 +138,32 @@ function createDecideGpsPunch(db) {
       const punch = snapshot.data();
       const state = normalize(punch.reviewStatus || punch.approvalStatus || punch.decision || "pending");
       if (state && state !== "pending") fail("GPS_ALREADY_DECIDED");
-      transaction.update(ref, {
-        reviewStatus: decision === "approved" ? "Approved" : "Rejected",
-        approvalStatus: decision === "approved" ? "Approved" : "Rejected",
+      const employeeId = clean(punch.employeeFirestoreId || punch.userId || punch.employeeId);
+      if (!employeeId || employeeId.includes("/") || (punch.companyId && punch.companyId !== actor.companyId)) fail("INVALID_GPS_EMPLOYEE");
+      const employeeRef = companyRef.collection("Usermanagement").doc(employeeId);
+      const employeeSnapshot = await transaction.get(employeeRef);
+      if (!employeeSnapshot.exists) fail("INVALID_GPS_EMPLOYEE");
+      const mirrorRef = employeeRef.collection("GPSPunches").doc(gpsPunchId);
+      const mirrorSnapshot = await transaction.get(mirrorRef);
+      const mirror = mirrorSnapshot.data() || {};
+      if ((mirror.companyId && mirror.companyId !== actor.companyId) || (mirror.employeeFirestoreId && mirror.employeeFirestoreId !== employeeId)) fail("INVALID_GPS_EMPLOYEE");
+      const mirrorState = normalize(mirror.reviewStatus || mirror.approvalStatus || mirror.decision || mirror.status || "pending");
+      if (mirrorSnapshot.exists && mirrorState !== "pending") fail("GPS_ALREADY_DECIDED");
+      const reviewedAt = FieldValue.serverTimestamp();
+      const status = decision === "approved" ? "Approved" : "Rejected";
+      const updates = {
+        status, reviewStatus: status, approvalStatus: status,
         decision, reviewRemarks: remarks, reviewedByUid: actor.uid,
         reviewedByName: actorName(actor), reviewedByRole: actorRole(actor),
-        reviewedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
-      });
+        reviewedAt, updatedAt: reviewedAt,
+        approvedBy: actor.uid, approvedAt: reviewedAt, remarks,
+      };
+      if (decision === "approved" && ["in", "out"].includes(normalize(punch.type))) {
+        await syncApprovedGpsAttendance({ transaction, companyRef, employeeRef, employeeSnapshot, employeeId, punch, actor, reviewedAt, remarks, updates });
+      }
+      transaction.update(ref, updates);
+      if (mirrorSnapshot.exists) transaction.update(mirrorRef, updates);
+      else transaction.set(mirrorRef, { ...punch, ...updates });
       audit(transaction, companyRef, actor, `gps.${decision}`, "GPSPunch", gpsPunchId, { decision, remarks });
     });
     return { ok: true, gpsPunchId, decision };
@@ -78,8 +193,10 @@ function createDecideLeaveRequest(db) {
       if (!leaveSnapshot.exists) fail("NOT_FOUND", "Leave request not found");
       const leave = leaveSnapshot.data();
       if (normalize(leave.status || "pending") !== "pending") fail("LEAVE_ALREADY_DECIDED");
-      const employeeFirestoreId = clean(leave.employeeFirestoreId || leave.userId);
-      if (!employeeFirestoreId) fail("INVALID_LEAVE_EMPLOYEE");
+      // Legacy requests stored the Usermanagement document ID in employeeId.
+      const employeeReference = leave.employeeFirestoreId || leave.userId || leave.employeeId;
+      const employeeFirestoreId = typeof employeeReference === "string" ? employeeReference.trim() : "";
+      if (!employeeFirestoreId || employeeFirestoreId.includes("/")) fail("INVALID_LEAVE_EMPLOYEE");
       if (!actor.isOwner && actor.employeeId === employeeFirestoreId) fail("LEAVE_SELF_APPROVAL_DENIED");
       const employeeRef = companyRef.collection("Usermanagement").doc(employeeFirestoreId);
       const employeeSnapshot = await transaction.get(employeeRef);
@@ -117,46 +234,141 @@ function createDecideLeaveRequest(db) {
 function createCorrectAttendance(db) {
   return onCall(async (request) => {
     const actor = await actorFor(db, request, ["attendance.edit", "attendance.manage", "attendance.approve"]);
-    const attendanceId = clean(request.data?.attendanceId);
-    const changes = request.data?.changes || {};
-    if (!attendanceId) fail("INVALID_ATTENDANCE_ID");
+    const validId = (value) => Boolean(value && !value.includes("/") && ![".", ".."].includes(value));
+    const validDay = (value) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const parsed = new Date(`${value}T00:00:00Z`);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
+    const requestedId = clean(request.data?.attendanceId);
+    const requestedEmployee = clean(request.data?.employeeFirestoreId);
+    const requestedDate = clean(request.data?.workDate);
+    const changes = request.data?.changes;
+    if ((requestedId && !validId(requestedId)) || (!requestedId && (!validId(requestedEmployee) || !validDay(requestedDate)))) fail("INVALID_ATTENDANCE_ID", "Select a valid employee and work date.");
+    if (!changes || typeof changes !== "object" || Array.isArray(changes)) fail("INVALID_ATTENDANCE_CHANGES");
+    const fields = ["checkIn", "checkOut", "status", "approvalStatus", "remarks"];
+    const has = (key) => Object.prototype.hasOwnProperty.call(changes, key);
+    if (!fields.some(has)) fail("INVALID_ATTENDANCE_CHANGES", "Edit at least one field before saving.");
     const companyRef = db.collection("Companies").doc(actor.companyId);
-    const companyAttendanceRef = companyRef.collection("Attendance").doc(attendanceId);
-    await db.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(companyAttendanceRef);
-      if (!snapshot.exists) fail("NOT_FOUND", "Attendance record not found");
-      const current = snapshot.data();
-      const employeeFirestoreId = clean(current.employeeFirestoreId || current.userId);
-      const date = clean(current.date || attendanceId.split("_").pop());
-      if (!employeeFirestoreId || !date) fail("INVALID_ATTENDANCE_ID");
-      const employeeRef = companyRef.collection("Usermanagement").doc(employeeFirestoreId);
-      if (!(await transaction.get(employeeRef)).exists) fail("INVALID_ATTENDANCE_EMPLOYEE");
-      const employeeAttendanceRef = employeeRef.collection("Attendance").doc(date);
-      const update = {
-        status: clean(changes.status || current.status), approvalStatus: clean(changes.approvalStatus || current.approvalStatus),
-        remarks: clean(changes.remarks).slice(0, 500), manuallyCorrected: true,
-        correctedByUid: actor.uid, correctedByName: actorName(actor), correctedByRole: actorRole(actor),
-        correctedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
-      };
-      for (const key of ["checkIn", "checkOut"]) {
-        const value = changes[key];
-        if (value) {
-          const parsed = value instanceof Date ? value : new Date(value);
-          if (Number.isNaN(parsed.getTime())) fail("INVALID_ATTENDANCE_TIME");
+    try {
+      return await db.runTransaction(async (transaction) => {
+        let attendanceId = requestedId || `${requestedEmployee}_${requestedDate}`;
+        let companyAttendanceRef = companyRef.collection("Attendance").doc(attendanceId);
+        let snapshot = await transaction.get(companyAttendanceRef);
+        if (requestedId && !snapshot.exists) fail("NOT_FOUND", "Attendance record not found. Reload the month before saving.");
+        let current = snapshot.data() || {};
+        const employeeFirestoreId = snapshot.exists ? clean(current.employeeFirestoreId || current.userId) : requestedEmployee;
+        const date = snapshot.exists ? clean(current.date || current.dateKey || attendanceId.match(/\d{4}-\d{2}-\d{2}$/)?.[0]) : requestedDate;
+        if (!validId(employeeFirestoreId) || !validDay(date)) fail("INVALID_ATTENDANCE_ID");
+        if ((requestedEmployee && requestedEmployee !== employeeFirestoreId) || (requestedDate && requestedDate !== date) || (current.companyId && current.companyId !== actor.companyId)) fail("INVALID_ATTENDANCE_ID");
+        const employeeRef = companyRef.collection("Usermanagement").doc(employeeFirestoreId);
+        const employeeSnapshot = await transaction.get(employeeRef);
+        const employee = employeeSnapshot.data() || {};
+        if (!employeeSnapshot.exists || (employee.companyId && employee.companyId !== actor.companyId)) fail("INVALID_ATTENDANCE_EMPLOYEE", "Employee does not belong to this company.");
+        if (!snapshot.exists) {
+          // A stale empty grid must reuse legacy canonical records as well as deterministic ones.
+          const candidates = new Map();
+          for (const field of ["employeeFirestoreId", "userId"]) {
+            const matches = await transaction.get(companyRef.collection("Attendance").where(field, "==", employeeFirestoreId));
+            for (const doc of matches.docs) {
+              const value = doc.data();
+              const day = clean(value.date || value.dateKey || doc.id.match(/\d{4}-\d{2}-\d{2}$/)?.[0]);
+              if (day === date) candidates.set(doc.id, doc);
+            }
+          }
+          if (candidates.size > 1) fail("INVALID_ATTENDANCE_DUPLICATES", "Multiple Attendance records exist for this day. Reload and review before correcting.");
+          if (candidates.size) {
+            snapshot = [...candidates.values()][0]; current = snapshot.data();
+            attendanceId = snapshot.id; companyAttendanceRef = companyRef.collection("Attendance").doc(attendanceId);
+            if ((current.employeeFirestoreId || current.userId) !== employeeFirestoreId || (current.companyId && current.companyId !== actor.companyId)) fail("INVALID_ATTENDANCE_ID");
+          }
+        }
+        const employeeAttendanceRef = employeeRef.collection("Attendance").doc(date);
+        const mirrorSnapshot = await transaction.get(employeeAttendanceRef);
+        const mirror = mirrorSnapshot.data() || {};
+        const mirrorEmployee = mirror.employeeFirestoreId || mirror.userId;
+        if ((mirror.companyId && mirror.companyId !== actor.companyId) || (mirrorEmployee && mirrorEmployee !== employeeFirestoreId) || (mirror.date && mirror.date !== date) || (mirror.dateKey && mirror.dateKey !== date)) fail("INVALID_ATTENDANCE_ID");
+        // Recover mirror-only data when materializing a missing canonical record.
+        if (!snapshot.exists) current = mirror;
+        const creating = !snapshot.exists;
+        if (creating && !mirrorSnapshot.exists && !fields.some((key) => has(key) && changes[key] !== null && clean(changes[key]) !== "")) fail("INVALID_ATTENDANCE_CHANGES", "Edit at least one field before saving.");
+        const now = FieldValue.serverTimestamp();
+        const update = {
+          manuallyCorrected: true, correctedByUid: actor.uid, correctedByName: actorName(actor), correctedByRole: actorRole(actor),
+          correctedAt: now, updatedAt: now,
+        };
+        for (const key of ["status", "approvalStatus", "remarks"]) {
+          if (!has(key)) continue;
+          if (typeof changes[key] !== "string") fail("INVALID_ATTENDANCE_CHANGES");
+          update[key] = key === "remarks" ? clean(changes[key]).slice(0, 500) : normalize(changes[key]);
+        }
+        if (has("status") && !["present", "late", "halfday", "leave", "absent", "holiday", "weeklyoff", "pending"].includes(update.status)) fail("INVALID_ATTENDANCE_STATUS", "Select a valid attendance status.");
+        if (has("approvalStatus") && !["approved", "pending", "rejected"].includes(update.approvalStatus)) fail("INVALID_ATTENDANCE_STATUS");
+        for (const key of ["checkIn", "checkOut"]) {
+          if (!has(key)) continue;
+          if (changes[key] === null) { update[key] = null; continue; }
+          if (typeof changes[key] !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*(?:Z|[+-]\d{2}:\d{2})$/.test(changes[key])) fail("INVALID_ATTENDANCE_TIME", "Enter a valid check-in or check-out time.");
+          const parsed = new Date(changes[key]);
+          if (!Number.isFinite(parsed.getTime())) fail("INVALID_ATTENDANCE_TIME");
           update[key] = Timestamp.fromDate(parsed);
         }
-      }
-      const checkIn = update.checkIn?.toDate?.() || current.checkIn?.toDate?.();
-      const checkOut = update.checkOut?.toDate?.() || current.checkOut?.toDate?.();
-      if (checkIn && checkOut) {
-        update.workedMinutes = Math.max(0, Math.floor((checkOut - checkIn) / 60000));
-        update.totalHours = update.workedMinutes / 60;
-      }
-      transaction.set(companyAttendanceRef, update, { merge: true });
-      transaction.set(employeeAttendanceRef, { ...update, employeeFirestoreId, date }, { merge: true });
-      audit(transaction, companyRef, actor, "attendance.corrected", "Attendance", attendanceId);
-    });
-    return { ok: true, attendanceId };
+        const parseTime = (value) => value?.toDate?.() || (value ? new Date(value) : null);
+        const checkIn = parseTime(has("checkIn") ? update.checkIn : current.checkIn);
+        let checkOut = parseTime(has("checkOut") ? update.checkOut : current.checkOut);
+        const timeChanged = has("checkIn") || has("checkOut");
+        if (creating || timeChanged) {
+          let shift = current.shiftPolicy;
+          if (!shift || !["maximumWorkingMinutes", "minimumWorkingMinutes", "absentMinutes", "halfDayMinutes"].every((key) => Number.isFinite(shift[key]))) {
+            const company = await transaction.get(companyRef);
+            const policies = await transaction.get(companyRef.collection("ShiftPolicies"));
+            const policyEmployee = current.shiftPolicyId || current.shiftPolicy?.id ? { ...employee, employment: { ...employee.employment, shiftPolicyId: current.shiftPolicyId || current.shiftPolicy.id } } : employee;
+            shift = resolveEffectiveShift(policyEmployee, company.data() || {}, policies.docs.map((doc) => ({ ...doc.data(), id: doc.id })));
+          }
+          if ((checkIn || checkOut) && !shift) fail("INVALID_ATTENDANCE_SHIFT", "Assign an active shift policy before saving attendance times.");
+          if (checkIn && !Number.isFinite(checkIn.getTime()) || checkOut && !Number.isFinite(checkOut.getTime())) fail("INVALID_ATTENDANCE_TIME");
+          if (checkIn && dateKey(checkIn) !== date) fail("INVALID_ATTENDANCE_TIME", "Check-in must be on the selected work date.");
+          if (checkOut && !checkIn) fail("INVALID_ATTENDANCE_TIME", "Enter a check-in before adding check-out.");
+          if (checkIn && checkOut && checkOut < checkIn && shift.isNightShift && has("checkOut") && dateKey(checkOut) === date) {
+            checkOut = new Date(checkOut.getTime() + 86400000); update.checkOut = Timestamp.fromDate(checkOut);
+          }
+          if (checkIn && checkOut && checkOut < checkIn) fail("INVALID_ATTENDANCE_TIME", "Check-out must follow check-in.");
+          if (shift) {
+            if (!current.shiftPolicy) Object.assign(update, { shiftPolicy: shiftSnapshot(shift), shiftPolicyId: shift.id });
+            if (checkIn && (creating || has("checkIn") || current.lateMinutes == null)) {
+              const local = new Date(checkIn.getTime() + 330 * 60000);
+              update.lateMinutes = lateMinutes(shift, { hour: local.getUTCHours(), minute: local.getUTCMinutes() });
+              update.checkInStatus = update.lateMinutes > 0 ? "late" : "present";
+            }
+            if (checkIn && checkOut) {
+              const calculated = gpsDurationFields(shift, checkIn, checkOut, { ...current, ...update });
+              if (has("status")) calculated.status = update.status;
+              Object.assign(update, calculated);
+            }
+          }
+          if (!checkIn || !checkOut) {
+            Object.assign(update, { workedMinutes: 0, totalHours: 0, actualWorkingMinutes: 0, payableWorkingMinutes: 0, overtimeMinutes: 0 });
+            if (!has("status")) update.status = checkIn ? "pending" : current.status || "pending";
+          }
+        }
+        if (creating) {
+          Object.assign(update, {
+            companyId: actor.companyId, employeeFirestoreId, employeeId: clean(employee.employeeId || employee.login?.employeeId),
+            employeeName: clean(employee.personalInfo?.fullName || employee.name || "Employee"),
+            date, dateKey: date, month: date.slice(0, 7), year: Number(date.slice(0, 4)),
+            attendanceSource: current.attendanceSource || "manual", createdAt: current.createdAt || now,
+          });
+          if (!has("approvalStatus") && !current.approvalStatus) update.approvalStatus = "approved";
+        }
+        transaction.set(companyAttendanceRef, { ...current, ...update }, { merge: true });
+        transaction.set(employeeAttendanceRef, { ...current, ...update, employeeFirestoreId, date }, { merge: true });
+        audit(transaction, companyRef, actor, "attendance.corrected", "Attendance", attendanceId);
+        return { ok: true, attendanceId, created: creating };
+      });
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      console.error("[correctAttendance] transaction failed", { companyId: actor.companyId, attendanceId: requestedId, code: error?.code, message: error?.message });
+      throw new HttpsError("internal", "Attendance correction could not be saved. Please retry or contact your administrator.");
+    }
   });
 }
 
@@ -297,4 +509,4 @@ function createWorkforceFunctions(db) {
   };
 }
 
-module.exports = { createWorkforceFunctions, leaveDays, scheduledDaysFor, calculatePayrollRow };
+module.exports = { gpsDurationFields, syncApprovedGpsAttendance, createWorkforceFunctions, leaveDays, scheduledDaysFor, calculatePayrollRow };

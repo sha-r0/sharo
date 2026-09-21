@@ -1,0 +1,63 @@
+/* Keep the shared review UI in the manager portal's light palette on this page only. */
+.page {
+  color-scheme: light;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+.page :global(.bg-white),
+.page table,
+.page tbody,
+.page article {
+  background-color: #fff !important;
+}
+
+.page :global(.bg-slate-100) {
+  background-color: #f1f5f9 !important;
+}
+
+.page :global(.bg-slate-50) {
+  background-color: #f8fafc !important;
+}
+
+.page :global(.border-slate-200) {
+  border-color: #e2e8f0 !important;
+}
+
+.page :global(.divide-slate-100) > :not(:last-child) {
+  border-color: #f1f5f9 !important;
+}
+
+.page :global(.text-slate-900),
+.page :global(.text-slate-800),
+.page input {
+  color: #0f172a !important;
+}
+
+.page :global(.text-slate-700) {
+  color: #334155 !important;
+}
+
+.page :global(.text-slate-600) {
+  color: #475569 !important;
+}
+
+.page :global(.text-slate-500) {
+  color: #64748b !important;
+}
+
+.page [role="tab"][aria-selected="true"] {
+  color: #2563eb !important;
+}
+
+.page [role="tab"]:global(.bg-white) {
+  background-color: #eff6ff !important;
+}
+
+.page tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+.page button:global(.border-slate-200) {
+  color: #2563eb !important;
+}

@@ -26,6 +26,10 @@ export default function ProtectedRoute({ children }) {
 
     logout,
 
+    authError,
+
+    refreshUser,
+
 
   } = useAuth();
 
@@ -59,6 +63,9 @@ export default function ProtectedRoute({ children }) {
     // -----------------------------
 
     if (!currentUser || !company) {
+      // A failed initial network check has no cached identity to render yet.
+      // Retry without treating an infrastructure failure as a revoked session.
+      if (authError) return;
       logout().finally(() => router.replace("/login"));
       return;
     }
@@ -111,6 +118,8 @@ export default function ProtectedRoute({ children }) {
 
     router,
     access,
+    authError,
+    logout,
 
   ]);
 
@@ -156,6 +165,16 @@ export default function ProtectedRoute({ children }) {
 
     return null;
 
+  }
+
+  if (authError && (!currentUser || !company)) {
+    return <div role="alert" className="grid min-h-screen place-items-center bg-[#EEF3FB] p-6">
+      <div className="max-w-md rounded-2xl bg-white p-8 text-center shadow-sm">
+        <h1 className="text-lg font-semibold text-slate-800">Unable to check your workspace</h1>
+        <p className="mt-2 text-sm text-slate-500">Session validation is temporarily unavailable. Please check your connection and retry.</p>
+        <button type="button" onClick={refreshUser} className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white">Retry</button>
+      </div>
+    </div>;
   }
 
   if (access && (!access.loginEnabled || ["inactive", "suspended", "locked", "pending"].includes(String(access.status).toLowerCase()))) return <AccessDenied />;

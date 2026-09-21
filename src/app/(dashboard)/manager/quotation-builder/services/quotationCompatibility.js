@@ -1,3 +1,5 @@
+import { quotationListComparator } from "../../../../../lib/quotations/quotationNumberOrder.js";
+
 export function normalizeQuotationRecord(id, data = {}) {
   return {
     ...data,
@@ -9,3 +11,5 @@ export function normalizeQuotationRecord(id, data = {}) {
     quotationDate: data.quotationDate || data.date || null,
   };
 }
+
+export const compareQuotationNumbersDescending = quotationListComparator();

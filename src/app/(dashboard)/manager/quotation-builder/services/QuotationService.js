@@ -153,129 +153,29 @@ export default class QuotationService {
     // Dashboard
     //////////////////////////////////////////////////////
 
-    static async getDashboard(
-        companyId,
-        { viewMode = "all", month = "" } = {}
-    ) {
+    static async getDashboard(companyId, options = {}) {
         this.validateCompanyId(companyId);
-
-        let quotationQuery = query(
-            this.quotationsRef(companyId),
-            orderBy("createdAt", "desc")
-        );
-
-        if (viewMode === "month") {
-            if (!/^\d{4}-\d{2}$/.test(month)) {
-                throw new Error("A valid quotation month is required.");
-            }
-
-            const [year, monthNumber] = month
-                .split("-")
-                .map(Number);
-            const nextMonth = new Date(
-                year,
-                monthNumber,
-                1
-            );
-            const nextMonthValue = `${nextMonth.getFullYear()}-${String(
-                nextMonth.getMonth() + 1
-            ).padStart(2, "0")}-01`;
-
-            quotationQuery = query(
-                this.quotationsRef(companyId),
-                where("quotationDate", ">=", `${month}-01`),
-                where("quotationDate", "<", nextMonthValue),
-                orderBy("quotationDate", "desc")
-            );
-        }
-
-        try {
-            const quotationSnapshot = await getDocs(quotationQuery);
-            const [companyResult, settingsResult, clientResult] = await Promise.allSettled([
-                getDoc(this.companyRef(companyId)),
-                this.getSettings(companyId),
-                getDocs(query(this.clientsRef(companyId), orderBy("companyName"))),
-            ]);
-            for (const [name, result] of [["company", companyResult], ["settings", settingsResult], ["clients", clientResult]]) {
-                if (result.status === "rejected") console.error("Quotation supporting request failed", { source: "QuotationService.getDashboard", operation: "get", path: name === "company" ? `Companies/${companyId}` : name === "settings" ? `Companies/${companyId}/QuotationSettings/default` : `Companies/${companyId}/Clients`, companyId, authUid: auth.currentUser?.uid || null, code: result.reason?.code || result.reason?.message || "unknown" });
-            }
-            const companySnapshot = companyResult.status === "fulfilled" ? companyResult.value : null;
-            const settings = settingsResult.status === "fulfilled" ? settingsResult.value : null;
-            const clientSnapshot = clientResult.status === "fulfilled" ? clientResult.value : null;
-
-            const company = companySnapshot?.exists()
-                ? {
-                    id: companySnapshot.id,
-                    ...companySnapshot.data(),
-                }
-                : null;
-
-            const quotations =
-                quotationSnapshot.docs.map(
-                    (quotationDocument) => normalizeQuotationRecord(quotationDocument.id, quotationDocument.data())
-                );
-
-            const clients =
-                (clientSnapshot?.docs || []).map(
-                    (clientDocument) => ({
-                        id: clientDocument.id,
-                        ...clientDocument.data(),
-                    })
-                );
-
-            const summary = quotations.reduce(
-                (result, quotation) => {
-                    result.total += 1;
-
-                    const normalizedStatus = String(
-                        quotation.status || "Draft"
-                    )
-                        .trim()
-                        .toLowerCase();
-
-                    if (normalizedStatus === "draft") {
-                        result.draft += 1;
-                    }
-
-                    if (normalizedStatus === "sent") {
-                        result.sent += 1;
-                    }
-
-                    if (normalizedStatus === "approved") {
-                        result.approved += 1;
-                    }
-
-                    if (normalizedStatus === "rejected") {
-                        result.rejected += 1;
-                    }
-
-                    return result;
-                },
-                {
-                    total: 0,
-                    draft: 0,
-                    sent: 0,
-                    approved: 0,
-                    rejected: 0,
-                }
-            );
-
-            return {
-                company,
-                settings,
-                settingsExists: Boolean(settings),
-                quotations,
-                clients,
-                summary,
-            };
-        } catch (error) {
-            console.error(
-                "Failed to load quotation dashboard:",
-                error
-            );
-
-            throw error;
-        }
+        const token = await auth.currentUser?.getIdToken();
+        const params = new URLSearchParams({
+            viewMode: options.viewMode || "all", month: options.month || "",
+            search: options.search || "", status: options.status || "All",
+            page: String(options.page || 1), pageSize: String(options.pageSize || 10),
+        });
+        const response = await fetch(`/api/quotations/list?${params}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to load quotations.");
+        const [companyResult, settingsResult, clientResult] = await Promise.allSettled([
+            getDoc(this.companyRef(companyId)), this.getSettings(companyId),
+            getDocs(query(this.clientsRef(companyId), orderBy("companyName"))),
+        ]);
+        const companySnapshot = companyResult.status === "fulfilled" ? companyResult.value : null;
+        const settings = settingsResult.status === "fulfilled" ? settingsResult.value : null;
+        return {
+            ...result,
+            company: companySnapshot?.exists() ? { id: companySnapshot.id, ...companySnapshot.data() } : null,
+            settings, settingsExists: Boolean(settings),
+            clients: clientResult.status === "fulfilled" ? clientResult.value.docs.map((doc) => ({ ...doc.data(), id: doc.id })) : [],
+        };
     }
 
     //////////////////////////////////////////////////////

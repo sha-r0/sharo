@@ -20,7 +20,10 @@ export async function authorizeCompanyRequest(request) {
   }
   if (companySnapshot) {
     if (String(companySnapshot.data()?.serviceStatus || "active").toLowerCase() !== "active") error("COMPANY_INACTIVE");
-    return { token, companyId: companySnapshot.id, company: companySnapshot.data(), isOwner: true, employee: null, permissions: ALL_PERMISSIONS };
+    const company = companySnapshot.data();
+    return { token, uid: token.uid, companyId: companySnapshot.id, company, isOwner: true, employee: null,
+      employeeFirestoreId: null, employeeId: null, employeeName: String(company?.ownerName || company?.contactPerson || company?.companyName || "Owner"),
+      roleId: "owner", permissions: ALL_PERMISSIONS, active: true };
   }
 
   const rootUsers = adminDb.collection("Usermanagement");
@@ -53,17 +56,23 @@ export async function authorizeCompanyRequest(request) {
   }
 
   const employee = { id: employeeSnapshot.id, ...employeeSnapshot.data() };
+  if (!["active", "enabled"].includes(String(rootData.status || "active").toLowerCase())) error("FORBIDDEN");
   const status = String(employee.access?.status || employee.employment?.status || employee.status || "active").toLowerCase();
   if (employee.access?.loginEnabled === false || !["active", "enabled"].includes(status)) error("FORBIDDEN");
   if (String(companySnapshotForEmployee.data()?.serviceStatus || "active").toLowerCase() !== "active") error("COMPANY_INACTIVE");
 
   return {
-    token,
+    token, uid: token.uid,
     companyId,
     company: companySnapshotForEmployee.data(),
     isOwner: false,
     employee,
     permissions: Array.isArray(employee.access?.effectivePermissions) ? employee.access.effectivePermissions : [],
+    employeeFirestoreId: employeeSnapshot.id,
+    employeeId: String(employee.employeeId || employee.login?.employeeId || ""),
+    employeeName: String(employee.personalInfo?.fullName || employee.employeeName || employee.name || "Employee"),
+    roleId: String(employee.access?.roleId || employee.employment?.role || rootData.role || "employee").toLowerCase(),
+    active: true,
   };
 }
 

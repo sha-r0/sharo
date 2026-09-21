@@ -1,97 +1,8 @@
-// "use client";
-
-// import { useState } from "react";
-
-// import LeaveHeader from "./components/LeaveHeader";
-// import LeaveTabs from "./components/LeaveTabs";
-// import LeaveRequests from "./module/Leaverequest";
-// import HolidayCalendar from "./module/Defineholiday";
-// import LeaveTypes from "./module/Leavetype";
-// import LeaveBalance from "./module/LeaveBalance";
-
-
-// export default function LeaveManagementPage() {
-
-//   const [activeTab, setActiveTab] = useState("dashboard");
-
-//   /////////////////////////////////////////////////////////
-
-//   function handleAdd() {
-
-//     switch (activeTab) {
-
-//       case "types":
-//         // Open Leave Type Dialog
-//         break;
-
-//       case "holidays":
-//         // Open Holiday Dialog
-//         break;
-
-//       case "requests":
-//         // Open Apply Leave Dialog
-//         break;
-
-//       case "policies":
-//         // Open Policy Dialog
-//         break;
-
-//       default:
-//         break;
-
-//     }
-
-//   }
-
-//   /////////////////////////////////////////////////////////
-
-//   return (
-
-//     <div className="space-y-8">
-
-//       <LeaveHeader
-//         activeTab={activeTab}
-//         onAdd={handleAdd}
-//       />
-
-//       <LeaveTabs
-//         activeTab={activeTab}
-//         onChange={setActiveTab}
-//       />
-
-//       {/* {activeTab === "dashboard" && (
-//         <Dashboard />
-//       )} */}
-
-//       {activeTab === "types" && (
-//         <LeaveTypes />
-//       )}
-
-//       {activeTab === "holidays" && (
-//         <HolidayCalendar />
-//       )}
-
-//       {activeTab === "requests" && (
-//         <LeaveRequests/>
-//       )}
-
-//       {activeTab === "balance" && (
-//         <LeaveBalance />
-//       )}
-
-//       {/* {activeTab === "policies" && (
-//         <LeavePolicies />
-//       )} */}
-
-//     </div>
-
-//   );
-
-// }
-
 "use client";
 
 import { useEffect, useState } from "react";
+import LeaveApproval from "./components/LeaveApproval";
+import styles from "./leaveManagement.module.css";
 
 import { useAuth } from "@/app/(auth)/context/AuthContext";
 
@@ -111,7 +22,7 @@ const LEAVE_POLICY_TABS = [
   { id: "employee-leave-balance", label: "Employee Leave Balance" },
 ];
 
-export default function LeavePolicyPage() {
+function ExistingLeavePolicy() {
 
   const { company } = useAuth();
 
@@ -211,13 +122,13 @@ export default function LeavePolicyPage() {
 
       <div>
 
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
 
           Leave Policy
 
         </h1>
 
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-sm text-slate-500">
 
           Manage leave types, holidays and employee leave policies
 
@@ -230,7 +141,7 @@ export default function LeavePolicyPage() {
         <div
           role="tablist"
           aria-label="Leave policy sections"
-          className="flex min-w-max border-b border-slate-200 dark:border-slate-700"
+          className="flex min-w-max border-b border-slate-200"
         >
 
           {LEAVE_POLICY_TABS.map((tab) => {
@@ -249,8 +160,8 @@ export default function LeavePolicyPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`relative whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${
                   isActive
-                    ? "text-blue-600 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-blue-600 dark:text-blue-400 dark:after:bg-blue-400"
-                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                    ? "text-blue-600 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-blue-600"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
 
@@ -377,4 +288,18 @@ export default function LeavePolicyPage() {
 
   );
 
+}
+
+
+export default function LeavePolicyPage() {
+  const [section, setSection] = useState("approval");
+  const [policyOpened, setPolicyOpened] = useState(false);
+  return <div className={`${styles.page} space-y-6`}>
+    <header><h1 className="text-2xl font-semibold tracking-tight text-slate-900">Leave Management</h1><p className="mt-1 text-sm text-slate-500">Review employee requests and manage your leave policies.</p></header>
+    <div role="tablist" aria-label="Leave management sections" className="flex gap-6 border-b border-slate-200">
+      {[["approval", "Leave Approval"], ["policy", "Leave Policy"]].map(([id, label]) => <button key={id} type="button" role="tab" id={`leave-${id}-tab`} aria-controls={`leave-${id}-panel`} aria-selected={section === id} onClick={() => { setSection(id); if (id === "policy") setPolicyOpened(true); }} className={`border-b-2 px-1 pb-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-blue-600 ${section === id ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{label}</button>)}
+    </div>
+    <section role="tabpanel" id="leave-approval-panel" aria-labelledby="leave-approval-tab" hidden={section !== "approval"}><LeaveApproval /></section>
+    <section role="tabpanel" id="leave-policy-panel" aria-labelledby="leave-policy-tab" hidden={section !== "policy"}>{policyOpened && <ExistingLeavePolicy />}</section>
+  </div>;
 }

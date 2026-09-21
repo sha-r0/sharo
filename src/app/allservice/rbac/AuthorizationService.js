@@ -19,7 +19,13 @@ export function resolveAccess({ currentUser, employee, company, role }) {
       ? storedPermissions
       : calculateEffectivePermissions({ rolePermissions: base, grantedPermissions: overrides.grant, deniedPermissions: overrides.deny });
   const accountType = isOwner ? "owner" : "employee";
-  return { isOwner, isEmployee: !isOwner, accountType, roleId, roleLevel: Number(role?.level ?? DEFAULT_ROLE_LEVELS[roleId] ?? 10), permissions, status: resolveEmployeeStatus(employee), loginEnabled: isOwner || resolveEmployeeLoginEnabled(employee), requirePasswordChange: !isOwner && Boolean(employee?.access?.requirePasswordChange ?? employee?.requirePasswordChange), policyAccepted: isOwner || employee?.access?.policyAccepted !== false, teamId: employee?.reporting?.teamId || employee?.employment?.teamId || null, reportsTo: employee?.reporting?.reportsTo || employee?.employment?.reportsTo || null };
+  const status = resolveEmployeeStatus(employee);
+  const loginEnabled = isOwner || resolveEmployeeLoginEnabled(employee);
+  return { uid: currentUser?.uid || null, companyId: company?.id || company?.companyId || null,
+    employeeFirestoreId: isOwner ? null : employee?.id || employee?.firestoreId || null,
+    employeeId: isOwner ? null : employee?.employeeId || employee?.login?.employeeId || null,
+    employeeName: isOwner ? company?.ownerName || company?.companyName || "Owner" : employee?.personalInfo?.fullName || employee?.name || "Employee",
+    isOwner, isEmployee: !isOwner, accountType, roleId, roleLevel: Number(role?.level ?? DEFAULT_ROLE_LEVELS[roleId] ?? 10), permissions, status, loginEnabled, active: isOwner || (loginEnabled && ["active", "enabled"].includes(String(status || "").toLowerCase())), requirePasswordChange: !isOwner && Boolean(employee?.access?.requirePasswordChange ?? employee?.requirePasswordChange), policyAccepted: isOwner || employee?.access?.policyAccepted !== false, teamId: employee?.reporting?.teamId || employee?.employment?.teamId || null, reportsTo: employee?.reporting?.reportsTo || employee?.employment?.reportsTo || null };
 }
 export const can = (access, permission) => Boolean(access?.isOwner || !permission || access?.permissions?.includes(permission));
 export const canAccessPath = (access, pathname) => can(access, permissionForPath(pathname));

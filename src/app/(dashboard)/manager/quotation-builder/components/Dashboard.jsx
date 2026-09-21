@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/app/(auth)/context/AuthContext";
@@ -23,6 +23,8 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
 
     const loadRequest = useRef(0);
+    const [loaded, setLoaded] = useState(false);
+    const [error, setError] = useState("");
 
     const [dashboard, setDashboard] = useState({
 
@@ -84,7 +86,7 @@ export default function Dashboard() {
 
         loadDashboard();
 
-    }, [company, viewMode, month]);
+    }, [company?.id, viewMode, month, search, status, page, pageSize]);
 
     async function loadDashboard() {
 
@@ -93,18 +95,20 @@ export default function Dashboard() {
         try {
 
             setLoading(true);
+            setError("");
 
             const data = await QuotationService.getDashboard(
 
                 company.id,
 
-                { viewMode, month }
+                { viewMode, month, search, status, page, pageSize }
 
             );
 
             if (request === loadRequest.current) {
 
                 setDashboard(data);
+                setLoaded(true);
 
             }
 
@@ -113,6 +117,7 @@ export default function Dashboard() {
         catch (error) {
 
             console.error(error);
+            if (request === loadRequest.current) setError(error.message || "Unable to load quotations.");
 
         }
 
@@ -152,58 +157,9 @@ export default function Dashboard() {
     // Filtering
     /////////////////////////////////////////////////
 
-    const filteredQuotations = useMemo(() => dashboard.quotations.filter((item) => {
-
-        ////////////////////////////////////////////
-        // Search
-        ////////////////////////////////////////////
-
-        const searchText = search.toLowerCase();
-
-        const matchSearch =
-
-            !search ||
-
-            item.quotationNumber
-
-                ?.toLowerCase()
-
-                .includes(searchText) ||
-
-            item.clientName
-
-                ?.toLowerCase()
-
-                .includes(searchText);
-
-        ////////////////////////////////////////////
-        // Status
-        ////////////////////////////////////////////
-
-        const matchStatus =
-
-            status === "All"
-
-                ? true
-
-                : item.status === status;
-
-        return (
-
-            matchSearch &&
-
-            matchStatus
-
-        );
-
-    }), [dashboard.quotations, search, status]);
-
-    const totalPages = Math.max(1, Math.ceil(filteredQuotations.length / pageSize));
-
-    const paginatedQuotations = filteredQuotations.slice(
-        (page - 1) * pageSize,
-        page * pageSize
-    );
+    // The API returns the numerically sorted, filtered page; do not slice it again.
+    const paginatedQuotations = dashboard.quotations;
+    const totalPages = dashboard.totalPages || 1;
 
     useEffect(() => {
 
@@ -221,7 +177,7 @@ export default function Dashboard() {
     // Loading
     /////////////////////////////////////////////////
 
-    if (loading) {
+    if (loading && !loaded) {
 
         return (
 
@@ -292,11 +248,14 @@ export default function Dashboard() {
 
             />
 
+            {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+            {loading && <p role="status" className="text-sm text-slate-500">Updating quotations…</p>}
+
             <RecentQuotationTable
 
                 quotations={paginatedQuotations}
 
-                totalQuotations={filteredQuotations.length}
+                totalQuotations={dashboard.total || 0}
 
                 page={page}
 

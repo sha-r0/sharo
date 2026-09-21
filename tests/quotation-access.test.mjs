@@ -28,7 +28,8 @@ test("quotation with unresolved client link still has safe display values", () =
 
 test("quotation dashboard uses company-scoped collections without owner filtering", () => {
   assert.match(service, /"Companies",\s*companyId,\s*"Quotations"/);
-  assert.match(service, /orderBy\("createdAt", "desc"\)/);
+  assert.match(service, /fetch\(`\/api\/quotations\/list/);
+  assert.doesNotMatch(service, /orderBy\("(?:createdAt|quotationDate)"/);
   assert.doesNotMatch(service, /where\("createdBy"/);
   assert.doesNotMatch(service, /collection\(\s*db,\s*"quotations"/);
 });

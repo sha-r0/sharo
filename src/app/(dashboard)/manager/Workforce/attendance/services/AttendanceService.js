@@ -14,6 +14,8 @@ import { db, functions } from "@/lib/firebase"
 import { httpsCallable } from "firebase/functions";
 import { attendanceDayKey, attendanceEmployeeKeys, attendanceSource, formatAttendanceTime, formatWorkedMinutes } from "../../services/attendanceDateTime";
 
+import { monthlyRows, correctionChanges } from "./monthlyCorrection";
+
 export default class AttendanceService {
 
     //////////////////////////////////////////////////////
@@ -90,9 +92,9 @@ export default class AttendanceService {
 
                 return {
 
-                    id: doc.id,
-
                     ...data,
+
+                    id: doc.id,
 
                     name:
                         data.personalInfo?.fullName || "",
@@ -962,20 +964,21 @@ export default class AttendanceService {
 
         attendanceId,
 
-        values
+        values,
+
+        target = {}
 
     ) {
 
         void companyId;
         const response = await httpsCallable(functions, "correctAttendance")({
-            attendanceId,
-            changes: {
-                checkIn: values.checkIn instanceof Date ? values.checkIn.toISOString() : values.checkIn,
-                checkOut: values.checkOut instanceof Date ? values.checkOut.toISOString() : values.checkOut,
-                status: values.status,
-                approvalStatus: values.approvalStatus,
-                remarks: values.remarks || "",
-            },
+            ...(attendanceId ? { attendanceId } : {}),
+            ...(target.employeeFirestoreId ? { employeeFirestoreId: target.employeeFirestoreId, workDate: target.workDate } : {}),
+            changes: Object.fromEntries(
+                ["checkIn", "checkOut", "status", "approvalStatus", "remarks"]
+                    .filter((key) => Object.prototype.hasOwnProperty.call(values, key) && values[key] !== undefined)
+                    .map((key) => [key, values[key] instanceof Date ? values[key].toISOString() : values[key]])
+            ),
         });
         return response.data;
 
@@ -989,116 +992,40 @@ export default class AttendanceService {
     // Monthly Attendance
     //////////////////////////////////////////////////////
 
-    static async getEmployeeMonthlyAttendance({
-
-        companyId,
-
-        employeeId,
-
-        month,
-
-    }) {
-
-        const q = query(
-
-            this.attendanceCollection(companyId),
-
-            where(
-                "employeeFirestoreId",
-                "==",
-                employeeId
-            ),
-
-            where(
-                "month",
-                "==",
-                month
-            )
-
-        );
-
-        const snap = await getDocs(q);
-
-        ////////////////////////////////////////////
-        // Existing Attendance
-        ////////////////////////////////////////////
-
-        const attendanceMap = {};
-
-        snap.docs.forEach((doc) => {
-
-            attendanceMap[doc.data().date] = {
-
-                id: doc.id,
-
-                ...doc.data(),
-
-            };
-
-        });
-
-        ////////////////////////////////////////////
-        // Generate Complete Month
-        ////////////////////////////////////////////
-
-        const year = Number(month.split("-")[0]);
-
-        const monthNumber = Number(month.split("-")[1]);
-
-        const totalDays = new Date(
-            year,
-            monthNumber,
-            0
-        ).getDate();
-
-        const rows = [];
-
-        for (let day = 1; day <= totalDays; day++) {
-
-            const date = `${month}-${String(day).padStart(2, "0")}`;
-
-            if (attendanceMap[date]) {
-
-                rows.push(attendanceMap[date]);
-
-            } else {
-
-                rows.push({
-
-                    id: null,
-
-                    date,
-
-                    month,
-
-                    employeeFirestoreId: employeeId,
-
-                    checkIn: null,
-
-                    checkOut: null,
-
-                    totalHours: 0,
-
-                    status: "absent",
-
-                    approvalStatus: "pending",
-
-                    gpsValid: false,
-
-                    remarks: "",
-
-                    exists: false,
-
-                });
-
-            }
-
-        }
-
-        return rows;
-
+    static async getEmployeeMonthlyAttendance({ companyId, employeeId, month }) {
+        if (!companyId || !employeeId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("Select an employee and a valid month.");
+        // Work date is authoritative; machine/app records need not contain a month field.
+        const snapshots = await Promise.all(["employeeFirestoreId", "userId"].map((field) =>
+            getDocs(query(this.attendanceCollection(companyId), where(field, "==", employeeId)))
+        ));
+        const records = new Map(snapshots.flatMap((snap) => snap.docs.map((item) => [item.id, { ...item.data(), id: item.id }])));
+        return monthlyRows([...records.values()], employeeId, month);
     }
 
-
-
+    static async saveMonthlyAttendanceBatch({ companyId, employeeFirestoreId, month, rows, onProgress }) {
+        const pending = rows.filter((row) => Object.values(row._dirty || {}).some(Boolean));
+        // Validate the whole selection before any calls; submit only explicitly edited dates.
+        const edits = pending.map((row) => {
+            if (row.employeeFirestoreId !== employeeFirestoreId || row.month !== month || !row.date.startsWith(`${month}-`)) throw new Error("Attendance selection changed. Reload the month.");
+            return { row, changes: correctionChanges(row) };
+        });
+        const saved = [], errors = {};
+        for (const { row, changes } of edits) {
+            onProgress?.(row._key, "saving");
+            try {
+                await this.updateAttendance(companyId, row.id, changes, { employeeFirestoreId, workDate: row.date });
+                saved.push(row._key);
+                onProgress?.(row._key, "saved");
+            } catch (error) {
+                const messages = {
+                    "functions/permission-denied": "You do not have permission to correct attendance.",
+                    "functions/unauthenticated": "Your session expired. Sign in and retry.",
+                    "functions/unavailable": "The attendance service is unavailable. Please retry.",
+                };
+                errors[row._key] = messages[error?.code] || (error?.message && !/^internal$/i.test(error.message) ? error.message : "The attendance service could not save this row. Please retry or contact your administrator.");
+                onProgress?.(row._key, "error");
+            }
+        }
+        return { saved, errors };
+    }
 }
