@@ -30,12 +30,36 @@ class NotificationRepository {
     }));
   }
 
+  async directUsers(companyId, direct) {
+    const companyUsers = this.company(companyId).collection("Usermanagement");
+    const rootUsers = this.db.collection("Usermanagement");
+    const lookups = [...direct].flatMap((id) => [
+      companyUsers.doc(id).get(),
+      companyUsers.where("employeeId", "==", id).get(),
+      companyUsers.where("firestoreId", "==", id).get(),
+      companyUsers.where("access.authUid", "==", id).get(),
+      rootUsers.where("companyId", "==", companyId).where("employeeId", "==", id).get(),
+    ]);
+    const snapshots = await Promise.all(lookups);
+    const documents = [];
+    snapshots.forEach((snapshot) => {
+      if (snapshot?.docs) documents.push(...snapshot.docs);
+      else if (snapshot?.exists) documents.push(snapshot);
+    });
+    return [...new Map(documents.map((document) => [document.ref.path, {
+      ...document.data(), id: document.id, ref: document.ref, companyId,
+    }])).values()];
+  }
+
   async resolveRecipients(companyId, notification) {
-    const users = await this.companyUsers(companyId);
-    const direct = new Set((notification.receiverIds || notification.targetUsers || []).filter(Boolean).map(String));
+    const direct = new Set((notification.recipientIds || notification.receiverIds || notification.targetUsers || []).filter(Boolean).map(String));
     const roles = new Set((notification.receiverRoles || [notification.targetRole]).filter(Boolean).map((item) => String(item).toLowerCase()));
     const department = String(notification.metadata?.department || notification.department || "").toLowerCase();
-    const companyWide = notification.receiver === "company" || notification.receiver === "all" || notification.metadata?.targetType === "company";
+    const companyWide = notification.broadcast === true || notification.metadata?.broadcast === true || (notification.module === "announcement" && (notification.receiver === "company" || notification.receiver === "all" || notification.metadata?.targetType === "company"));
+    if (!direct.size && !roles.size && !department && !companyWide) return [];
+    const users = direct.size && !roles.size && !department && !companyWide
+      ? await this.directUsers(companyId, direct)
+      : await this.companyUsers(companyId);
     return users.filter((user) => {
       const ids = [user.id, user.firestoreId, user.employeeId, user.uid].filter(Boolean).map(String);
       if (ids.some((id) => direct.has(id))) return true;

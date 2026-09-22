@@ -4,6 +4,8 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { resolveCompanyActor, clean } = require("../auth/CompanyActor");
 const { resolveEffectiveShift, snapshot: shiftSnapshot, lateMinutes, workingMinutes, statusFor } = require("../shift_policy_resolver");
+const { captureStatutoryInputs, buildPayrollStatutory } = require("./payrollStatutory");
+const { payrollCollection } = require("./payrollCollection");
 
 const normalize = (value) => clean(value).toLowerCase().replace(/[ _-]/g, "");
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -444,7 +446,10 @@ function createGeneratePayroll(db) {
       const payrollId = `${month}_${id}`;
       const calculated = calculatePayrollRow({ employee, attendance: employeeAttendance, leaves: employeeLeaves, advances: employeeAdvances, month, holidays, weeklyOff, adjustment: adjustments[id] });
       const row = { id: payrollId, month, companyId: actor.companyId, employeeFirestoreId: id, employeeId: clean(employee.employeeId || employee.login?.employeeId), employeeName: actorName({ employee }), department: clean(employee.employment?.department || employee.department), shiftPolicyId: shiftId, weeklyOff, ...calculated, status: "Draft", policySnapshot: { shiftPolicyId: shiftId, weeklyOff, generatedFrom: "finalized-attendance-v1" } };
-      const ref = companyRef.collection("Payroll").doc(payrollId);
+      row.statutoryInputs = captureStatutoryInputs(employee, row, month);
+      // A regenerated draft must not retain a previous month's calculation inputs/results.
+      row.compliance = null;
+      const ref = payrollCollection(companyRef).doc(payrollId);
       await db.runTransaction(async (transaction) => {
         const existing = await transaction.get(ref);
         if (existing.exists && ["processed", "paid", "finalized"].includes(normalize(existing.data().status))) fail("PAYROLL_FINALIZED");
@@ -461,19 +466,23 @@ function createTransitionPayroll(db) {
     const actor = await actorFor(db, request, ["payroll.approve", "payroll.manage"]);
     const payrollId = clean(request.data?.payrollId);
     const target = normalize(request.data?.status);
-    if (!payrollId || !["processed", "paid"].includes(target)) fail("INVALID_PAYROLL_STATUS");
+    if (!payrollId || payrollId.includes("/") || !["processed", "paid"].includes(target)) fail("INVALID_PAYROLL_STATUS");
     const companyRef = db.collection("Companies").doc(actor.companyId);
-    const ref = companyRef.collection("Payroll").doc(payrollId);
+    const ref = payrollCollection(companyRef).doc(payrollId);
     await db.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) fail("NOT_FOUND", "Payroll record not found");
       const payroll = snapshot.data();
+      if (payroll.companyId != null && payroll.companyId !== actor.companyId) fail("FORBIDDEN");
       const current = normalize(payroll.status);
       if (current === target) return;
       if ((target === "processed" && current !== "draft") || (target === "paid" && current !== "processed")) fail("PAYROLL_INVALID_TRANSITION");
       const update = { status: target === "processed" ? "Processed" : "Paid", updatedAt: FieldValue.serverTimestamp(), reviewedByUid: actor.uid, reviewedByName: actorName(actor), reviewedByRole: actorRole(actor) };
       update[target === "processed" ? "finalizedAt" : "paidAt"] = FieldValue.serverTimestamp();
-      if (target === "processed") update.finalizedSnapshot = { netSalary: payroll.netSalary, payableDays: payroll.payableDays, grossSalary: payroll.grossSalary, deductions: number(payroll.advanceDeduction) + number(payroll.pfDeduction) + number(payroll.esiDeduction) + number(payroll.otherDeduction) };
+      if (target === "processed") {
+        update.finalizedSnapshot = { netSalary: payroll.netSalary, payableDays: payroll.payableDays, grossSalary: payroll.grossSalary, deductions: number(payroll.advanceDeduction) + number(payroll.pfDeduction) + number(payroll.esiDeduction) + number(payroll.otherDeduction) };
+        update.compliance = buildPayrollStatutory(payroll);
+      }
       const advanceRecords = [];
       if (target === "paid" && !payroll.advanceRecoveryAppliedAt) {
         const deductions = (payroll.advanceDeductions || []).filter((item) => clean(item.advanceId));

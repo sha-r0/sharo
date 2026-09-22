@@ -3,6 +3,7 @@ import { db } from "@/lib/firebase";
 import { functions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { dayKey, employeeName, toDate } from "./WorkforceRealtimeService";
+import { PAYROLL_COLLECTION } from "./payrollCollection";
 
 const number = (value) => Number(value || 0) || 0;
 const salaryOf = (employee) => number(employee.salary || employee.employment?.salary || employee.compensation?.monthlySalary || employee.payroll?.salary);
@@ -11,7 +12,7 @@ const businessDays = (month) => { const [year, value] = month.split("-").map(Num
 export default class PayrollService {
   static async load(companyId) {
     const read = (name) => getDocs(collection(db, "Companies", companyId, name)).then((snap) => snap.docs.map((item) => ({ id: item.id, ...item.data() }))).catch(() => []);
-    const [employees, attendance, leaves, advances, payroll] = await Promise.all([read("Usermanagement"), read("Attendance"), read("LeaveRequests"), read("advance_requests"), read("Payroll")]);
+    const [employees, attendance, leaves, advances, payroll] = await Promise.all([read("Usermanagement"), read("Attendance"), read("LeaveRequests"), read("advance_requests"), read(PAYROLL_COLLECTION)]);
     return { employees, attendance, leaves, advances, payroll };
   }
 

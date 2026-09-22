@@ -99,6 +99,8 @@ export function mapEmployee({
 
     },
 
+    ...(form.statutoryDetails ? { statutoryDetails: { ...form.statutoryDetails } } : {}),
+
     /* ==========================================
        Bank
     ========================================== */

@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 
 import Input from "./ui/Input";
+import EmployeeStatutorySection from "./EmployeeStatutorySection";
+import { readEmployeeStatutory } from "@/app/allservice/employee/employeeStatutory";
 import Select from "./ui/Select";
 import PasswordInput from "./ui/PasswordInput";
 import FileUpload from "./ui/FileUpload";
@@ -138,6 +140,8 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
             employerEsiPercent: 3.25,
 
         },
+
+        statutoryDetails: { uan: "", ipNumber: "" },
 
         /* ================= BANK ================= */
 
@@ -291,9 +295,14 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
             =========================== */
 
             salaryStructure: {
-
                 ...employee.salaryStructure,
-
+                includePf: readEmployeeStatutory(employee).pfApplicable ?? false,
+                includeEsi: readEmployeeStatutory(employee).esiApplicable ?? false,
+            },
+            statutoryDetails: {
+                uan: "",
+                ipNumber: "",
+                ...employee.statutoryDetails,
             },
 
             /* ===========================
@@ -850,50 +859,6 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
                     Payroll Settings
                 </h3>
 
-                <div className="flex gap-10 mb-8">
-
-                    <label className="flex items-center gap-3">
-
-                        <input
-                            type="checkbox"
-                            checked={form.salaryStructure.includePf}
-                            onChange={(e) =>
-                                setForm(prev => ({
-                                    ...prev,
-                                    salaryStructure: {
-                                        ...prev.salaryStructure,
-                                        includePf: e.target.checked
-                                    }
-                                }))
-                            }
-                        />
-
-                        Include PF
-
-                    </label>
-
-                    <label className="flex items-center gap-3">
-
-                        <input
-                            type="checkbox"
-                            checked={form.salaryStructure.includeEsi}
-                            onChange={(e) =>
-                                setForm(prev => ({
-                                    ...prev,
-                                    salaryStructure: {
-                                        ...prev.salaryStructure,
-                                        includeEsi: e.target.checked
-                                    }
-                                }))
-                            }
-                        />
-
-                        Include ESI
-
-                    </label>
-
-                </div>
-
                 {form.salaryStructure.includePf && (
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -975,6 +940,12 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
                 )}
 
             </div>
+
+            <EmployeeStatutorySection
+                salaryStructure={form.salaryStructure}
+                statutoryDetails={form.statutoryDetails}
+                onChange={(updates) => setForm((current) => ({ ...current, ...updates }))}
+            />
 
             {/* ====================================== BANK DETAILS ====================================== */}
 

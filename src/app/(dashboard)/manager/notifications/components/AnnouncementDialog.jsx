@@ -39,6 +39,7 @@ export default function AnnouncementDialog({ open, onClose }) {
         priority: form.priority,
         sender: { id: currentUser.id, uid: currentUser.uid || null, name: currentUser.name || currentUser.displayName || "Manager", role: currentUser.role || "manager" },
         receiver: form.target === "company" ? "company" : null,
+        broadcast: form.target === "company",
         targetRole: form.target === "managers" ? "manager" : null,
         targetUsers: form.target === "users" ? employees.filter((item) => form.users.includes(item.id)).flatMap((item) => [item.id, item.employeeId]).filter(Boolean) : form.target === "project" ? projectUsers : [],
         department: form.target === "department" ? form.department : null,

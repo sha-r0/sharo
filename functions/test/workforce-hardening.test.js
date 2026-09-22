@@ -54,7 +54,7 @@ test("client rules keep Workforce decisions and payroll server-owned", () => {
   const rules = fs.readFileSync(path.join(__dirname, "../../firestore.rules"), "utf8");
   assert.match(rules, /keepsGpsReviewServerOwned/);
   assert.match(rules, /keepsLeaveDecisionServerOwned/);
-  assert.match(rules, /match \/Payroll\/\{id\} \{ allow read:[^}]+allow write: if false;/);
+  assert.match(rules, /match \/Payrolls\/\{id\} \{ allow read:[^}]+allow write: if false;/);
 });
 
 test("biometric status thresholds do not treat insufficient work as present", () => {

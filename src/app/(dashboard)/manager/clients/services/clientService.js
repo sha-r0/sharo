@@ -24,7 +24,7 @@ const clientService = {
         client.clientName ||
         form.clientName ||
         form.name,
-      receiver: "company",
+      targetRole: "manager",
       actionRoute: "/manager/clients",
       metadata: {
         clientId,

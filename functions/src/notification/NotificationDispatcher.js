@@ -72,7 +72,7 @@ class NotificationDispatcher {
       if (productivity < Number(after.productivityThreshold || 50) && Number(before?.productivity ?? before?.productivityScore ?? 100) >= Number(after.productivityThreshold || 50)) tasks.push(this.managerEvent(base, "work.low-productivity", "work-log", after, { eventKey: "low-productivity" }));
     }
 
-    if (["Payroll", "Salaries"].includes(collectionName) && status !== previousStatus) {
+    if (["Payrolls", "Salaries"].includes(collectionName) && status !== previousStatus) {
       if (["processed", "paid", "completed"].includes(status)) tasks.push(this.employeeEvent(base, "payroll.processed", "payroll", after, { eventKey: `processed-${after.month || "current"}` }));
       if (["failed", "rejected"].includes(status)) tasks.push(this.managerEvent(base, "payroll.failed", "payroll", after, { eventKey: `failed-${after.month || "current"}` }));
     }

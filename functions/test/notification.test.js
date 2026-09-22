@@ -6,6 +6,8 @@ const { renderTemplate } = require("../src/notification/NotificationTemplates");
 const { assignedIds, eventId, tokenEntries } = require("../src/notification/NotificationHelpers");
 const NotificationDispatcher = require("../src/notification/NotificationDispatcher");
 const NotificationDelivery = require("../src/notification/NotificationDelivery");
+const NotificationRepository = require("../src/notification/NotificationRepository");
+const NotificationService = require("../src/notification/NotificationService");
 
 test("templates render real event values", () => {
   const result = renderTemplate("expense.submitted", { employeeName: "Asha", amount: 1250 });
@@ -76,4 +78,22 @@ test("FCM delivery continues after a bad token and removes only invalid tokens",
   assert.equal(removed.length, 1);
   assert.equal(marked.invalidTokenCount, 1);
   assert.equal(logged.stateCount, 1);
+});
+
+test("direct recipient resolution excludes unrelated users and cross-company delivery", async () => {
+  const repository = new NotificationRepository({});
+  repository.directUsers = async (companyId, direct) => (companyId === "company-a" ? [
+    { id: "employee-a", access: { authUid: "uid-a", roleId: "employee" }, fcmToken: "token-a" },
+    { id: "employee-b", access: { authUid: "uid-b", roleId: "employee" }, fcmToken: "token-b" },
+  ] : []).filter((user) => direct.has(user.id));
+  const recipients = await repository.resolveRecipients("company-a", { receiverIds: ["employee-a"] });
+  assert.deepEqual(recipients.map((user) => user.id), ["employee-a"]);
+  assert.deepEqual((await repository.resolveRecipients("company-b", { receiverIds: ["employee-b"] })).map((user) => user.id), []);
+});
+
+test("normal notifications require an audience while explicit announcements may broadcast", async () => {
+  const service = new NotificationService({ createOnce: async (_company, _id, payload) => payload });
+  await assert.rejects(() => service.emit({ companyId: "c1", type: "quotation.created", module: "quotation", sourceCollection: "Quotations", sourceId: "q1" }), /NOTIFICATION_RECIPIENT_REQUIRED/);
+  const announcement = await service.emit({ companyId: "c1", type: "announcement.created", module: "announcement", sourceCollection: "Notices", sourceId: "n1", receiver: "company" });
+  assert.equal(announcement.broadcast, true);
 });

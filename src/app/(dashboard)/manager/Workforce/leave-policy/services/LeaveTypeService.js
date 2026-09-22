@@ -227,7 +227,7 @@ export default class LeavePolicyService {
         );
 
         await notificationService.emitSafe("holiday.added", {
-            companyId, holidayName: form.name.trim(), receiver: "company",
+            companyId, holidayName: form.name.trim(), targetRole: "manager",
             actionRoute: "/manager/Workforce/leave-policy", metadata: { holidayName: form.name.trim(), date: form.date },
         });
 

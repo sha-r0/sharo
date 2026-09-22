@@ -15,9 +15,25 @@ service cloud.firestore {
       return active(companyId)
         && data.employeeId == employee(companyId).data.get('employeeId', '');
     }
+    // Firestore Rules does not support substring(); preserve the YYYY-MM period key
+    // using the supported split/index/string-concatenation operations.
+    function expensePeriodId(date) { return date.split('-')[0] + '-' + date.split('-')[1]; }
     function canWrite(companyId, module) { return has(companyId, module + '.manage') || (request.method == 'create' && has(companyId, module + '.create')) || (request.method == 'update' && has(companyId, module + '.edit')) || (request.method == 'delete' && has(companyId, module + '.delete')); }
     function ownNotificationNamespace(companyId, userId) {
       return signedIn() && userId == request.auth.uid && companyMember(companyId);
+    }
+    function notificationAudience(companyId) {
+      return isOwner(companyId) || (has(companyId, 'notifications.view')
+        && resource.data.get('companyId', '') == companyId
+        && resource.data.get('audienceKeys', []).hasAny([
+          'user:' + request.auth.uid,
+          'user:' + employeeId(),
+          'role:' + roleId(companyId),
+          'company:all'
+        ])
+        && (!resource.data.get('audienceKeys', []).hasAny(['company:all'])
+          || resource.data.get('module', '') == 'announcement'
+          || resource.data.get('broadcast', false) == true));
     }
     function validNotificationStateValues() {
       return (!('isRead' in request.resource.data) || request.resource.data.isRead is bool)
@@ -184,7 +200,7 @@ service cloud.firestore {
           && request.resource.data.get('reimbursementStatus', 'unpaid') == 'unpaid'
           && request.resource.data.get('reimbursable', true) == true
           && !request.resource.data.keys().hasAny(['reimbursedAt', 'reimbursedBy', 'outstandingAmount', 'reimbursement', 'reimbursementLedgerVersion', 'reconciliationRequired'])
-          && (!('date' in request.resource.data) || !exists(/databases/$(database)/documents/Companies/$(companyId)/ExpensePeriods/$(request.resource.data.date.substring(0, 7))) || get(/databases/$(database)/documents/Companies/$(companyId)/ExpensePeriods/$(request.resource.data.date.substring(0, 7))).data.get('status', 'open') != 'locked')
+          && (!('date' in request.resource.data) || !exists(/databases/$(database)/documents/Companies/$(companyId)/ExpensePeriods/$(expensePeriodId(request.resource.data.date))) || get(/databases/$(database)/documents/Companies/$(companyId)/ExpensePeriods/$(expensePeriodId(request.resource.data.date))).data.get('status', 'open') != 'locked')
           && (isOwner(companyId) || (active(companyId)
           && ('expense.create' in employee(companyId).data.access.effectivePermissions
             || 'expense.manage' in employee(companyId).data.access.effectivePermissions)
@@ -213,8 +229,11 @@ service cloud.firestore {
       }
       match /Quotations/{id} { allow read: if has(companyId, 'quotation.view'); allow write: if canWrite(companyId, 'quotation'); }
       match /QuotationSettings/{id} { allow read, write: if false; }
-      match /Payroll/{id} { allow read: if has(companyId, 'payroll.view'); allow write: if false; }
-      match /Notifications/{id} { allow read: if isOwner(companyId) || has(companyId, 'notifications.view'); allow write: if has(companyId, 'notifications.manage'); }
+      match /Payrolls/{id} { allow read: if has(companyId, 'payroll.view'); allow write: if false; }
+      match /Notifications/{id} {
+        allow read: if notificationAudience(companyId);
+        allow write: if has(companyId, 'notifications.manage') && request.resource.data.companyId == companyId;
+      }
       match /UserNotifications/{userId} {
         allow read: if ownNotificationNamespace(companyId, userId);
         allow write: if false;

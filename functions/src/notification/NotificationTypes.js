@@ -7,7 +7,7 @@ const COLLECTION_MODULES = Object.freeze({
   LeaveRequests: "leave", Leaves: "leave", Expenses: "expense",
   AdvanceRequests: "advance", Advances: "advance", Attendance: "attendance",
   GPSPunches: "gps", Projectmanagement: "project", WorkLogs: "work-log",
-  WorkDetails: "work-log", Payroll: "payroll", Salaries: "payroll",
+  WorkDetails: "work-log", Payrolls: "payroll", Payroll: "payroll", Salaries: "payroll",
   Notices: "announcement", Announcements: "announcement",
   Invoices: "billing", Payments: "billing",
 });

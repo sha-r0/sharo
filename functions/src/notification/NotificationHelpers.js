@@ -5,7 +5,7 @@ const { createHash } = require("node:crypto");
 const lower = (value) => String(value || "").trim().toLowerCase();
 const first = (data, keys) => keys.map((key) => data?.[key]).find((value) => value !== undefined && value !== null && value !== "");
 const statusOf = (data) => lower(first(data, ["status", "approvalStatus", "requestStatus", "state"]) || data?.employment?.status);
-const roleOf = (data) => lower(data?.role || data?.employment?.role || data?.userRole);
+const roleOf = (data) => lower(data?.role || data?.access?.roleId || data?.employment?.role || data?.userRole);
 const employeeIds = (data) => [...new Set([
   data?.employeeFirestoreId, data?.employeeId, data?.userId, data?.uid,
   data?.employee?.id, data?.employee?.employeeId, data?.createdBy?.uid,

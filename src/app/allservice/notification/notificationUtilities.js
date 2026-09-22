@@ -48,9 +48,9 @@ export const MODULE_STYLES = {
 
 const normalized = (value) => String(value || "").trim().toLowerCase();
 
-export function buildAudienceKeys({ receiver, targetRole, targetUsers = [], department, projectId }) {
+export function buildAudienceKeys({ receiver, targetRole, targetUsers = [], department, projectId, module, broadcast = false, metadata = {} }) {
   const keys = new Set();
-  if (receiver === "company" || receiver === "all") keys.add("company:all");
+  if ((receiver === "company" || receiver === "all") && (broadcast === true || metadata.broadcast === true || module === "announcement")) keys.add("company:all");
   if (receiver && !["company", "all"].includes(receiver)) keys.add(`user:${receiver}`);
   if (targetRole) keys.add(`role:${normalized(targetRole)}`);
   targetUsers.filter(Boolean).forEach((id) => keys.add(`user:${id}`));
@@ -60,10 +60,10 @@ export function buildAudienceKeys({ receiver, targetRole, targetUsers = [], depa
 }
 
 export function getUserAudienceKeys(user) {
-  const role = user?.role || user?.employment?.role;
+  const role = user?.role || user?.access?.roleId || user?.employment?.role;
   const department = user?.department || user?.employment?.department;
   const ids = [user?.id, user?.uid, user?.firestoreId, user?.employeeId].filter(Boolean);
-  return ["company:all", ...ids.map((id) => `user:${id}`), role && `role:${normalized(role)}`, department && `department:${normalized(department)}`].filter(Boolean).slice(0, 10);
+  return [...ids.map((id) => `user:${id}`), role && `role:${normalized(role)}`, department && `department:${normalized(department)}`, "company:all"].filter(Boolean).slice(0, 10);
 }
 
 export function normalizeNotification(input) {
@@ -82,7 +82,8 @@ export function normalizeNotification(input) {
     message: String(input.message || "").trim(),
     priority,
     sender: input.sender || null,
-    receiver: input.receiver || "company",
+    receiver: input.receiver || null,
+    broadcast: input.broadcast === true,
     targetRole: input.targetRole || null,
     targetUsers: [...new Set(input.targetUsers || [])],
     audienceKeys: buildAudienceKeys({ ...input, projectId: input.projectId || input.metadata?.projectId }),

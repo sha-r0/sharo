@@ -108,7 +108,7 @@ class CompanyService {
 
       await notificationService.emitSafe("company.updated", {
         companyId,
-        receiver: "company",
+        targetRole: "manager",
         actionRoute: "/manager",
         metadata: { updatedFields: Object.keys(data) },
       });

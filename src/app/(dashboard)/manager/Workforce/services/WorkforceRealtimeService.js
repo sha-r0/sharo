@@ -1,8 +1,9 @@
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { attendanceDayKey, attendanceEmployeeKeys, toAttendanceDate } from "./attendanceDateTime";
+import { PAYROLL_COLLECTION } from "./payrollCollection";
 
-const names = ["Usermanagement", "Attendance", "GPSPunches", "LeaveRequests", "WorkLogs", "ShiftPolicies", "Holidays", "advance_requests", "Payroll"];
+const names = ["Usermanagement", "Attendance", "GPSPunches", "LeaveRequests", "WorkLogs", "ShiftPolicies", "Holidays", "advance_requests", PAYROLL_COLLECTION];
 export function subscribeWorkforce(companyId, allowedNames, onData, onError) {
   const state = Object.fromEntries(names.map((name) => [name, []]));
   const subscriptions = names.filter((name) => allowedNames.has(name));

@@ -142,7 +142,7 @@ export default function NoticePage() {
             );
 
             await notificationService.emitSafe("notice.created", {
-                companyId, message: description, receiver: "company", title,
+                companyId, message: description, receiver: "company", broadcast: true, title,
                 actionId: noticeRef.id, actionRoute: "/manager/notice",
                 metadata: { noticeId: noticeRef.id, noticeTitle: title },
             });

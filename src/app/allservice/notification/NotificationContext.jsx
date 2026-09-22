@@ -66,7 +66,7 @@ export function NotificationProvider({ children }) {
     return () => { unsubscribeFeed(); unsubscribeState(); };
   }, [company?.id, userId, audienceSignature, currentUser, canViewNotifications]);
 
-  const notifications = useMemo(() => source.map((item) => ({
+  const notifications = useMemo(() => source.filter((item) => !item.audienceKeys?.includes?.("company:all") || item.broadcast === true || item.metadata?.broadcast === true || item.module === "announcement").map((item) => ({
     ...item,
     userState: states[item.id] || { isRead: false, isArchived: false, isDeleted: false, isPinned: false },
   })).filter((item) => !item.userState.isDeleted && !item.userState.isArchived && isNotificationVisible(item, new Date(clock)))

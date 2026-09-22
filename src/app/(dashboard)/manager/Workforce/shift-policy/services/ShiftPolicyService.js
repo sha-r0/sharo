@@ -146,7 +146,7 @@ export default class ShiftPolicyService {
       updatedAt: Timestamp.now(),
     });
     await notificationService.emitSafe("shift.updated", {
-      companyId, shiftName: form.name, receiver: "company",
+      companyId, shiftName: form.name, targetRole: "manager",
       actionRoute: "/manager/Workforce/shift-policy", metadata: { shiftName: form.name, operation: "created" },
     });
   }
@@ -257,7 +257,7 @@ export default class ShiftPolicyService {
       }
     );
     await notificationService.emitSafe("shift.updated", {
-      companyId, shiftName: form.name, receiver: "company", actionId: id,
+      companyId, shiftName: form.name, targetRole: "manager", actionId: id,
       actionRoute: "/manager/Workforce/shift-policy", metadata: { shiftId: id, shiftName: form.name, operation: "updated" },
     });
   }

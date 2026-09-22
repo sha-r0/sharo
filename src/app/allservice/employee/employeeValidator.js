@@ -1,10 +1,12 @@
+import { validateEmployeeStatutory } from "./employeeStatutory.js";
+
 /* ==========================================================
    Validate Employee
 ========================================================== */
 
 export function validateEmployee(form) {
 
-  const errors = {};
+  const errors = validateEmployeeStatutory(form);
 
   /* ==========================================
      Basic Information

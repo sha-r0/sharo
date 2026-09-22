@@ -221,7 +221,7 @@ class EmployeeService {
 
       try {
           const token = await auth.currentUser?.getIdToken();
-          const response = await fetch("/api/rbac/users", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ employeeFirestoreId: firestoreId, profile: { personalInfo: employee.personalInfo, employment: employee.employment, reporting: employee.reporting, salaryStructure: employee.salaryStructure, bankDetails: employee.bankDetails, address: employee.address, documents: employee.documents }, access: { roleId: employee.access.roleId, permissionOverrides: employee.access.permissionOverrides }, loginEnabled: form.loginEnabled !== false, password: form.password, displayName: employee.personalInfo?.fullName, phoneNumber: form.phone, requirePasswordChange: form.requirePasswordChange !== false }) });
+          const response = await fetch("/api/rbac/users", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ employeeFirestoreId: firestoreId, profile: { personalInfo: employee.personalInfo, employment: employee.employment, reporting: employee.reporting, salaryStructure: employee.salaryStructure, statutoryDetails: employee.statutoryDetails, bankDetails: employee.bankDetails, address: employee.address, documents: employee.documents }, access: { roleId: employee.access.roleId, permissionOverrides: employee.access.permissionOverrides }, loginEnabled: form.loginEnabled !== false, password: form.password, displayName: employee.personalInfo?.fullName, phoneNumber: form.phone, requirePasswordChange: form.requirePasswordChange !== false }) });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error === "LIMIT_REACHED" ? "Subscription employee limit reached." : result.error || "Employee creation failed.");
           employee.employeeId = result.employeeId;
@@ -237,7 +237,7 @@ class EmployeeService {
       await notificationService.emitSafe("employee.created", {
         companyId,
         employeeName: employee.personalInfo?.fullName,
-        receiver: "company",
+        targetRole: "manager",
         actionId: firestoreId,
         actionRoute: `/manager/userManagement/${firestoreId}`,
         metadata: { employeeId: employee.employeeId, employeeName: employee.personalInfo?.fullName },
@@ -423,7 +423,7 @@ class EmployeeService {
             personalInfo: employee.personalInfo,
             employment: employee.employment,
             reporting: employee.reporting,
-            salaryStructure: employee.salaryStructure,
+            salaryStructure: employee.salaryStructure, statutoryDetails: employee.statutoryDetails,
             bankDetails: employee.bankDetails,
             address: employee.address,
             documents: employee.documents,
@@ -630,7 +630,7 @@ class EmployeeService {
       await notificationService.emitSafe("employee.deactivated", {
         companyId,
         employeeName: employee?.fullName || "Employee",
-        receiver: "company",
+        targetRole: "manager",
         sender: currentUser ? { id: currentUser.id, uid: currentUser.uid, name: currentUser.name || currentUser.displayName, role: currentUser.role } : null,
         actionId: firestoreId,
         actionRoute: `/manager/userManagement/${firestoreId}`,

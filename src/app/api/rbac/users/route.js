@@ -11,6 +11,7 @@ import {
 } from "@/app/allservice/rbac/permissionCatalog";
 import { buildEmployeeLoginEmail, canonicalEmployeeId, resolveEmployeeAuthUid, resolveEmployeeRoleId, resolvePermissionOverrides } from "@/app/allservice/rbac/employeeAuth";
 import { authorizeCompanyRequest } from "@/lib/server/authorizeCompanyRequest";
+import { mergeEmployeeStatutory } from "@/app/allservice/employee/employeeStatutory";
 
 const PLAN_LIMITS = {
   starter: 5,
@@ -109,7 +110,7 @@ function requiredText(value, code) {
   return text;
 }
 
-function employeeProfileUpdates(profile, existing) {
+function employeeProfileUpdates(profile, existing, isCreate = false) {
   const firstName = requiredText(profile?.personalInfo?.firstName, "FIRST_NAME_REQUIRED");
   const lastName = requiredText(profile?.personalInfo?.lastName, "LAST_NAME_REQUIRED");
   const email = requiredText(profile?.personalInfo?.email, "EMAIL_REQUIRED").toLowerCase();
@@ -137,7 +138,7 @@ function employeeProfileUpdates(profile, existing) {
     },
     employment,
     reporting: profile.reporting || {},
-    salaryStructure: profile.salaryStructure || {},
+    ...mergeEmployeeStatutory(profile, isCreate ? null : existing),
     bankDetails: profile.bankDetails || {},
     address: profile.address || {},
     documents: profile.documents || {},
@@ -315,7 +316,7 @@ export async function POST(request) {
         let nextEmployeeNumber = Number(companySnapshot.data().nextEmployeeNumber || 1);
         while (usedEmployeeIds.has(String(nextEmployeeNumber))) nextEmployeeNumber += 1;
         const employeeId = String(nextEmployeeNumber).padStart(8, "0");
-        const profile = employeeProfileUpdates(input.profile, {});
+        const profile = employeeProfileUpdates(input.profile, {}, true);
         transaction.create(employeeRef, {
           ...profile,
           employeeId,

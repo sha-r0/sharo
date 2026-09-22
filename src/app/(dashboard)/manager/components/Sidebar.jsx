@@ -31,6 +31,7 @@ const navigation = [
         { label: "Leave Policy", href: "/manager/Workforce/leave-policy" },
         { label: "Shift Policy", href: "/manager/Workforce/shift-policy" },
         { label: "Payroll", href: "/manager/Workforce/payroll", icon: WalletCards },
+        { label: "ESI & PF", href: "/manager/Workforce/esi-pf", icon: ShieldCheck },
       ] },
       { label: "Performance", href: "/manager/performance", icon: BarChart3 },
     ],
