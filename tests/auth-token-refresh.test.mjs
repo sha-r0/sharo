@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as authorization from '../src/app/allservice/rbac/AuthorizationService.js';
+import * as claimSync from '../src/lib/server/syncEmployeeClaims.mjs';
+import * as employeeAuth from '../src/app/allservice/rbac/employeeAuth.js';
 const require = createRequire(import.meta.url);
 const { transform, loadBindings } = require('next/dist/build/swc');
 await loadBindings();
@@ -171,9 +173,24 @@ for (const code of ['auth/id-token-revoked', 'auth/user-disabled', 'auth/id-toke
       'next/server': { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
       '@/lib/firebase-admin': { adminAuth: { verifyIdToken: async (...args) => { verifyArgs = args; throw Object.assign(new Error(code), { code }); } }, adminDb: {} },
       '@/lib/server/refreshPerformancePermissions': { refreshPerformancePermissions: async () => {} },
+      '@/lib/server/syncEmployeeClaims.mjs': claimSync,
+      '@/app/allservice/rbac/employeeAuth': employeeAuth,
     });
     const result = await GET({ headers: { get: () => 'Bearer token' } });
     assert.deepEqual(verifyArgs, ['token', true]);
     assert.equal(result.status, ['auth/internal-error', 'unavailable'].includes(code) ? 503 : 401);
   });
 }
+
+
+test('bootstrap refreshes repaired claims before protected Firestore reads', async () => {
+  const h = harness({ employee: true });
+  h.identity.claimsRefreshRequired = true;
+  let refreshed = false;
+  h.user.getIdToken = async (force) => { if (force) refreshed = true; return 'token'; };
+  h.setDoc(() => { assert.equal(refreshed, true); });
+  await h.emit();
+  assert.equal(refreshed, true);
+  assert.equal(h.context().authError, null);
+  assert.equal(h.renderGuard(), h.children);
+});

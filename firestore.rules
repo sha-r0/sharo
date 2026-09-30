@@ -13,7 +13,8 @@ service cloud.firestore {
     function managerScope(companyId) { return isOwner(companyId) || (active(companyId) && roleId(companyId) != 'employee'); }
     function ownExpense(companyId, data) {
       return active(companyId)
-        && data.employeeId == employee(companyId).data.get('employeeId', '');
+        && (data.get('employeeFirestoreId', '') == employeeId()
+          || data.get('employeeId', '') == employee(companyId).data.get('employeeId', ''));
     }
     // Firestore Rules does not support substring(); preserve the YYYY-MM period key
     // using the supported split/index/string-concatenation operations.
@@ -52,7 +53,24 @@ service cloud.firestore {
         .hasOnly(['isRead', 'readAt', 'isArchived', 'isDeleted', 'isPinned', 'updatedAt'])
         && validNotificationStateValues();
     }
-    function ownAdvance(companyId, data) { return active(companyId) && employeeId() == data.employeeFirestoreId; }
+    function ownAdvance(companyId, data) {
+      return active(companyId)
+        && (data.get('employeeFirestoreId', '') == employeeId()
+          || data.get('employeeId', '') == employee(companyId).data.get('employeeId', ''));
+    }
+    function canonicalEmployeeAdvanceRead(companyId, data) {
+      return request.auth != null
+        && request.auth.token.companyId == companyId
+        && data.employeeFirestoreId == request.auth.token.companyEmployeeId
+        && exists(/databases/$(database)/documents/Companies/$(companyId)/Usermanagement/$(request.auth.token.companyEmployeeId))
+        && get(/databases/$(database)/documents/Companies/$(companyId)/Usermanagement/$(request.auth.token.companyEmployeeId)).data.access.loginEnabled == true
+        && get(/databases/$(database)/documents/Companies/$(companyId)/Usermanagement/$(request.auth.token.companyEmployeeId)).data.access.status == 'active';
+    }
+    function ownPayroll(companyId, data) {
+      return active(companyId)
+        && (data.get('employeeFirestoreId', '') == employeeId()
+          || data.get('employeeId', '') == employee(companyId).data.get('employeeId', ''));
+    }
     function validEmployeeAdvanceUpdate(companyId) {
       return ownAdvance(companyId, resource.data)
         && resource.data.status == 'Pending'
@@ -151,6 +169,21 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['access', 'updatedAt'])
             && request.resource.data.access.diff(resource.data.access).affectedKeys().hasOnly(['policyAccepted', 'lastLoginAt', 'lastDevice', 'lastBrowser', 'lastLocation'])));
       }
+      // Employee mobile views use the employee-scoped mirrors. Keep these reads
+      // limited to the authenticated employee's own document; server callables
+      // remain the only writers for the mirrors.
+      match /Usermanagement/{userId}/Attendance/{id} {
+        allow read: if active(companyId) && (isOwner(companyId) || employeeId() == userId);
+        allow write: if false;
+      }
+      match /Usermanagement/{userId}/WorkLogs/{id} {
+        allow read: if active(companyId) && (isOwner(companyId) || employeeId() == userId);
+        allow write: if false;
+      }
+      match /Usermanagement/{userId}/Expenses/{id} {
+        allow read: if active(companyId) && (isOwner(companyId) || employeeId() == userId);
+        allow write: if false;
+      }
       match /Roles/{roleId} { allow read: if active(companyId); allow write: if false; }
       match /Permissions/{permissionId} { allow read: if active(companyId); allow write: if false; }
       match /ActivityLogs/{logId} { allow read: if has(companyId, 'employee.manage'); allow create: if active(companyId) && request.resource.data.actorId == request.auth.uid; allow update, delete: if false; }
@@ -169,7 +202,8 @@ service cloud.firestore {
         allow delete: if canWrite(companyId, 'gps');
       }
       match /LeaveRequests/{id} {
-        allow read: if isOwner(companyId) || has(companyId, 'leave.view');
+        allow read: if isOwner(companyId) || has(companyId, 'leave.view')
+          || (active(companyId) && resource.data.employeeId == employeeId());
         allow create: if canWrite(companyId, 'leave') && request.resource.data.get('status', 'Pending') == 'Pending';
         allow update: if canWrite(companyId, 'leave') && keepsLeaveDecisionServerOwned();
         allow delete: if canWrite(companyId, 'leave');
@@ -178,12 +212,15 @@ service cloud.firestore {
       match /Holidays/{id} { allow read: if active(companyId); allow write: if has(companyId, 'leave.manage'); }
       match /ShiftPolicies/{id} { allow read: if active(companyId); allow write: if has(companyId, 'settings.manage'); }
       match /advance_requests/{id} {
-        allow read: if isOwner(companyId) || has(companyId, 'advance.approve') || has(companyId, 'advance.manage') || ownAdvance(companyId, resource.data);
+        allow read: if isOwner(companyId) || has(companyId, 'advance.approve') || has(companyId, 'advance.manage') || canonicalEmployeeAdvanceRead(companyId, resource.data);
         allow create: if false;
         allow update: if validEmployeeAdvanceUpdate(companyId) || validAdvanceEditorUpdate(companyId) || validAdvanceSettlement(companyId);
         allow delete: if has(companyId, 'advance.delete') || has(companyId, 'advance.manage');
       }
-      match /ExpenseCategories/{id} { allow read, write: if false; }
+      match /ExpenseCategories/{id} {
+        allow read: if active(companyId);
+        allow write: if false;
+      }
       match /ExpensePeriods/{periodId} {
         allow read: if has(companyId, 'expense.view');
         allow write: if false;
@@ -193,7 +230,8 @@ service cloud.firestore {
       match /Expenses/{id}/Reimbursements/{reimbursementId} { allow read, write: if false; }
       match /Expenses/{id}/EditHistory/{historyId} { allow read: if isOwner(companyId); allow write: if false; }
       match /Expenses/{id} {
-        allow read: if has(companyId, 'expense.view') && (managerScope(companyId) || ownExpense(companyId, resource.data));
+        allow read: if ownExpense(companyId, resource.data)
+          || (has(companyId, 'expense.view') && (managerScope(companyId) || ownExpense(companyId, resource.data)));
         // Keep Flutter's legacy create authorization, evaluating account activity once.
         allow create: if request.resource.data.get('reimbursed', false) == false
           && request.resource.data.get('reimbursedAmount', 0) == 0
@@ -229,7 +267,10 @@ service cloud.firestore {
       }
       match /Quotations/{id} { allow read: if has(companyId, 'quotation.view'); allow write: if canWrite(companyId, 'quotation'); }
       match /QuotationSettings/{id} { allow read, write: if false; }
-      match /Payrolls/{id} { allow read: if has(companyId, 'payroll.view'); allow write: if false; }
+      match /Payrolls/{id} { allow read: if ownPayroll(companyId, resource.data) || has(companyId, 'payroll.view'); allow write: if false; }
+      // Legacy Flutter clients still address this collection; keep it
+      // self-read-only while production writes remain canonical in Payrolls.
+      match /Payroll/{id} { allow read: if ownPayroll(companyId, resource.data) || has(companyId, 'payroll.view'); allow write: if false; }
       match /Notifications/{id} {
         allow read: if notificationAudience(companyId);
         allow write: if has(companyId, 'notifications.manage') && request.resource.data.companyId == companyId;
@@ -254,3 +295,5 @@ service cloud.firestore {
     }
   }
 }
+
+// force rules release 2026-09-22

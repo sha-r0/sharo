@@ -10,9 +10,11 @@ const {
 } = require("@firebase/rules-unit-testing");
 const {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
+  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -57,7 +59,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
         firestoreId: MANAGER_ID,
         employeeId: "00000002",
         login: { employeeId: "00000002" },
-        access: { authUid: MANAGER_UID, roleId: "manager", loginEnabled: true, status: "active", effectivePermissions: ["employee.view", "employee.edit", "expense.view"] },
+        access: { authUid: MANAGER_UID, roleId: "manager", loginEnabled: true, status: "active", effectivePermissions: ["employee.view", "employee.edit", "expense.view", "leave.view", "payroll.view", "advance.approve"] },
       });
       await setDoc(doc(db, "Companies", COMPANY_A, "Usermanagement", TARGET_ID), {
         companyId: COMPANY_A,
@@ -65,7 +67,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
         employeeId: "00000003",
         personalInfo: { fullName: "Target Employee" },
         login: { employeeId: "00000003", loginEmail: "protected@auth.sharo.in" },
-        access: { authUid: "target-auth-a", loginEnabled: true, status: "active", effectivePermissions: [] },
+        access: { authUid: "target-auth-a", loginEnabled: true, status: "inactive", effectivePermissions: [] },
       });
       await setDoc(doc(db, "Companies", "company-b", "Usermanagement", "employee-b"), {
         companyId: "company-b",
@@ -76,7 +78,22 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
       });
       await setDoc(doc(db, "Companies", COMPANY_A, "Expenses", "expense-a"), { employeeId: "00000001", amount: 100, status: "pending" });
       await setDoc(doc(db, "Companies", COMPANY_A, "Expenses", "expense-other"), { employeeId: "00000003", amount: 200, status: "pending" });
+      await setDoc(doc(db, "Companies", COMPANY_A, "Expenses", "expense-own-firestore"), { employeeFirestoreId: EMPLOYEE_ID, amount: 110, status: "approved" });
+      await setDoc(doc(db, "Companies", COMPANY_A, "Usermanagement", EMPLOYEE_ID, "Expenses", "expense-mirror"), { employeeFirestoreId: EMPLOYEE_ID, amount: 110, status: "approved" });
+      await setDoc(doc(db, "Companies", COMPANY_A, "Usermanagement", TARGET_ID, "Expenses", "expense-mirror-other"), { employeeFirestoreId: TARGET_ID, amount: 210, status: "approved" });
       await setDoc(doc(db, "Companies", "company-b", "Expenses", "expense-b"), { employeeId: "00000001", amount: 300, status: "pending" });
+      await setDoc(doc(db, "Companies", COMPANY_A, "ExpenseCategories", "travel"), { name: "Travel" });
+      await setDoc(doc(db, "Companies", "company-b", "ExpenseCategories", "travel"), { name: "Travel" });
+      await setDoc(doc(db, "Companies", COMPANY_A, "LeaveRequests", "leave-own"), { companyId: COMPANY_A, employeeId: EMPLOYEE_ID, status: "Pending" });
+      await setDoc(doc(db, "Companies", COMPANY_A, "LeaveRequests", "leave-other"), { companyId: COMPANY_A, employeeId: TARGET_ID, status: "Pending" });
+      await setDoc(doc(db, "Companies", "company-b", "LeaveRequests", "leave-b"), { companyId: "company-b", employeeId: EMPLOYEE_ID, status: "Pending" });
+      await setDoc(doc(db, "Companies", COMPANY_A, "Payrolls", `${EMPLOYEE_ID}_2026-09`), { companyId: COMPANY_A, employeeFirestoreId: EMPLOYEE_ID, employeeId: "00000001", status: "Finalized", netSalary: 1000 });
+      await setDoc(doc(db, "Companies", COMPANY_A, "Payrolls", `${TARGET_ID}_2026-09`), { companyId: COMPANY_A, employeeFirestoreId: TARGET_ID, employeeId: "00000003", status: "Finalized", netSalary: 2000 });
+      await setDoc(doc(db, "Companies", COMPANY_A, "Payroll", `${EMPLOYEE_ID}_2026-09`), { companyId: COMPANY_A, employeeFirestoreId: EMPLOYEE_ID, employeeId: "00000001", status: "Finalized", netSalary: 1000 });
+      await setDoc(doc(db, "Companies", COMPANY_A, "advance_requests", "advance-own"), { companyId: COMPANY_A, employeeFirestoreId: EMPLOYEE_ID, employeeId: "00000001", status: "Pending", requestedAt: new Date() });
+      await setDoc(doc(db, "Companies", COMPANY_A, "advance_requests", "advance-other"), { companyId: COMPANY_A, employeeFirestoreId: TARGET_ID, employeeId: "00000003", status: "Pending" });
+      await setDoc(doc(db, "Companies", COMPANY_A, "advance_requests", "advance-inactive"), { companyId: COMPANY_A, employeeFirestoreId: TARGET_ID, employeeId: "00000003", status: "Pending", requestedAt: new Date() });
+      await setDoc(doc(db, "Companies", "company-b", "advance_requests", "advance-b"), { companyId: "company-b", employeeFirestoreId: EMPLOYEE_ID, employeeId: "00000001", status: "Pending" });
       await setDoc(doc(db, "Companies", COMPANY_A, "UserNotifications", OWNER_UID, "Items", "notice-1"), { isRead: false, title: "legacy state title" });
       await setDoc(doc(db, "Companies", COMPANY_A, "UserNotifications", EMPLOYEE_UID, "Items", "notice-1"), { isRead: false, message: "legacy state message" });
       await setDoc(doc(db, "Companies", COMPANY_A, "UserNotifications", OTHER_UID, "Items", "notice-1"), { isRead: false });
@@ -88,6 +105,31 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 
   const states = (db, companyId, userId) => collection(db, "Companies", companyId, "UserNotifications", userId, "Items");
   const employeeDb = () => environment.authenticatedContext(EMPLOYEE_UID, { companyId: COMPANY_A, companyEmployeeId: EMPLOYEE_ID }).firestore();
+
+  test("active employee can read own tenant ExpenseCategories without expense.manage", async () => {
+    const db = employeeDb();
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "ExpenseCategories", "travel")));
+    await assertSucceeds(getDocs(collection(db, "Companies", COMPANY_A, "ExpenseCategories")));
+  });
+
+  test("inactive employee cannot read ExpenseCategories", async () => {
+    const db = environment.authenticatedContext("target-auth-a", { companyId: COMPANY_A, companyEmployeeId: TARGET_ID }).firestore();
+    await assertFails(getDoc(doc(db, "Companies", COMPANY_A, "ExpenseCategories", "travel")));
+    await assertFails(getDocs(collection(db, "Companies", COMPANY_A, "ExpenseCategories")));
+  });
+
+  test("employee cannot read another tenant's ExpenseCategories", async () => {
+    const db = employeeDb();
+    await assertFails(getDoc(doc(db, "Companies", "company-b", "ExpenseCategories", "travel")));
+    await assertFails(getDocs(collection(db, "Companies", "company-b", "ExpenseCategories")));
+  });
+
+  test("employee cannot create, update or delete ExpenseCategories", async () => {
+    const db = employeeDb();
+    await assertFails(setDoc(doc(db, "Companies", COMPANY_A, "ExpenseCategories", "new"), { name: "New" }));
+    await assertFails(updateDoc(doc(db, "Companies", COMPANY_A, "ExpenseCategories", "travel"), { name: "Changed" }));
+    await assertFails(deleteDoc(doc(db, "Companies", COMPANY_A, "ExpenseCategories", "travel")));
+  });
 
   test("exact production owner UID can read only its own notification Items", async () => {
     const db = environment.authenticatedContext(OWNER_UID).firestore();
@@ -226,5 +268,42 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     await assertFails(getDocs(expenses));
     await assertFails(getDoc(doc(expenses, "expense-other")));
     await assertFails(getDocs(query(collection(db, "Companies", "company-b", "Expenses"), where("employeeId", "==", "00000001"))));
+  });
+
+  test("employee can read only own leave requests and not another tenant", async () => {
+    const db = employeeDb();
+    await assertSucceeds(getDocs(query(collection(db, "Companies", COMPANY_A, "LeaveRequests"), where("employeeId", "==", EMPLOYEE_ID))));
+    await assertFails(getDoc(doc(db, "Companies", COMPANY_A, "LeaveRequests", "leave-other")));
+    await assertFails(getDocs(query(collection(db, "Companies", "company-b", "LeaveRequests"), where("employeeId", "==", EMPLOYEE_ID))));
+  });
+
+  test("manager leave read permission remains unchanged", async () => {
+    const db = environment.authenticatedContext(MANAGER_UID, { companyId: COMPANY_A, companyEmployeeId: MANAGER_ID }).firestore();
+    await assertSucceeds(getDocs(collection(db, "Companies", COMPANY_A, "LeaveRequests")));
+  });
+
+  test("employee self-reads advances, expenses, and payroll only", async () => {
+    const db = employeeDb();
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "advance_requests", "advance-own")));
+    await assertFails(getDoc(doc(db, "Companies", COMPANY_A, "advance_requests", "advance-other")));
+    await assertFails(getDoc(doc(db, "Companies", "company-b", "advance_requests", "advance-b")));
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "Expenses", "expense-own-firestore")));
+    await assertFails(getDoc(doc(db, "Companies", COMPANY_A, "Expenses", "expense-other")));
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "Usermanagement", EMPLOYEE_ID, "Expenses", "expense-mirror")));
+    await assertFails(getDoc(doc(db, "Companies", COMPANY_A, "Usermanagement", TARGET_ID, "Expenses", "expense-mirror-other")));
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "Payrolls", `${EMPLOYEE_ID}_2026-09`)));
+    await assertFails(getDoc(doc(db, "Companies", COMPANY_A, "Payrolls", `${TARGET_ID}_2026-09`)));
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "Payroll", `${EMPLOYEE_ID}_2026-09`)));
+    await assertFails(getDoc(doc(db, "Companies", "company-b", "Payrolls", `${EMPLOYEE_ID}_2026-09`)));
+    await assertSucceeds(getDocs(query(collection(db, "Companies", COMPANY_A, "advance_requests"), where("employeeFirestoreId", "==", EMPLOYEE_ID), orderBy("requestedAt", "desc"))));
+    const inactive = environment.authenticatedContext("target-auth-a", { companyId: COMPANY_A, companyEmployeeId: TARGET_ID }).firestore();
+    await assertFails(getDoc(doc(inactive, "Companies", COMPANY_A, "advance_requests", "advance-inactive")));
+  });
+
+  test("manager existing payroll and expense access remains unchanged", async () => {
+    const db = environment.authenticatedContext(MANAGER_UID, { companyId: COMPANY_A, companyEmployeeId: MANAGER_ID }).firestore();
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "Payrolls", `${EMPLOYEE_ID}_2026-09`)));
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "Expenses", "expense-own-firestore")));
+    await assertSucceeds(getDoc(doc(db, "Companies", COMPANY_A, "advance_requests", "advance-own")));
   });
 }

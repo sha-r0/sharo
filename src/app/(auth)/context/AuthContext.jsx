@@ -46,7 +46,7 @@ export function AuthProvider({ children }) {
     setFirebaseUser((previous) => previous?.uid === user.uid ? previous : user);
     setValidating(true); setAuthError(null);
     try {
-      const token = await user.getIdToken();
+      let token = await user.getIdToken();
       if (!isCurrent()) return false;
       const response = await fetch("/api/rbac/session", { headers: { Authorization: `Bearer ${token}` } });
       if (!isCurrent()) return false;
@@ -54,6 +54,10 @@ export function AuthProvider({ children }) {
       if (!response.ok) throw new Error("Session validation is temporarily unavailable. Please retry.");
       const identity = await response.json();
       if (!isCurrent()) return false;
+      if (identity.claimsRefreshRequired) {
+        token = await user.getIdToken(true);
+        if (!isCurrent()) return false;
+      }
       const previous = validatedIdentity.current;
       if (previous && (previous.companyId !== identity.companyId || previous.companyEmployeeId !== identity.companyEmployeeId || previous.isOwner !== identity.isOwner)) {
         // A real tenant/employee identity change must never reuse the old workspace.

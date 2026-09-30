@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function SignupStep2({ next, back, data: prevData }) {
   const generateCorporateId = (name) => {
@@ -15,6 +16,8 @@ export default function SignupStep2({ next, back, data: prevData }) {
 
     return `${base}${random}`;
   };
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const [data, setData] = useState({
     corporateId: "",
@@ -75,9 +78,7 @@ export default function SignupStep2({ next, back, data: prevData }) {
 
   return (
     <div className="space-y-6">
-
       {/* Heading */}
-
       <div>
         <h2 className="text-xl font-semibold text-gray-800">
           Administrator Details
@@ -89,11 +90,8 @@ export default function SignupStep2({ next, back, data: prevData }) {
       </div>
 
       {/* Form */}
-
       <div className="space-y-4">
-
         {/* Corporate ID */}
-
         <input
           type="text"
           value={data.corporateId}
@@ -102,7 +100,6 @@ export default function SignupStep2({ next, back, data: prevData }) {
         />
 
         {/* Full Name */}
-
         <input
           type="text"
           placeholder="Full Name"
@@ -117,7 +114,6 @@ export default function SignupStep2({ next, back, data: prevData }) {
         />
 
         {/* Work Email */}
-
         <input
           type="email"
           placeholder="Work Email"
@@ -132,7 +128,6 @@ export default function SignupStep2({ next, back, data: prevData }) {
         />
 
         {/* Mobile */}
-
         <input
           type="tel"
           maxLength={10}
@@ -148,42 +143,60 @@ export default function SignupStep2({ next, back, data: prevData }) {
         />
 
         {/* Password */}
+        <div className="relative">
+          <input
+            type={showPassword ? "text" : "password"}
+            placeholder="Password"
+            className="w-full p-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={data.password}
+            onChange={(e) =>
+              setData({
+                ...data,
+                password: e.target.value,
+              })
+            }
+          />
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={data.password}
-          onChange={(e) =>
-            setData({
-              ...data,
-              password: e.target.value,
-            })
-          }
-        />
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute inset-y-0 right-0 flex items-center justify-center px-4 text-gray-500 hover:text-blue-600"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
+        </div>
 
         {/* Confirm Password */}
+        <div className="relative">
+          <input
+            type={showPassword ? "text" : "password"}
+            placeholder="Confirm Password"
+            className="w-full p-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={data.confirmPassword}
+            onChange={(e) =>
+              setData({
+                ...data,
+                confirmPassword: e.target.value,
+              })
+            }
+          />
 
-        <input
-          type="password"
-          placeholder="Confirm Password"
-          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={data.confirmPassword}
-          onChange={(e) =>
-            setData({
-              ...data,
-              confirmPassword: e.target.value,
-            })
-          }
-        />
-
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute inset-y-0 right-0 flex items-center justify-center px-4 text-gray-500 hover:text-blue-600"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
+        </div>
       </div>
 
       {/* Buttons */}
-
       <div className="flex gap-3">
-
         <button
+          type="button"
           onClick={back}
           className="w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-100"
         >
@@ -191,14 +204,13 @@ export default function SignupStep2({ next, back, data: prevData }) {
         </button>
 
         <button
+          type="button"
           onClick={handleNext}
           className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700"
         >
           Continue
         </button>
-
       </div>
-
     </div>
   );
 }

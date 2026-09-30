@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 
-const PLAN_PRICE = {
-  starter: 49,
-  professional: 59,
-  enterprise: 99,
-};
+import { savePendingRegistration, validatePendingRegistration } from "@/lib/server/pendingRegistrationService";
+
+export const runtime = "nodejs";
 
 export async function POST(req) {
   try {
-    const formData = await req.json();
+    let formData;
+    try {
+      formData = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, message: "Invalid signup request." }, { status: 400 });
+    }
+    const validationError = validatePendingRegistration(formData);
+    if (validationError) {
+      return NextResponse.json({ success: false, message: validationError }, { status: 400 });
+    }
 
     const {
       companyName,
@@ -94,6 +101,9 @@ export async function POST(req) {
 
     const orderId = `SHARO_${uuid().replace(/-/g, "")}`;
 
+    // Persist first: never create a payment order without its registration.
+    const pendingRef = await savePendingRegistration(orderId, formData);
+
     const CASHFREE_URL =
       process.env.CASHFREE_ENV === "PRODUCTION"
         ? "https://api.cashfree.com/pg/orders"
@@ -143,6 +153,11 @@ export async function POST(req) {
     const result = await response.json();
 
     if (!response.ok) {
+      // Only remove on a definite rejection. Keep the record on ambiguous
+      // network/5xx failures because Cashfree may have accepted the order.
+      if (response.status >= 400 && response.status < 500) {
+        await pendingRef.delete();
+      }
       console.error(result);
 
       return NextResponse.json(
@@ -157,6 +172,10 @@ export async function POST(req) {
           status: response.status,
         }
       );
+    }
+
+    if (typeof result.payment_session_id !== "string" || !result.payment_session_id.trim()) {
+      throw new Error("Missing Cashfree payment session.");
     }
 
     return NextResponse.json({
@@ -180,7 +199,7 @@ export async function POST(req) {
     return NextResponse.json(
       {
         success: false,
-        message: err.message,
+        message: "Unable to start registration. Please try again.",
       },
       {
         status: 500,

@@ -1,81 +1,93 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  Building2,
+  Shield,
+  Check,
+  ArrowRight,
+  Users,
+} from "lucide-react";
+
 import { createOrder, openCheckout } from "../services/paymentService";
-import { savePendingRegistration } from "../services/pendingRegistrationService";
-import { or } from "firebase/firestore";
 import { validateSignup } from "@/app/api/signup/services/validationService";
 
 export default function SignupStep3({ data, back }) {
-
-  const plans = {
-    starter: {
-      name: "Starter",
-      price: 49,
-      description: "Perfect for small teams",
-    },
-
-    professional: {
-      name: "Professional",
-      price: 59,
-      description: "Most Popular",
-    },
-
-    enterprise: {
-      name: "Enterprise",
-      price: 99,
-      description: "Advanced Features",
-    },
-  };
-
-  const employeeRanges = [
-    { label: "1-10 Employees", value: 10 },
-    { label: "11-25 Employees", value: 25 },
-    { label: "26-50 Employees", value: 50 },
-    { label: "51-100 Employees", value: 100 },
-    { label: "101-250 Employees", value: 250 },
-    { label: "251-500 Employees", value: 500 },
-    { label: "500+ Employees", value: 500 },
-  ];
+  const BUSINESS_PRICE = 99;
+  const YEARLY_DISCOUNT = 15;
 
   const [billingType, setBillingType] = useState("monthly");
-
-  const [selectedPlan, setSelectedPlan] =
-    useState("professional");
-
-  const [employees, setEmployees] =
-    useState(employeeRanges[0]);
-
+  const [selectedPlan, setSelectedPlan] = useState("business");
+  const [employeeCount, setEmployeeCount] = useState(10);
   const [amount, setAmount] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  /*
+   * Monthly:
+   * users × ₹99
+   *
+   * Yearly:
+   * users × ₹99 × 12
+   * then 15% discount
+   */
   useEffect(() => {
-
-    const monthlyAmount =
-      plans[selectedPlan].price *
-      employees.value;
-
-    if (billingType === "yearly") {
-
-      const yearly = monthlyAmount * 12;
-
-      const discount = yearly * 0.15;
-
-      setAmount(yearly - discount);
-
-    } else {
-
-      setAmount(monthlyAmount);
-
+    if (selectedPlan !== "business") {
+      setAmount(0);
+      return;
     }
 
-  }, [
-    selectedPlan,
-    employees,
-    billingType,
-  ]);
+    const users = Number(employeeCount) || 0;
+    const monthlyAmount = BUSINESS_PRICE * users;
+
+    if (billingType === "yearly") {
+      const yearlyAmount = monthlyAmount * 12;
+      const discountedAmount =
+        yearlyAmount * (1 - YEARLY_DISCOUNT / 100);
+
+      setAmount(Number(discountedAmount.toFixed(2)));
+    } else {
+      setAmount(monthlyAmount);
+    }
+  }, [employeeCount, billingType, selectedPlan]);
+
+  const effectiveYearlyPrice = Number(
+    (
+      BUSINESS_PRICE *
+      (1 - YEARLY_DISCOUNT / 100)
+    ).toFixed(2)
+  );
+
+  const handleEmployeeCountChange = (e) => {
+    const value = e.target.value.replace(/\D/g, "");
+
+    if (value === "") {
+      setEmployeeCount("");
+      return;
+    }
+
+    const count = Number(value);
+
+    if (count > 10000) {
+      setEmployeeCount(10000);
+      return;
+    }
+
+    setEmployeeCount(count);
+  };
 
   const handleContinue = async () => {
+    if (selectedPlan !== "business") {
+      return;
+    }
+
+    const users = Number(employeeCount);
+
+    if (!users || users < 1) {
+      alert("Please enter at least 1 user.");
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -83,24 +95,28 @@ export default function SignupStep3({ data, back }) {
         ...data,
 
         subscription: {
+          plan: "business",
+          planName: "Business",
+
           billingType,
 
-          plan: selectedPlan,
+          employeeCount: users,
 
-          employeeRange: employees.label,
+          // Kept for compatibility if existing backend expects this field
+          employeeRange: `${users} Employees`,
 
-          employeeCount: employees.value,
-
-          pricePerUser: plans[selectedPlan].price,
+          pricePerUser: BUSINESS_PRICE,
 
           yearlyDiscount:
-            billingType === "yearly" ? 15 : 0,
+            billingType === "yearly"
+              ? YEARLY_DISCOUNT
+              : 0,
 
           amount,
         },
       };
 
-      // Validate first
+      // Validate signup
       const validation = await validateSignup(finalData);
 
       if (!validation.success) {
@@ -109,320 +125,529 @@ export default function SignupStep3({ data, back }) {
         return;
       }
 
-      // Create Cashfree Order
+      // Create Cashfree order
       const order = await createOrder(finalData);
 
-      console.log("Saving registration...", finalData);
-
-      const saved = await savePendingRegistration(
-        order.orderId,
-        finalData
-      );
-
-      console.log("Saved:", saved);
-
-      if (!saved) {
-        alert("Unable to start registration.");
-        return;
-      }
-
-      // Open Cashfree Checkout
+      // Open Cashfree checkout
       await openCheckout(order.paymentSessionId);
-
     } catch (error) {
       console.error(error);
-      alert(error.message || "Unable to start payment.");
+
+      alert(
+        error?.message ||
+          "Unable to start payment. Please try again."
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
+    <div className="w-full space-y-7">
+      {/* Heading */}
+      <div>
+        <h2 className="text-xl font-semibold text-slate-800">
+          Choose Your Plan
+        </h2>
 
-    <div className="flex justify-between items-center">
+        <p className="mt-1 text-sm text-slate-500">
+          Simple pricing based on the number of users in your company.
+        </p>
+      </div>
 
-      <div className="space-y-8">
+      {/* Plan Selection */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* BUSINESS */}
+        <button
+          type="button"
+          onClick={() => setSelectedPlan("business")}
+          className={`
+            relative
+            rounded-2xl
+            border-2
+            p-5
+            text-left
+            transition-all
+            ${
+              selectedPlan === "business"
+                ? "border-blue-600 bg-blue-50"
+                : "border-slate-200 bg-white hover:border-blue-300"
+            }
+          `}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100">
+              <Building2
+                size={22}
+                className="text-blue-600"
+              />
+            </div>
 
-        <div>
+            {selectedPlan === "business" && (
+              <div className="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-bold text-white">
+                SELECTED
+              </div>
+            )}
+          </div>
 
-          <h2 className="text-xl font-semibold">
-            Subscription Plan
-          </h2>
+          <h3 className="mt-4 text-lg font-bold text-slate-900">
+            Business
+          </h3>
 
-          <p className="text-gray-500 text-sm mt-1">
-            Choose your billing preference.
+          <p className="mt-1 text-sm text-slate-500">
+            All standard SHARO features included
           </p>
 
-        </div>
+          <div className="mt-5 flex items-end gap-1">
+            <span className="mb-1 text-lg font-semibold text-slate-800">
+              ₹
+            </span>
 
-        <div>
+            <span className="text-4xl font-bold text-blue-600">
+              {billingType === "yearly"
+                ? effectiveYearlyPrice
+                : BUSINESS_PRICE}
+            </span>
 
-          <label className="text-sm font-medium">
-            Billing Cycle
-          </label>
-
-          <div className="flex mt-3 rounded-lg overflow-hidden border">
-
-            <button
-
-              className={`flex-1 py-3 ${billingType === "monthly"
-                ? "bg-blue-600 text-white"
-                : "bg-white"
-                }`}
-
-              onClick={() => setBillingType("monthly")}
-
-            >
-
-              Monthly
-
-            </button>
-
-            <button
-
-              className={`flex-1 py-3 ${billingType === "yearly"
-                ? "bg-blue-600 text-white"
-                : "bg-white"
-                }`}
-
-              onClick={() => setBillingType("yearly")}
-
-            >
-
-              Yearly
-
-            </button>
-
+            <span className="mb-1 text-xs text-slate-500">
+              / user / month
+            </span>
           </div>
 
           {billingType === "yearly" && (
-
-            <p className="text-green-600 text-sm mt-2">
-
-              🎉 Save 15% with yearly billing
-
+            <p className="mt-2 text-xs font-medium text-green-600">
+              Effective price with 15% annual discount
             </p>
-
           )}
 
-        </div>
-
-        <div>
-
-          <label className="text-sm font-medium">
-
-            Employees
-
-          </label>
-
-          <select
-
-            className="w-full border rounded-lg p-3 mt-2"
-
-            value={employees.label}
-
-            onChange={(e) => {
-
-              const selected =
-                employeeRanges.find(
-                  item => item.label === e.target.value
-                );
-
-              setEmployees(selected);
-
-            }}
-
-          >
-
-            {employeeRanges.map((item) => (
-
-              <option
-                key={item.label}
-                value={item.label}
-              >
-
-                {item.label}
-
-              </option>
-
-            ))}
-
-          </select>
-
-        </div>
-
-        <div>
-
-          <label className="text-sm font-medium">
-
-            Choose Plan
-
-          </label>
-
-          <div className="grid grid-cols-3 gap-4 mt-3">
-
-            {Object.entries(plans).map(([key, plan]) => (
-
+          <div className="mt-5 space-y-2">
+            {[
+              "All SHARO features",
+              "Pay only for active users",
+              "Employee mobile app",
+              "Owner & manager dashboard",
+            ].map((feature) => (
               <div
-
-                key={key}
-
-                onClick={() => setSelectedPlan(key)}
-
-                className={`
-
-border
-
-rounded-xl
-
-cursor-pointer
-
-p-5
-
-transition
-
-${selectedPlan === key
-
-                    ?
-
-                    "border-blue-600 bg-blue-50"
-
-                    :
-
-                    "border-gray-200"
-
-                  }
-
-`}
-
+                key={feature}
+                className="flex items-center gap-2"
               >
+                <Check
+                  size={15}
+                  className="text-blue-600"
+                />
 
-                <h3 className="font-semibold">
+                <span className="text-xs text-slate-600">
+                  {feature}
+                </span>
+              </div>
+            ))}
+          </div>
+        </button>
 
-                  {plan.name}
+        {/* ENTERPRISE */}
+        <button
+          type="button"
+          onClick={() => setSelectedPlan("enterprise")}
+          className={`
+            relative
+            rounded-2xl
+            border-2
+            p-5
+            text-left
+            transition-all
+            ${
+              selectedPlan === "enterprise"
+                ? "border-indigo-600 bg-indigo-50"
+                : "border-slate-200 bg-white hover:border-indigo-300"
+            }
+          `}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100">
+              <Shield
+                size={22}
+                className="text-indigo-600"
+              />
+            </div>
 
-                </h3>
+            {selectedPlan === "enterprise" && (
+              <div className="rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-bold text-white">
+                SELECTED
+              </div>
+            )}
+          </div>
 
-                <p className="text-sm text-gray-500 mt-1">
+          <h3 className="mt-4 text-lg font-bold text-slate-900">
+            Enterprise
+          </h3>
 
-                  {plan.description}
+          <p className="mt-1 text-sm text-slate-500">
+            Tailored for larger organizations
+          </p>
 
-                </p>
+          <div className="mt-5">
+            <span className="text-4xl font-bold text-slate-900">
+              Custom
+            </span>
+          </div>
 
-                <p className="mt-4 text-2xl font-bold">
+          <p className="mt-2 text-xs text-slate-500">
+            Pricing based on your requirements
+          </p>
 
-                  ₹{plan.price}
+          <div className="mt-5 space-y-2">
+            {[
+              "Everything in Business",
+              "Custom integrations",
+              "Multi-company setup",
+              "Priority support & SLA",
+            ].map((feature) => (
+              <div
+                key={feature}
+                className="flex items-center gap-2"
+              >
+                <Check
+                  size={15}
+                  className="text-indigo-600"
+                />
 
-                </p>
+                <span className="text-xs text-slate-600">
+                  {feature}
+                </span>
+              </div>
+            ))}
+          </div>
+        </button>
+      </div>
 
-                <p className="text-xs text-gray-500">
+      {/* BUSINESS SETTINGS */}
+      {selectedPlan === "business" && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* LEFT */}
+          <div className="space-y-6">
+            {/* Billing Cycle */}
+            <div>
+              <label className="text-sm font-medium text-slate-700">
+                Billing Cycle
+              </label>
 
-                  per user / month
+              <div className="mt-3 flex overflow-hidden rounded-xl border border-slate-200 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setBillingType("monthly")}
+                  className={`
+                    flex-1
+                    rounded-lg
+                    py-3
+                    text-sm
+                    font-semibold
+                    transition
+                    ${
+                      billingType === "monthly"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }
+                  `}
+                >
+                  Monthly
+                </button>
 
-                </p>
-
+                <button
+                  type="button"
+                  onClick={() => setBillingType("yearly")}
+                  className={`
+                    flex-1
+                    rounded-lg
+                    py-3
+                    text-sm
+                    font-semibold
+                    transition
+                    ${
+                      billingType === "yearly"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }
+                  `}
+                >
+                  Yearly
+                </button>
               </div>
 
-            ))}
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <div className="w-lg max-w-md space-y-6">
-        {/* PRICE SUMMARY */}
-
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
-
-          <div className="flex justify-between py-2">
-            <span className="text-gray-600">Plan</span>
-            <span className="font-semibold">
-              {plans[selectedPlan].name}
-            </span>
-          </div>
-
-          <div className="flex justify-between py-2">
-            <span className="text-gray-600">Employees</span>
-            <span className="font-semibold">
-              {employees.label}
-            </span>
-          </div>
-
-          <div className="flex justify-between py-2">
-            <span className="text-gray-600">Billing</span>
-            <span className="font-semibold capitalize">
-              {billingType}
-            </span>
-          </div>
-
-          <div className="flex justify-between py-2">
-            <span className="text-gray-600">
-              Price / User
-            </span>
-            <span className="font-semibold">
-              ₹{plans[selectedPlan].price}
-            </span>
-          </div>
-
-          {billingType === "yearly" && (
-            <div className="flex justify-between py-2 text-green-600">
-              <span>Yearly Discount</span>
-              <span>15%</span>
+              {billingType === "yearly" && (
+                <p className="mt-2 text-sm font-medium text-green-600">
+                  🎉 Save 15% with yearly billing
+                </p>
+              )}
             </div>
-          )}
 
-          <hr className="my-4" />
-
-          <div className="flex justify-between items-center">
-
+            {/* Number of Users */}
             <div>
+              <label className="text-sm font-medium text-slate-700">
+                Number of Users
+              </label>
 
-              <p className="text-gray-600 text-sm">
-                Total Payable
+              <div className="relative mt-2">
+                <Users
+                  size={18}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={employeeCount}
+                  onChange={handleEmployeeCountChange}
+                  placeholder="Enter number of users"
+                  className="
+                    w-full
+                    rounded-xl
+                    border
+                    border-slate-300
+                    bg-white
+                    py-3
+                    pl-11
+                    pr-4
+                    outline-none
+                    transition
+                    focus:border-blue-500
+                    focus:ring-2
+                    focus:ring-blue-100
+                  "
+                />
+              </div>
+
+              <p className="mt-2 text-xs text-slate-500">
+                You pay only for the number of users you add.
+              </p>
+            </div>
+
+            {/* Example */}
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+              <p className="text-sm font-medium text-slate-800">
+                Example
               </p>
 
-              <h2 className="text-3xl font-bold text-blue-600">
-                ₹{amount.toLocaleString()}
-              </h2>
-
+              <p className="mt-1 text-sm text-slate-600">
+                10 users × ₹99 ={" "}
+                <span className="font-semibold text-blue-600">
+                  ₹990/month
+                </span>
+              </p>
             </div>
-
-            <div className="text-right text-sm text-gray-500">
-
-              {billingType === "monthly"
-                ? "per month"
-                : "per year"}
-
-            </div>
-
           </div>
 
+          {/* PRICE SUMMARY */}
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+            <h3 className="font-semibold text-slate-900">
+              Price Summary
+            </h3>
+
+            <div className="mt-4 space-y-1">
+              <div className="flex justify-between py-2">
+                <span className="text-sm text-slate-600">
+                  Plan
+                </span>
+
+                <span className="text-sm font-semibold">
+                  Business
+                </span>
+              </div>
+
+              <div className="flex justify-between py-2">
+                <span className="text-sm text-slate-600">
+                  Users
+                </span>
+
+                <span className="text-sm font-semibold">
+                  {employeeCount || 0}
+                </span>
+              </div>
+
+              <div className="flex justify-between py-2">
+                <span className="text-sm text-slate-600">
+                  Billing
+                </span>
+
+                <span className="text-sm font-semibold capitalize">
+                  {billingType}
+                </span>
+              </div>
+
+              <div className="flex justify-between py-2">
+                <span className="text-sm text-slate-600">
+                  Price / User
+                </span>
+
+                <span className="text-sm font-semibold">
+                  ₹{BUSINESS_PRICE}/month
+                </span>
+              </div>
+
+              {billingType === "yearly" && (
+                <>
+                  <div className="flex justify-between py-2">
+                    <span className="text-sm text-slate-600">
+                      Annual Base Price
+                    </span>
+
+                    <span className="text-sm font-semibold">
+                      ₹
+                      {(
+                        (Number(employeeCount) || 0) *
+                        BUSINESS_PRICE *
+                        12
+                      ).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between py-2 text-green-600">
+                    <span className="text-sm">
+                      Yearly Discount
+                    </span>
+
+                    <span className="text-sm font-semibold">
+                      15%
+                    </span>
+                  </div>
+                </>
+              )}
+
+              <hr className="my-4 border-blue-200" />
+
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">
+                    Total Payable
+                  </p>
+
+                  <h2 className="mt-1 text-3xl font-bold text-blue-600">
+                    ₹
+                    {amount.toLocaleString("en-IN", {
+                      minimumFractionDigits:
+                        amount % 1 === 0 ? 0 : 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </h2>
+                </div>
+
+                <p className="text-right text-xs text-slate-500">
+                  {billingType === "monthly"
+                    ? "per month"
+                    : "per year"}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* BUTTONS */}
+      {/* ENTERPRISE CONTACT */}
+      {selectedPlan === "enterprise" && (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-6">
+          <h3 className="text-lg font-semibold text-slate-900">
+            Let's build your Enterprise plan
+          </h3>
 
-        <div className="flex gap-3">
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Enterprise pricing depends on your company size,
+            integrations, custom workflows, branches and support
+            requirements.
+          </p>
 
-          <button
-            onClick={back}
-            className="w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-100"
+          <Link
+            href="/contact"
+            className="
+              mt-5
+              inline-flex
+              items-center
+              justify-center
+              gap-2
+              rounded-xl
+              bg-indigo-600
+              px-6
+              py-3
+              text-sm
+              font-semibold
+              text-white
+              transition
+              hover:bg-indigo-700
+            "
           >
-            Back
-          </button>
+            Contact Sales
+            <ArrowRight size={17} />
+          </Link>
+        </div>
+      )}
 
+      {/* BUTTONS */}
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={back}
+          className="
+            w-full
+            rounded-xl
+            border
+            border-slate-300
+            py-3
+            font-medium
+            text-slate-700
+            transition
+            hover:bg-slate-100
+          "
+        >
+          Back
+        </button>
+
+        {selectedPlan === "business" ? (
           <button
+            type="button"
             onClick={handleContinue}
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+            disabled={
+              loading ||
+              !employeeCount ||
+              Number(employeeCount) < 1
+            }
+            className="
+              w-full
+              rounded-xl
+              bg-blue-600
+              py-3
+              font-semibold
+              text-white
+              transition
+              hover:bg-blue-700
+              disabled:cursor-not-allowed
+              disabled:opacity-50
+            "
           >
-            {loading ? "Creating Order..." : "Continue to Payment"}
+            {loading
+              ? "Creating Order..."
+              : "Continue to Payment"}
           </button>
-
-        </div>
+        ) : (
+          <Link
+            href="/contact"
+            className="
+              flex
+              w-full
+              items-center
+              justify-center
+              gap-2
+              rounded-xl
+              bg-indigo-600
+              py-3
+              font-semibold
+              text-white
+              transition
+              hover:bg-indigo-700
+            "
+          >
+            Contact Sales
+            <ArrowRight size={17} />
+          </Link>
+        )}
       </div>
-
     </div>
   );
 }

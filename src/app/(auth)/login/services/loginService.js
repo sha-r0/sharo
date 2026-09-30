@@ -78,6 +78,7 @@ export async function login({
     }
 
     const identity = await identityResponse.json();
+    if (identity.claimsRefreshRequired) await credential.user.getIdToken(true);
 
     // ==========================================
     // Load Company

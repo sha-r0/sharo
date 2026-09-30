@@ -42,7 +42,7 @@ export default function Contact_cards() {
 
 
   return (
-    <section className="bg-[#F5F6FA] py-14">
+    <section className="bg-[#eef2f7] py-14">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
 
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-8">

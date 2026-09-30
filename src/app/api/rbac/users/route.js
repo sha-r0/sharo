@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { syncEmployeeClaims, ensureEmployeeClaims } from "@/lib/server/syncEmployeeClaims.mjs";
 import {
   ALL_PERMISSIONS,
   DEFAULT_ROLE_LEVELS,
@@ -209,13 +210,11 @@ export async function PUT(request) {
       updates["access.status"] = requestedLoginEnabled ? "active" : "inactive";
 
       if (authUid) {
-        await adminAuth.updateUser(authUid, { disabled: !requestedLoginEnabled });
-        await adminAuth.setCustomUserClaims(authUid, {
-          companyId: context.companyId,
-          companyEmployeeId: employeeFirestoreId,
-          roleId: requestedRoleId,
-          permissionsVersion: Date.now(),
+        await syncEmployeeClaims(adminAuth, {
+          uid: authUid, companyId: context.companyId, employeeFirestoreId,
+          employee: { ...existing, access: { ...existing.access, roleId: requestedRoleId } },
         });
+        await adminAuth.updateUser(authUid, { disabled: !requestedLoginEnabled });
         if (!requestedLoginEnabled) await adminAuth.revokeRefreshTokens(authUid);
       }
     }
@@ -274,6 +273,11 @@ export async function POST(request) {
       if (existingRequest.exists) {
         const existingData = existingRequest.data() || {};
         if (existingData.createdBy !== context.token.uid) throw new Error("EMPLOYEE_REQUEST_CONFLICT");
+        if (existingData.access?.loginEnabled === true && existingData.access?.status === "active" && resolveEmployeeAuthUid(existingData)) {
+          await ensureEmployeeClaims(adminAuth, { uid: resolveEmployeeAuthUid(existingData), companyId: context.companyId, employeeFirestoreId: employeeRef.id, employee: existingData });
+        } else if (input.loginEnabled !== false) {
+          throw new Error("EMPLOYEE_PROVISIONING_INCOMPLETE");
+        }
         return NextResponse.json({
           success: true,
           employeeId: existingData.employeeId,
@@ -488,11 +492,10 @@ export async function POST(request) {
        Set Firebase custom claims
     ================================================= */
 
-    await adminAuth.setCustomUserClaims(authUser.uid, {
-      companyId: context.companyId,
-      companyEmployeeId: input.employeeFirestoreId,
-      roleId,
-      permissionsVersion: Date.now(),
+    await syncEmployeeClaims(adminAuth, {
+      uid: authUser.uid, companyId: employeeRef.parent.parent.id, employeeFirestoreId: employeeRef.id,
+      // The server has just allocated this UID; the same link is committed below.
+      employee: { ...employeeData, access: { ...employeeData.access, authUid: authUser.uid, roleId } },
     });
 
     /* =================================================
@@ -702,6 +705,11 @@ export async function PATCH(request) {
       await adminAuth.revokeRefreshTokens(input.targetUid);
     }
 
+    if (["enable", "unlock"].includes(input.action)) {
+      if (!employeeRef || !employeeData || resolveEmployeeAuthUid(employeeData) !== input.targetUid) throw new Error("TARGET_MISMATCH");
+      await syncEmployeeClaims(adminAuth, { uid: input.targetUid, companyId: employeeRef.parent.parent.id, employeeFirestoreId: employeeRef.id, employee: employeeData });
+    }
+
     if (input.action === "enable") {
       if (!input.targetUid) throw new Error("TARGET_UID_REQUIRED");
       await adminAuth.updateUser(input.targetUid, { disabled: false });
@@ -747,11 +755,9 @@ export async function PATCH(request) {
       const role = await loadRole(context.companyId, roleId);
       validateTarget(context, employeeData, role);
 
-      await adminAuth.setCustomUserClaims(input.targetUid, {
-        companyId: context.companyId,
-        companyEmployeeId: input.employeeFirestoreId,
-        roleId,
-        permissionsVersion: Date.now(),
+      await syncEmployeeClaims(adminAuth, {
+        uid: input.targetUid, companyId: context.companyId, employeeFirestoreId: employeeRef.id,
+        employee: { ...employeeData, access: { ...employeeData.access, roleId } },
       });
     }
 

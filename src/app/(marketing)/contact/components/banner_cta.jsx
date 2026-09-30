@@ -8,7 +8,7 @@ export default function Contact_CTA() {
     "shadow-[0px_0.706592px_0.706592px_-0.666667px_rgba(0,0,0,0.08),0px_1.80656px_1.80656px_-1.33333px_rgba(0,0,0,0.08),0px_3.62176px_3.62176px_-2px_rgba(0,0,0,0.07),0px_6.8656px_6.8656px_-2.66667px_rgba(0,0,0,0.07),0px_13.6468px_13.6468px_-3.33333px_rgba(0,0,0,0.05),0px_30px_30px_-4px_rgba(0,0,0,0.02),inset_0px_3px_1px_0px_rgb(255,255,255)]";
 
   return (
-    <section className="bg-[#F5F6FA] py-24">
+    <section className="bg-[#eef2f7] py-24">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
 
         <motion.div

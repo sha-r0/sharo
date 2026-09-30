@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { ensureEmployeeClaims } from "@/lib/server/syncEmployeeClaims.mjs";
+import { isActiveEmployee } from "@/app/allservice/rbac/employeeAuth";
 import { refreshPerformancePermissions } from "@/lib/server/refreshPerformancePermissions";
 
 const unauthenticated = () =>
@@ -89,8 +91,17 @@ export async function GET(request) {
           .get();
       }
       if (matches.empty) return unauthenticated();
-      employeeId = matches.docs[0].id;
+      employee = matches.docs[0];
+      employeeId = employee.id;
     }
+
+    if (!isActiveEmployee(employee.data()) || !["active", "enabled"].includes(String(rootData.status || "active").toLowerCase())
+        || String(company.data().serviceStatus || "active").toLowerCase() !== "active") {
+      return NextResponse.json({ error: "EMPLOYEE_DISABLED" }, { status: 403 });
+    }
+    const claimsRefreshRequired = await ensureEmployeeClaims(adminAuth, {
+      uid: token.uid, companyId: company.id, employeeFirestoreId: employee.id, employee: employee.data(),
+    }, token);
 
     // AuthContext reads the employee snapshot after this response. Complete
     // the targeted backfill first so sidebar, route guards and APIs agree.
@@ -101,6 +112,7 @@ export async function GET(request) {
       companyId,
       companyEmployeeId: employeeId || null,
       isOwner: false,
+      claimsRefreshRequired,
     });
   } catch (error) {
     console.error("Session identity resolution failed", {

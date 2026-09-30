@@ -70,17 +70,17 @@ const PurchaseOrderDocument = forwardRef(function PurchaseOrderDocument(
       className="purchase-order-document mx-auto w-full max-w-[900px] overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-700 shadow-sm print:border-0 print:shadow-none"
       aria-label={`Purchase Order ${text(purchaseOrder?.poNumber || "Draft")}`}
     >
-      <div className="border-b border-slate-200 px-6 py-5 sm:px-8">
+      <div className="po-print-top border-b border-slate-200 px-6 py-5 sm:px-8">
         <div className="po-print-header flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4">
             {companyLogo ? (
               <img
                 src={companyLogo}
                 alt={`${companyName} logo`}
-                className="h-16 w-20 rounded-xl object-contain"
+                className="po-print-logo h-16 w-20 rounded-xl object-contain"
               />
             ) : (
-              <div className="grid h-16 w-20 place-items-center rounded-xl bg-slate-100 text-sm font-black text-slate-500">
+              <div className="po-print-logo grid h-16 w-20 place-items-center rounded-xl bg-slate-100 text-sm font-black text-slate-500">
                 LOGO
               </div>
             )}
@@ -100,7 +100,7 @@ const PurchaseOrderDocument = forwardRef(function PurchaseOrderDocument(
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+          <div className="po-print-order-card rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600">
               Purchase Order
             </p>
@@ -148,7 +148,7 @@ const PurchaseOrderDocument = forwardRef(function PurchaseOrderDocument(
         </section>
       </div>
 
-      <div className="px-6 pb-5 sm:px-8">
+      <div className="po-print-items px-6 pb-5 sm:px-8">
         <div className="overflow-hidden rounded-2xl border border-slate-200">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
@@ -408,6 +408,83 @@ const PurchaseOrderDocument = forwardRef(function PurchaseOrderDocument(
           #purchase-order-print-root .purchase-order-document .print\\:hidden {
             display: none !important;
           }
+
+
+          /* Compact A4 print overrides. */
+          #purchase-order-print-root .purchase-order-document {
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            color: #334155 !important;
+            font-size: 8.5pt !important;
+            line-height: 1.25 !important;
+          }
+
+          #purchase-order-print-root .po-print-top {
+            padding: 0 0 4mm !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          #purchase-order-print-root .po-print-logo {
+            width: 16mm !important;
+            height: 12mm !important;
+            border-radius: 1.5mm !important;
+          }
+
+          #purchase-order-print-root .po-print-header { gap: 5mm !important; }
+          #purchase-order-print-root .po-print-header h1 { font-size: 14pt !important; line-height: 1.1 !important; }
+          #purchase-order-print-root .po-print-header p { margin-top: 1mm !important; font-size: 7.5pt !important; }
+
+          #purchase-order-print-root .po-print-order-card {
+            padding: 2.5mm 3mm !important;
+            border-radius: 1.5mm !important;
+          }
+          #purchase-order-print-root .po-print-order-card h2 { margin-top: .5mm !important; font-size: 15pt !important; line-height: 1 !important; }
+          #purchase-order-print-root .po-print-order-card span { margin-top: 1.5mm !important; padding: .75mm 2mm !important; font-size: 7pt !important; }
+
+          #purchase-order-print-root .po-print-meta {
+            gap: 2mm !important;
+            margin-top: 3mm !important;
+          }
+          #purchase-order-print-root .po-print-meta .rounded-xl { padding: 1.5mm 2mm !important; border-radius: 1.5mm !important; }
+          #purchase-order-print-root .po-print-meta .rounded-xl span { font-size: 6.5pt !important; letter-spacing: .08em !important; }
+          #purchase-order-print-root .po-print-meta .rounded-xl strong { margin-top: .5mm !important; font-size: 8.5pt !important; }
+
+          #purchase-order-print-root .po-print-parties { gap: 2mm !important; padding: 3mm 0 !important; }
+          #purchase-order-print-root .po-print-parties > section { padding: 2.5mm 3mm !important; border-radius: 1.5mm !important; }
+          #purchase-order-print-root .po-print-parties h3 { margin-top: .5mm !important; font-size: 10pt !important; }
+          #purchase-order-print-root .po-print-parties p { margin-top: .75mm !important; font-size: 7.5pt !important; }
+
+          #purchase-order-print-root .po-print-items { padding: 0 0 3mm !important; }
+          #purchase-order-print-root .po-print-items > div { border-radius: 1.5mm !important; }
+          #purchase-order-print-root .purchase-order-document table { width: 100% !important; font-size: 7.5pt !important; line-height: 1.2 !important; }
+          #purchase-order-print-root .purchase-order-document th,
+          #purchase-order-print-root .purchase-order-document td { padding: 1.5mm 1.75mm !important; }
+          #purchase-order-print-root .purchase-order-document thead th { font-size: 6.5pt !important; letter-spacing: .05em !important; }
+          #purchase-order-print-root .purchase-order-document td small { margin-top: .5mm !important; font-size: 6.5pt !important; }
+          #purchase-order-print-root .purchase-order-document tfoot td { padding-top: 1.5mm !important; padding-bottom: 1.5mm !important; }
+
+          #purchase-order-print-root .po-print-commercial { gap: 2mm !important; padding: 0 0 3mm !important; }
+          #purchase-order-print-root .po-print-commercial > section { padding: 2.5mm 3mm !important; border-radius: 1.5mm !important; }
+          #purchase-order-print-root .po-print-commercial h3 { font-size: 8pt !important; }
+          #purchase-order-print-root .po-print-commercial .space-y-3 > div + div { margin-top: 1.5mm !important; }
+          #purchase-order-print-root .po-print-commercial p,
+          #purchase-order-print-root .po-print-commercial .text-sm { font-size: 7.5pt !important; }
+          #purchase-order-print-root .po-print-commercial .mt-3 { margin-top: 1.5mm !important; }
+          #purchase-order-print-root .po-print-commercial .mt-5 { margin-top: 2mm !important; }
+
+          #purchase-order-print-root .po-print-footer.print\:hidden {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 2mm !important;
+            padding: 3mm 0 0 !important;
+          }
+          #purchase-order-print-root .po-print-footer > section:last-child { padding: 2.5mm 3mm !important; border-radius: 1.5mm !important; }
+          #purchase-order-print-root .po-print-footer > section:last-child .mt-3 { margin-top: 1.5mm !important; }
+          #purchase-order-print-root .po-print-footer > section:last-child .mt-3 > div { padding: 2mm 3mm !important; }
+          #purchase-order-print-root .po-print-footer > section:last-child h4 { font-size: 9pt !important; }
+          #purchase-order-print-root .po-print-footer > section:last-child p { margin-top: .5mm !important; font-size: 7.5pt !important; }
         }
       `}</style>
     </article>

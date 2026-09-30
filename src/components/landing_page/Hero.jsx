@@ -119,33 +119,33 @@ export default function HeroLeft() {
         <Link
           href="/signup"
           className="
-            flex
-            h-10
-            w-full
-            items-center
-            justify-center
-            gap-2
-            rounded-[15px]
-            bg-[#4f6df5]
-            px-4
-            text-sm
-            font-medium
-            text-white
-            shadow-[0_14px_28px_rgba(79,109,245,0.3)]
-            transition-all
-            duration-200
-            hover:-translate-y-0.5
-            hover:bg-[#425fe8]
-            min-[430px]:w-auto
-            sm:h-11
-            sm:rounded-[17px]
-            sm:px-5
-            sm:text-base
-            lg:h-12
-            lg:rounded-[20px]
-            lg:px-6
-            lg:text-lg
-          "
+    flex
+    h-10
+    w-full
+    items-center
+    justify-center
+    gap-2
+    rounded-[15px]
+    bg-[#4f6df5]
+    px-4
+    text-sm
+    font-medium
+    text-white
+    shadow-[0_14px_28px_rgba(79,109,245,0.3)]
+    transition-all
+    duration-200
+    hover:-translate-y-0.5
+    hover:bg-[#425fe8]
+    min-[430px]:w-auto
+    sm:h-11
+    sm:rounded-[17px]
+    sm:px-5
+    sm:text-base
+    lg:h-12
+    lg:rounded-[20px]
+    lg:px-6
+    lg:text-lg
+  "
         >
           Start Free Trial
           <ArrowRight className="h-4 w-4 sm:h-[18px] sm:w-[18px] lg:h-5 lg:w-5" />
