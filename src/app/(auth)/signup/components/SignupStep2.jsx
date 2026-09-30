@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { validateSignup } from "@/app/api/signup/services/validationService";
 
 export default function SignupStep2({ next, back, data: prevData }) {
   const generateCorporateId = (name) => {
@@ -18,14 +19,15 @@ export default function SignupStep2({ next, back, data: prevData }) {
   };
 
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [data, setData] = useState({
-    corporateId: "",
-    fullName: "",
-    adminEmail: "",
-    adminPhone: "",
-    password: "",
-    confirmPassword: "",
+    corporateId: prevData?.corporateId || "",
+    fullName: prevData?.fullName || "",
+    adminEmail: prevData?.adminEmail || "",
+    adminPhone: prevData?.adminPhone || "",
+    password: prevData?.password || "",
+    confirmPassword: prevData?.password || "",
     role: "owner",
   });
 
@@ -33,12 +35,13 @@ export default function SignupStep2({ next, back, data: prevData }) {
     if (prevData?.companyName) {
       setData((prev) => ({
         ...prev,
-        corporateId: generateCorporateId(prevData.companyName),
+        corporateId: prevData.corporateId || generateCorporateId(prevData.companyName),
       }));
     }
   }, [prevData]);
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    if (loading) return;
     if (
       !data.corporateId ||
       !data.fullName ||
@@ -73,7 +76,19 @@ export default function SignupStep2({ next, back, data: prevData }) {
       return;
     }
 
-    next(data);
+    setLoading(true);
+    try {
+      const result = await validateSignup({ ...prevData, ...data });
+      if (!result.success || result.state === "completed") {
+        alert(result.message);
+        return;
+      }
+      next({ ...data, ...result.signup });
+    } catch {
+      alert("Unable to validate signup. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -206,6 +221,7 @@ export default function SignupStep2({ next, back, data: prevData }) {
         <button
           type="button"
           onClick={handleNext}
+          disabled={loading}
           className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700"
         >
           Continue

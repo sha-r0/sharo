@@ -74,7 +74,7 @@ export default function Signup() {
 
         {step === 1 && (
           <div className="max-w-3xl mx-auto">
-            <SignupStep1 next={next} />
+            <SignupStep1 next={next} data={formData} />
           </div>
         )}
 

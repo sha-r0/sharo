@@ -1,14 +1,14 @@
 "use client";
 import { useState } from "react";
 
-export default function SignupStep1({ next }) {
+export default function SignupStep1({ next, data: saved = {} }) {
   const [data, setData] = useState({
-    companyName: "",
-    companyAddress: "",
-    companyEmail: "",
-    phone: "",
-    hasGST: false,
-    gstNumber: "",
+    companyName: saved.companyName || "",
+    companyAddress: saved.companyAddress || "",
+    companyEmail: saved.companyEmail || "",
+    phone: saved.phone || "",
+    hasGST: Boolean(saved.gstNumber),
+    gstNumber: saved.gstNumber || "",
   });
 
   const handleNext = () => {

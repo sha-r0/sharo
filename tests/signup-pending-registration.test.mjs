@@ -1,3 +1,4 @@
+import * as pendingPassword from "../src/lib/server/pendingPassword.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,6 +14,7 @@ const routeCode = await compile('src/app/api/cashfree/create-order/route.js');
 function evaluate(code, mocks, fetch) {
   const module = { exports: {} };
   new Function('require', 'module', 'exports', 'fetch', code)((id) => {
+    if (id === './pendingPassword.mjs') return pendingPassword;
     if (!(id in mocks)) throw new Error(`Unexpected import ${id}`);
     return mocks[id];
   }, module, module.exports, fetch);
@@ -30,6 +32,7 @@ function harness({ persistenceFails = false, status = 200, networkFails = false 
     'next/server': { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
     uuid: { v4: () => '12345678-1234-1234-1234-123456789abc' },
     '@/lib/server/pendingRegistrationService': service,
+    '@/lib/server/signupResumeService': { findSignupResume: async () => null },
   }, async (url, options) => {
     calls.push(['cashfree', JSON.parse(options.body)]);
     if (networkFails) throw new Error('network interrupted');
@@ -47,6 +50,9 @@ test('unauthenticated signup persists before Cashfree and returns the existing c
   const record = h.calls[0][1];
   assert.equal(record.orderId, result.body.orderId);
   assert.equal(record.admin.role, 'owner');
+  assert.equal(record.admin.password, undefined);
+  assert.equal(await pendingPassword.verifyPendingPassword(data.password, record.admin.passwordHash), true);
+  assert.doesNotMatch(JSON.stringify(result.body), /password|hash|salt/i);
   assert.equal(record.paymentStatus, 'PENDING');
   assert.equal(record.companyId, undefined);
   assert.equal(h.calls[1][1].order_amount, 1); // Preserve existing Cashfree pricing.

@@ -7,6 +7,7 @@ export async function validateSignup(data) {
       body: JSON.stringify({
         companyEmail: data.companyEmail,
         adminEmail: data.adminEmail,
+        password: data.password,
         corporateId: data.corporateId,
       }),
     });

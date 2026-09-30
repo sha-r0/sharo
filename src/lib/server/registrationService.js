@@ -1,5 +1,6 @@
 import { adminDb, adminAuth } from "@/lib/firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
+import { securePendingPassword, importPendingPassword } from "./pendingPassword.mjs";
 
 export async function completeRegistration(orderId) {
     let authUser = null;
@@ -13,11 +14,19 @@ export async function completeRegistration(orderId) {
         // Get Pending Registration
         // ============================================
 
-        const pendingRef = adminDb
+        let pendingRef = adminDb
             .collection("PendingRegistrations")
             .doc(orderId);
 
-        const pendingDoc = await pendingRef.get();
+        let pendingDoc = await pendingRef.get();
+        if (!pendingDoc.exists) {
+            const matches = await adminDb.collection("PendingRegistrations")
+                .where("orderId", "==", orderId).limit(1).get();
+            if (!matches.empty) {
+                pendingDoc = matches.docs[0];
+                pendingRef = pendingDoc.ref;
+            }
+        }
 
         if (!pendingDoc.exists) {
             return {
@@ -26,7 +35,7 @@ export async function completeRegistration(orderId) {
             };
         }
 
-        const data = pendingDoc.data();
+        const data = await securePendingPassword(pendingDoc);
 
         // ============================================
         // Prevent Duplicate Registration
@@ -53,9 +62,9 @@ export async function completeRegistration(orderId) {
 
         authUser = await adminAuth.createUser({
             email: data.admin.adminEmail,
-            password: data.admin.password,
             displayName: data.admin.fullName,
         });
+        await importPendingPassword(adminAuth, authUser, data.admin.passwordHash);
 
         // ============================================
         // Calculate Plan Dates
@@ -161,7 +170,6 @@ export async function completeRegistration(orderId) {
 
             phone: data.admin.adminPhone,
 
-            // password: data.admin.password,
 
             department: "Management",
 
@@ -224,7 +232,7 @@ export async function completeRegistration(orderId) {
 
     } catch (error) {
 
-        console.error(error);
+        console.error("Registration completion failed.");
 
         // Rollback
 
@@ -250,7 +258,7 @@ export async function completeRegistration(orderId) {
 
         return {
             success: false,
-            message: error.message,
+            message: "Unable to complete registration. Please try again.",
         };
     }
 }

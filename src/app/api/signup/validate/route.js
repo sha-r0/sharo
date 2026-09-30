@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { adminDb, adminAuth } from "@/lib/firebase-admin";
+import { adminDb } from "@/lib/firebase-admin";
+import { findSignupResume } from "@/lib/server/signupResumeService";
 
 export async function POST(req) {
   try {
@@ -7,6 +8,7 @@ export async function POST(req) {
       companyEmail,
       adminEmail,
       corporateId,
+      password,
     } = await req.json();
 
     if (!companyEmail || !adminEmail || !corporateId) {
@@ -19,22 +21,8 @@ export async function POST(req) {
       );
     }
 
-    // -----------------------------
-    // Check Firebase Auth
-    // -----------------------------
-    try {
-      await adminAuth.getUserByEmail(adminEmail);
-
-      return NextResponse.json({
-        success: false,
-        message: "Admin email is already registered.",
-      });
-
-    } catch (error) {
-      if (error.code !== "auth/user-not-found") {
-        throw error;
-      }
-    }
+    const pending = await findSignupResume({ adminEmail, password });
+    if (pending) return NextResponse.json(pending.response, { headers: { "Cache-Control": "no-store" } });
 
     // -----------------------------
     // Check Company Email
@@ -68,23 +56,6 @@ export async function POST(req) {
       });
     }
 
-    // -----------------------------
-    // Check Pending Registration
-    // -----------------------------
-    const pendingSnap = await adminDb
-      .collection("PendingRegistrations")
-      .where("admin.adminEmail", "==", adminEmail)
-      .limit(1)
-      .get();
-
-    if (!pendingSnap.empty) {
-      return NextResponse.json({
-        success: false,
-        message:
-          "A pending registration already exists for this email.",
-      });
-    }
-
     return NextResponse.json({
       success: true,
     });
@@ -97,8 +68,7 @@ export async function POST(req) {
     return NextResponse.json(
       {
         success: false,
-        message: error.message,
-        code: error.code,
+        message: "Unable to validate signup. Please try again.",
       },
       {
         status: 500,

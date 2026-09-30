@@ -1,5 +1,6 @@
 import { adminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { hashPendingPassword } from "./pendingPassword.mjs";
 
 export function validatePendingRegistration(data) {
   if (!data || typeof data !== "object" || Array.isArray(data)) return "Invalid signup request.";
@@ -44,7 +45,7 @@ export async function savePendingRegistration(orderId, data) {
       fullName: data.fullName,
       adminEmail: data.adminEmail,
       adminPhone: data.adminPhone,
-      password: data.password,
+      passwordHash: await hashPendingPassword(data.password),
       corporateId: data.corporateId,
       role: "owner",
     },

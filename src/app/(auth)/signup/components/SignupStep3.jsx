@@ -17,9 +17,9 @@ export default function SignupStep3({ data, back }) {
   const BUSINESS_PRICE = 99;
   const YEARLY_DISCOUNT = 15;
 
-  const [billingType, setBillingType] = useState("monthly");
+  const [billingType, setBillingType] = useState(data.subscription?.billingType || "monthly");
   const [selectedPlan, setSelectedPlan] = useState("business");
-  const [employeeCount, setEmployeeCount] = useState(10);
+  const [employeeCount, setEmployeeCount] = useState(data.subscription?.employeeCount || 10);
   const [amount, setAmount] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -119,7 +119,7 @@ export default function SignupStep3({ data, back }) {
       // Validate signup
       const validation = await validateSignup(finalData);
 
-      if (!validation.success) {
+      if (!validation.success || validation.state === "completed") {
         alert(validation.message);
         setLoading(false);
         return;
@@ -127,6 +127,15 @@ export default function SignupStep3({ data, back }) {
 
       // Create Cashfree order
       const order = await createOrder(finalData);
+
+      if (order.state === "completed") {
+        alert(order.message);
+        return;
+      }
+      if (order.state === "paid") {
+        window.location.assign(`/signup/success?order_id=${encodeURIComponent(order.orderId)}`);
+        return;
+      }
 
       // Open Cashfree checkout
       await openCheckout(order.paymentSessionId);
@@ -147,11 +156,13 @@ export default function SignupStep3({ data, back }) {
       {/* Heading */}
       <div>
         <h2 className="text-xl font-semibold text-slate-800">
-          Choose Your Plan
+          {data.subscription ? "Resume Your Signup" : "Choose Your Plan"}
         </h2>
 
         <p className="mt-1 text-sm text-slate-500">
-          Simple pricing based on the number of users in your company.
+          {data.subscription
+            ? "Your saved company, administrator and plan details have been restored. Continue to resume payment."
+            : "Simple pricing based on the number of users in your company."}
         </p>
       </div>
 
@@ -161,6 +172,7 @@ export default function SignupStep3({ data, back }) {
         <button
           type="button"
           onClick={() => setSelectedPlan("business")}
+          disabled={Boolean(data.subscription)}
           className={`
             relative
             rounded-2xl
@@ -248,6 +260,7 @@ export default function SignupStep3({ data, back }) {
         <button
           type="button"
           onClick={() => setSelectedPlan("enterprise")}
+          disabled={Boolean(data.subscription)}
           className={`
             relative
             rounded-2xl
@@ -335,6 +348,7 @@ export default function SignupStep3({ data, back }) {
                 <button
                   type="button"
                   onClick={() => setBillingType("monthly")}
+          disabled={Boolean(data.subscription)}
                   className={`
                     flex-1
                     rounded-lg
@@ -355,6 +369,7 @@ export default function SignupStep3({ data, back }) {
                 <button
                   type="button"
                   onClick={() => setBillingType("yearly")}
+          disabled={Boolean(data.subscription)}
                   className={`
                     flex-1
                     rounded-lg
@@ -397,6 +412,7 @@ export default function SignupStep3({ data, back }) {
                   inputMode="numeric"
                   value={employeeCount}
                   onChange={handleEmployeeCountChange}
+          disabled={Boolean(data.subscription)}
                   placeholder="Enter number of users"
                   className="
                     w-full
