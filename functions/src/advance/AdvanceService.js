@@ -2,7 +2,9 @@
 
 const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { authorizeDecision, validateAmount } = require("./AdvancePolicy");
-const { clean, isActiveEmployee, resolveCompanyActor } = require("../auth/CompanyActor");
+const { clean, resolveCompanyActor } = require("../auth/CompanyActor");
+
+const { canReadEmployees, activeEmployee, listEmployees } = require("./EmployeeDirectory");
 
 const employeeName = (data) => data.personalInfo?.fullName || data.fullName || data.name || "Unnamed employee";
 
@@ -15,7 +17,7 @@ async function getAdvanceReferenceData(db, request) {
     const project = snapshot.data() || {};
     return { id: snapshot.id, projectName: project.projectName || project.name || "Unnamed project" };
   });
-  return { employees: [], projects };
+  return { companyId: actor.companyId, employees: await listEmployees(companyRef, actor), projects };
 }
 
 function asTimestamp(value) {
@@ -80,12 +82,15 @@ function requestPayload(input, actor, employeeSnapshot) {
 async function createAdvanceRequest(db, request) {
   const actor = await resolveCompanyActor(db, request.auth);
   const input = request.data || {};
-  const targetEmployeeId = actor.employeeId;
+  const requestedEmployeeId = clean(input.employeeFirestoreId);
+  if (requestedEmployeeId && requestedEmployeeId !== actor.employeeId && !canReadEmployees(actor)) throw new Error("FORBIDDEN");
+  const targetEmployeeId = canReadEmployees(actor) ? requestedEmployeeId || actor.employeeId : actor.employeeId;
+  if (targetEmployeeId?.includes("/")) throw new Error("INVALID_EMPLOYEE_ID");
   if (!targetEmployeeId) throw new Error("EMPLOYEE_REQUIRED");
 
   const companyRef = db.collection("Companies").doc(actor.companyId);
   const employeeSnapshot = await companyRef.collection("Usermanagement").doc(targetEmployeeId).get();
-  if (!employeeSnapshot.exists || !isActiveEmployee(employeeSnapshot.data() || {})) throw new Error("EMPLOYEE_NOT_FOUND");
+  if (!employeeSnapshot.exists || !activeEmployee(employeeSnapshot.data() || {})) throw new Error("EMPLOYEE_NOT_FOUND");
   const payload = requestPayload(input, actor, employeeSnapshot);
   const advanceRef = companyRef.collection("advance_requests").doc();
   const auditRef = companyRef.collection("ActivityLogs").doc(`advance-request-${advanceRef.id}`);

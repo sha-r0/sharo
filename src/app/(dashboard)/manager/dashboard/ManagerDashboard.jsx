@@ -8,6 +8,7 @@ import {
   XCircle,
 } from "lucide-react";
 import useDashboardData from "./useDashboardData";
+import { canReadEmployeeDirectory } from "@/app/allservice/employee/employeeDirectory";
 import { asDate, buildDashboardMetrics, getRange } from "./dashboardMetrics";
 import DashboardSkeleton from "./DashboardSkeleton";
 import PendingLeaveCard from "./PendingLeaveCard";
@@ -67,7 +68,7 @@ export default function ManagerDashboard({ companyId, companyName }) {
     const text = search.trim().toLowerCase();
     if (!text) return [];
     return [
-      ...(can("employee.view") ? data.employees.map((item) => ({ id: `employee-${item.id}`, label: nameOf(item), detail: item.department || item.employment?.department || "Employee", href: `/manager/userManagement/${item.id}` })) : []),
+      ...(canReadEmployeeDirectory(access) ? data.employees.map((item) => ({ id: `employee-${item.id}`, label: nameOf(item), detail: item.department || item.employment?.department || "Employee", href: `/manager/userManagement/${item.id}` })) : []),
       ...(can("projects.view") ? data.projects.map((item) => ({ id: `project-${item.id}`, label: item.projectName || "Project", detail: item.clientName || "Project", href: `/manager/projects/${item.id}` })) : []),
       ...(can("clients.view") ? data.clients.map((item) => ({ id: `client-${item.id}`, label: item.clientName || item.name || "Client", detail: "Client", href: "/manager/clients" })) : []),
     ].filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(text)).slice(0, 8);
@@ -96,6 +97,10 @@ export default function ManagerDashboard({ companyId, companyName }) {
     {error && <div className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between"><span>{error}</span><button onClick={refresh} className="font-bold">Retry</button></div>}
 
     <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">{visibleTopCards.map(([title, key, Icon, tone, format]) => <StatCard key={key} title={title} value={metrics.summary[key]} icon={Icon} tone={tone} format={format} />)}</section>
+
+    {canReadEmployeeDirectory(access) && <SectionCard title="Company Employees" subtitle="Active employees — read only">
+      <div className="max-h-80 overflow-y-auto"><RecordList items={data.employees.filter((item) => `${nameOf(item)} ${item.employeeId}`.toLowerCase().includes(search.toLowerCase()))} empty="No active employees found" render={(item) => <><RecordIcon icon={UserCheck} tone="blue"/><MainText title={nameOf(item)} subtitle={`${item.employeeId} • ${item.department || "Employee"}`}/></>}/></div>
+    </SectionCard>}
 
     <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
       <GpsPunchesCard companyId={companyId} normalItems={metrics.todayGpsPunches} renderNormal={(items) => <RecordList items={items} empty="No GPS punches today" href={() => "/manager/Workforce/gps-approval"} render={(item) => <><RecordIcon icon={LocateFixed} tone="cyan" /><MainText title={nameOf(item)} subtitle={`In ${shortTime(item.checkIn)} • Out ${shortTime(item.checkOut)}`} /><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClass(item.gpsValid ? "valid" : "invalid")}`}>{item.gpsValid ? "Valid" : "Review"}</span></>} />} />

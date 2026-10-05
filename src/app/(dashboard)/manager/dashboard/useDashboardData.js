@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import employeeService from "@/app/allservice/employee/employeeService";
+import { canReadEmployeeDirectory, getActiveEmployeeDirectory } from "@/app/allservice/employee/employeeDirectory";
 import { getProjects } from "@/app/allservice/projectService";
 import expenseService from "@/app/allservice/expense/expenseService";
 import { can } from "@/app/allservice/rbac/AuthorizationService";
 
 const dashboardCache = new Map();
 const CACHE_TTL = 60_000;
-const cacheKey = (companyId, access) => `${companyId}:${access?.isOwner ? "owner" : [...(access?.permissions || [])].sort().join(",")}`;
+const cacheKey = (companyId, access) => `${companyId}:${access?.uid || ""}:${access?.roleId || ""}:${access?.isOwner ? "owner" : [...(access?.permissions || [])].sort().join(",")}`;
 
 const emptyData = {
   employees: [],
@@ -60,7 +60,7 @@ async function loadDashboardData(companyId, access, companyEmployee) {
     clients,
     holidays,
   ] = await Promise.all([
-    safe(allowed("employee.view"), () => employeeService.getEmployees(companyId)),
+    safe(canReadEmployeeDirectory(access), () => getActiveEmployeeDirectory(companyId)),
     safe(allowed("projects.view"), () => getProjects(companyId)),
     safe(allowed("expense.view"), () => expenseService.getExpenses(companyId, access?.roleId === "employee" ? companyEmployee?.employeeId : null)),
     safe(allowed("attendance.view"), () => readCollection(companyId, "Attendance")),
@@ -91,10 +91,12 @@ export default function useDashboardData(companyId, access, companyEmployee) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const mounted = useRef(true);
+  const loadVersion = useRef(0);
 
   const load = useCallback(
     async ({ force = false } = {}) => {
-      if (!companyId) return;
+      const version = ++loadVersion.current;
+      if (!companyId) { setData(emptyData); return; }
 
       const key = cacheKey(companyId, access);
       const cached = dashboardCache.get(key);
@@ -104,21 +106,22 @@ export default function useDashboardData(companyId, access, companyEmployee) {
         return;
       }
 
+      if (!force) setData(emptyData);
       force ? setRefreshing(true) : setLoading(true);
       setError(null);
 
       try {
         const nextData = await loadDashboardData(companyId, access, companyEmployee);
-        if (!mounted.current) return;
+        if (!mounted.current || version !== loadVersion.current) return;
         dashboardCache.set(key, { data: nextData, savedAt: Date.now() });
         setData(nextData);
       } catch (loadError) {
         console.error("Dashboard load failed:", loadError);
-        if (mounted.current) {
+        if (mounted.current && version === loadVersion.current) {
           setError("We could not load the dashboard. Check your connection and retry.");
         }
       } finally {
-        if (mounted.current) {
+        if (mounted.current && version === loadVersion.current) {
           setLoading(false);
           setRefreshing(false);
         }

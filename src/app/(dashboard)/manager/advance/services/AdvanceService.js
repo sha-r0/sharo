@@ -27,6 +27,7 @@ export default class AdvanceService {
     if (existingId) { await updateDoc(doc(db, "Companies", companyId, "advance_requests", existingId), payload); return existingId; }
     const createRequest = httpsCallable(functions, "createAdvanceRequest");
     const requestValues = {
+      employeeFirestoreId: values.employeeFirestoreId || undefined,
       advanceType: values.advanceType,
       amount: values.amount,
       monthlyDeduction: values.monthlyDeduction,
