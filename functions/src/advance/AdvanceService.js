@@ -4,7 +4,7 @@ const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { authorizeDecision, validateAmount } = require("./AdvancePolicy");
 const { clean, resolveCompanyActor } = require("../auth/CompanyActor");
 
-const { canReadEmployees, activeEmployee, listEmployees } = require("./EmployeeDirectory");
+const { listEmployees } = require("./EmployeeDirectory");
 
 const employeeName = (data) => data.personalInfo?.fullName || data.fullName || data.name || "Unnamed employee";
 
@@ -80,40 +80,8 @@ function requestPayload(input, actor, employeeSnapshot) {
 }
 
 async function createAdvanceRequest(db, request) {
-  const actor = await resolveCompanyActor(db, request.auth);
-  const input = request.data || {};
-  const requestedEmployeeId = clean(input.employeeFirestoreId);
-  if (requestedEmployeeId && requestedEmployeeId !== actor.employeeId && !canReadEmployees(actor)) throw new Error("FORBIDDEN");
-  const targetEmployeeId = canReadEmployees(actor) ? requestedEmployeeId || actor.employeeId : actor.employeeId;
-  if (targetEmployeeId?.includes("/")) throw new Error("INVALID_EMPLOYEE_ID");
-  if (!targetEmployeeId) throw new Error("EMPLOYEE_REQUIRED");
-
-  const companyRef = db.collection("Companies").doc(actor.companyId);
-  const employeeSnapshot = await companyRef.collection("Usermanagement").doc(targetEmployeeId).get();
-  if (!employeeSnapshot.exists || !activeEmployee(employeeSnapshot.data() || {})) throw new Error("EMPLOYEE_NOT_FOUND");
-  const payload = requestPayload(input, actor, employeeSnapshot);
-  const advanceRef = companyRef.collection("advance_requests").doc();
-  const auditRef = companyRef.collection("ActivityLogs").doc(`advance-request-${advanceRef.id}`);
-
-  await db.runTransaction(async (transaction) => {
-    transaction.create(advanceRef, {
-      ...payload,
-      requestId: advanceRef.id,
-      requestedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    transaction.create(auditRef, {
-      type: "advance.requested",
-      actorId: actor.uid,
-      actorEmployeeId: actor.employeeId,
-      targetUserId: employeeSnapshot.id,
-      companyId: actor.companyId,
-      metadata: { advanceId: advanceRef.id },
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  });
-  return { advanceId: advanceRef.id, status: "Pending", payoutStatus: "NOT_INITIATED" };
+  const {createAdvanceRequestCore} = require('./CreateAdvanceRequest');
+  return createAdvanceRequestCore({firestore: db, fieldValue: FieldValue, uid: request.auth?.uid, auth: request.auth, data: request.data});
 }
 
 async function decideAdvance(db, request) {

@@ -2,6 +2,26 @@ import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, updateD
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase";
 
+// Only the canonical create contract crosses the callable boundary.
+export function buildAdvanceRequestPayload(values) {
+  const common = {
+    advanceType: values.advanceType,
+    amount: Number(values.amount),
+    ...(values.employeeFirestoreId ? { employeeFirestoreId: values.employeeFirestoreId } : {}),
+  };
+  if (values.advanceType === "Company") return {
+    ...common, projectId: values.projectId, workPurpose: values.workPurpose ?? values.purpose,
+    requiredDate: values.requiredDate instanceof Date ? values.requiredDate.toISOString() : values.requiredDate || null,
+    description: values.description || "", priority: values.priority === "High" ? "Urgent" : values.priority || "Normal",
+    attachmentUrl: values.attachmentUrl || "",
+  };
+  return {
+    ...common, reason: values.reason || "", repaymentMethod: values.repaymentMethod || "Salary Deduction",
+    monthlyDeduction: Number(values.monthlyDeduction || 0), months: Number(values.months || 0),
+    emergencyContact: values.emergencyContact || "",
+  };
+}
+
 const ref = (companyId) => collection(db, "Companies", companyId, "advance_requests");
 export default class AdvanceService {
   static subscribe(companyId, onData, onError, employeeFirestoreId = null) {
@@ -26,22 +46,9 @@ export default class AdvanceService {
     const payload = { ...values, companyId, amount: Number(values.amount || 0), monthlyDeduction: Number(values.monthlyDeduction || 0), months: Number(values.months || 0), interest: Number(values.interest || 0), remainingAmount: Number(values.remainingAmount ?? values.amount ?? 0), settledAmount: Number(values.settledAmount || 0), updatedAt: now };
     if (existingId) { await updateDoc(doc(db, "Companies", companyId, "advance_requests", existingId), payload); return existingId; }
     const createRequest = httpsCallable(functions, "createAdvanceRequest");
-    const requestValues = {
-      employeeFirestoreId: values.employeeFirestoreId || undefined,
-      advanceType: values.advanceType,
-      amount: values.amount,
-      monthlyDeduction: values.monthlyDeduction,
-      reason: values.reason,
-      projectId: values.projectId,
-      projectName: values.projectName,
-      purpose: values.purpose,
-      description: values.description,
-      priority: values.priority,
-      firstDeductionDate: values.firstDeductionDate instanceof Date ? values.firstDeductionDate.toISOString() : values.firstDeductionDate || null,
-      requiredDate: values.requiredDate instanceof Date ? values.requiredDate.toISOString() : values.requiredDate || null,
-    };
+    const requestValues = { ...buildAdvanceRequestPayload(values), idempotencyKey: values.idempotencyKey };
     const result = await createRequest(requestValues);
-    return result.data.advanceId;
+    return result.data.advanceId || result.data.data?.requestId;
   }
 
   static async decide(advanceId, action) {

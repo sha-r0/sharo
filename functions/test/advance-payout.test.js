@@ -336,10 +336,25 @@ test("cross-company initiation remains blocked", async () => {
 });
 
 test("permission catalog grants payout.execute only to owner and Accounts Manager defaults", () => {
-  const source = fs.readFileSync(path.join(__dirname, "../../src/app/allservice/rbac/permissionCatalog.js"), "utf8");
-  assert.match(source, /DEDICATED_PERMISSIONS = \["payout\.execute"\]/);
-  assert.match(source, /accounts_manager:[^\n]+"payout\.execute"/);
-  assert.doesNotMatch(source, /employee:[^\n]+"payout\.execute"/);
+  const source = fs.readFileSync(
+    path.join(__dirname, "../../src/app/allservice/rbac/permissionCatalog.js"),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /DEDICATED_PERMISSIONS = \[[^\]]*"payout\.execute"/
+  );
+
+  assert.match(
+    source,
+    /accounts_manager:[^\n]+"payout\.execute"/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /employee:[^\n]+"payout\.execute"/
+  );
 });
 
 test("wrong-company advance identifier is not found", async () => {

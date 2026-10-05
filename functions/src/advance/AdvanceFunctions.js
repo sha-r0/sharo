@@ -3,6 +3,8 @@
 const { HttpsError, onCall } = require("firebase-functions/v2/https");
 const { createAdvanceRequest, decideAdvance, getAdvanceReferenceData } = require("./AdvanceService");
 
+const { AdvanceRequestError } = require("./CreateAdvanceRequest");
+
 const OPTIONS = { region: "asia-south1", cors: true, enforceAppCheck: false };
 
 function callableError(error) {
@@ -22,6 +24,7 @@ function createAdvanceFunctions(db) {
       try {
         return await createAdvanceRequest(db, request);
       } catch (error) {
+        if (error instanceof AdvanceRequestError) throw new HttpsError(error.code, error.message);
         throw callableError(error);
       }
     }),
