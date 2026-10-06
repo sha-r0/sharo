@@ -42,6 +42,7 @@ const easyTimeProPassword = defineSecret("EASYTIMEPRO_WEBHOOK_PASSWORD");
 exports.createAdvanceRequest = advanceFunctions.createAdvanceRequest;
 exports.getAdvanceReferenceData = advanceFunctions.getAdvanceReferenceData;
 exports.decideAdvance = advanceFunctions.decideAdvance;
+exports.deleteAdvanceRequest = advanceFunctions.deleteAdvanceRequest;
 exports.getPayoutSettings = payoutSettingsFunctions.getPayoutSettings;
 exports.updatePayoutSettings = payoutSettingsFunctions.updatePayoutSettings;
 exports.verifyPayoutConnection = payoutSettingsFunctions.verifyPayoutConnection;

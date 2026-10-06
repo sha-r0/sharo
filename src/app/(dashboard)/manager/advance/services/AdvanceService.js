@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase";
 
@@ -81,5 +81,9 @@ export default class AdvanceService {
     await updateDoc(doc(db, "Companies", companyId, "advance_requests", advance.id), { settledAmount, remainingAmount, status: remainingAmount === 0 ? "Settled" : advance.status, updatedAt: serverTimestamp() });
   }
 
-  static delete(companyId, id) { return deleteDoc(doc(db, "Companies", companyId, "advance_requests", id)); }
+  static async delete(advanceId) {
+    const deleteRequest = httpsCallable(functions, "deleteAdvanceRequest");
+    const result = await deleteRequest({ advanceId });
+    return result.data;
+  }
 }

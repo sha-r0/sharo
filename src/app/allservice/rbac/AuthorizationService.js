@@ -13,11 +13,14 @@ export function resolveAccess({ currentUser, employee, company, role }) {
   const overrides = resolvePermissionOverrides(employee);
   // Firestore rules use access.effectivePermissions. Prefer that same
   // server-maintained snapshot so route checks and rules cannot disagree.
-  const permissions = isOwner
+  let permissions = isOwner
     ? ALL_PERMISSIONS
     : hasStoredPermissions
       ? storedPermissions
       : calculateEffectivePermissions({ rolePermissions: base, grantedPermissions: overrides.grant, deniedPermissions: overrides.deny });
+  if (!isOwner && roleId === "accounts_manager" && !overrides.deny.includes("advance.delete") && !permissions.includes("advance.delete")) {
+    permissions = [...permissions, "advance.delete"];
+  }
   const accountType = isOwner ? "owner" : "employee";
   const status = resolveEmployeeStatus(employee);
   const loginEnabled = isOwner || resolveEmployeeLoginEnabled(employee);

@@ -125,9 +125,48 @@ async function decideAdvance(db, request) {
   });
 }
 
+function canDeleteAdvance(actor, advance) {
+  if (actor.isOwner) return true;
+  const permissions = Array.isArray(actor.permissions) ? actor.permissions : [];
+  if (!permissions.includes("advance.delete")) return false;
+  const role = clean(actor.employee?.access?.roleId || actor.employee?.roleId || actor.employee?.employment?.role || "employee").toLowerCase();
+  return role !== "employee" || advance.employeeFirestoreId === actor.employeeId;
+}
+
+async function deleteAdvanceRequest(db, request) {
+  const actor = await resolveCompanyActor(db, request.auth);
+  const advanceId = clean(request.data?.advanceId);
+  if (!advanceId || advanceId.includes("/")) throw new Error("INVALID_ADVANCE_ID");
+
+  const companyRef = db.collection("Companies").doc(actor.companyId);
+  const advanceRef = companyRef.collection("advance_requests").doc(advanceId);
+  const auditRef = companyRef.collection("ActivityLogs").doc(`advance-delete-${advanceId}`);
+
+  return db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(advanceRef);
+    if (!snapshot.exists) throw new Error("ADVANCE_NOT_FOUND");
+    const advance = snapshot.data() || {};
+    if (advance.companyId && advance.companyId !== actor.companyId) throw new Error("COMPANY_MISMATCH");
+    if (!canDeleteAdvance(actor, advance)) throw new Error("FORBIDDEN");
+    transaction.delete(advanceRef);
+    transaction.create(auditRef, {
+      type: "advance.deleted",
+      actorId: actor.uid,
+      actorEmployeeId: actor.employeeId || null,
+      targetUserId: advance.employeeFirestoreId || null,
+      companyId: actor.companyId,
+      before: { status: advance.status || "Pending", payoutStatus: advance.payoutStatus || "NOT_INITIATED" },
+      metadata: { advanceId },
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return { advanceId, status: "Deleted" };
+  });
+}
+
 module.exports = {
   createAdvanceRequest,
   decideAdvance,
+  deleteAdvanceRequest,
   getAdvanceReferenceData,
   requestPayload,
 };

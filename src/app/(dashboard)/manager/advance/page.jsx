@@ -120,6 +120,8 @@ export default function AdvancePage() {
 
     const canApprove = can("advance.approve");
 
+    const canDelete = can("advance.delete");
+
     const canExecutePayout = can("payout.execute");
 
     const [records, setRecords] = useState([]);
@@ -691,13 +693,7 @@ export default function AdvancePage() {
 
         try {
 
-            await AdvanceService.delete(
-
-                company.id,
-
-                item.id
-
-            );
+            await AdvanceService.delete(item.id);
 
             toast.success(
 
@@ -1706,7 +1702,7 @@ export default function AdvancePage() {
 
                                                     </button>
 
-                                                    <button
+                                                    {canDelete && <button
 
                                                         type="button"
 
@@ -1726,7 +1722,7 @@ export default function AdvancePage() {
 
                                                         Delete
 
-                                                    </button>
+                                                    </button>}
 
                                                 </div>
 
