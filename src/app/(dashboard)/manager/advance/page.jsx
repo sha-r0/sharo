@@ -353,7 +353,7 @@ export default function AdvancePage() {
 
     const summary = useMemo(() => {
 
-        const total = records.reduce(
+        const total = filtered.reduce(
 
             (sum, item) =>
 
@@ -365,7 +365,7 @@ export default function AdvancePage() {
 
         );
 
-        const pending = records.filter(
+        const pending = filtered.filter(
 
             (item) =>
 
@@ -375,7 +375,7 @@ export default function AdvancePage() {
 
         ).length;
 
-        const personal = records
+        const personal = filtered
 
             .filter(
 
@@ -409,7 +409,7 @@ export default function AdvancePage() {
 
             );
 
-        const companyAdvance = records
+        const companyAdvance = filtered
 
             .filter(
 
@@ -443,7 +443,7 @@ export default function AdvancePage() {
 
             );
 
-        const settled = records.filter(
+        const settled = filtered.filter(
 
             (item) =>
 
@@ -467,7 +467,7 @@ export default function AdvancePage() {
 
         };
 
-    }, [records]);
+    }, [filtered]);
 
     function openStatusDialog(
 
