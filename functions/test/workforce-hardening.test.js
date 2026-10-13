@@ -31,7 +31,7 @@ test("missing checkout is pending and is never counted as present payroll", () =
 });
 
 test("payroll distinguishes present, half day, absent and approved leave", () => {
-  const row = calculatePayrollRow({ employee: { compensation: { monthlySalary: 26000, pfEnabled: true, pfAmount: 1000, esiEnabled: true, esiAmount: 250 } }, attendance: [{ status: "present", checkOut: {} }, { status: "halfday", checkOut: {} }, { status: "absent", checkOut: {} }], leaves: [{ status: "Approved", leaveType: "Paid", totalDays: 1 }], advances: [], month: "2026-08", holidays: new Set(), weeklyOff: "Sunday" });
+  const row = calculatePayrollRow({ employee: { salaryStructure: { includePf: true, includeEsi: true }, compensation: { monthlySalary: 26000, pfAmount: 1000, esiAmount: 250 } }, attendance: [{ status: "present", checkOut: {} }, { status: "halfday", checkOut: {} }, { status: "absent", checkOut: {} }], leaves: [{ status: "Approved", leaveType: "Paid", totalDays: 1 }], advances: [], month: "2026-08", holidays: new Set(), weeklyOff: "Sunday", statutoryRules: { pf: { enabled: true }, esi: { enabled: true, eligibilityThreshold: 30000 } } });
   assert.equal(row.presentDays, 1);
   assert.equal(row.halfDays, 1);
   assert.equal(row.absentDays, 1);

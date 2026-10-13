@@ -5,6 +5,10 @@ const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { resolveCompanyActor, clean } = require("../auth/CompanyActor");
 const { resolveEffectiveShift, snapshot: shiftSnapshot, lateMinutes, workingMinutes, statusFor } = require("../shift_policy_resolver");
 const { captureStatutoryInputs, buildPayrollStatutory } = require("./payrollStatutory");
+const { isPayrollEmployee } = require("./payrollEligibility");
+const { sortPayrollEmployees } = require("./payrollOrder");
+const { expenseBreakdown, matchesCompanyAdvanceEmployee, companyAdvanceBalance } = require("./payrollExpenses");
+const { salarySource, netSalary, totalDeductions } = require("./payrollMath");
 const { payrollCollection } = require("./payrollCollection");
 
 const normalize = (value) => clean(value).toLowerCase().replace(/[ _-]/g, "");
@@ -380,7 +384,7 @@ function dateKey(value) {
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) : "";
 }
 function salaryOf(employee) {
-  return number(employee.salary || employee.employment?.salary || employee.compensation?.monthlySalary || employee.compensation?.gross || employee.payroll?.salary);
+  return number(salarySource(employee));
 }
 function scheduledDaysFor(month, weeklyOff = "Sunday", holidays = new Set()) {
   const [year, monthNumber] = month.split("-").map(Number);
@@ -389,11 +393,11 @@ function scheduledDaysFor(month, weeklyOff = "Sunday", holidays = new Set()) {
   let count = 0;
   for (let day = 1; day <= days; day += 1) {
     const key = `${month}-${String(day).padStart(2, "0")}`;
-    if (new Date(`${key}T00:00:00+05:30`).getDay() !== (off < 0 ? 0 : off) && !holidays.has(key)) count += 1;
+    if (new Date(`${key}T00:00:00Z`).getUTCDay() !== (off < 0 ? 0 : off) && !holidays.has(key)) count += 1;
   }
   return count;
 }
-function calculatePayrollRow({ employee, attendance, leaves, advances, month, holidays, weeklyOff, adjustment = {} }) {
+function calculatePayrollRow({ employee, attendance, leaves, advances, expenses = [], month, holidays, weeklyOff, adjustment = {}, statutoryRules = {} }) {
   const scheduledDays = scheduledDaysFor(month, weeklyOff, holidays);
   const statuses = attendance.map((item) => normalize(item.status));
   const presentDays = statuses.filter((status) => ["present", "late"].includes(status)).length;
@@ -404,28 +408,144 @@ function calculatePayrollRow({ employee, attendance, leaves, advances, month, ho
   const payableDays = Math.min(scheduledDays, Math.max(0, presentDays + halfDays * 0.5 + paidLeaveDays));
   const grossSalary = salaryOf(employee);
   const earnedSalary = scheduledDays ? grossSalary * payableDays / scheduledDays : 0;
-  const advanceDeductions = advances.filter((item) => normalize(item.status) === "approved" && number(item.remainingAmount) > 0).map((item) => ({ advanceId: item.id, amount: Math.min(number(item.monthlyDeduction), number(item.remainingAmount)) })).filter((item) => item.amount > 0);
+  const advanceDeductions = advances.filter((item) => normalize(item.advanceType) === "personal" && normalize(item.status) === "approved" && number(item.remainingAmount) > 0 && (!item.firstDeductionDate || (dateKey(item.firstDeductionDate) && dateKey(item.firstDeductionDate).slice(0, 7) <= month))).map((item) => ({ advanceId: item.id, amount: Math.min(number(item.monthlyDeduction), number(item.remainingAmount)) })).filter((item) => item.amount > 0);
   const advanceDeduction = advanceDeductions.reduce((sum, item) => sum + item.amount, 0);
-  const pfEnabled = employee.compensation?.pfEnabled === true || employee.payroll?.pfEnabled === true;
-  const esiEnabled = employee.compensation?.esiEnabled === true || employee.payroll?.esiEnabled === true;
-  const pfDeduction = pfEnabled ? number(employee.compensation?.pfAmount || employee.payroll?.pfAmount) : 0;
-  const esiDeduction = esiEnabled ? number(employee.compensation?.esiAmount || employee.payroll?.esiAmount) : 0;
+  const salaryStructure = employee.salaryStructure || {};
+  const pfEnabled = Object.prototype.hasOwnProperty.call(salaryStructure, "includePf")
+    ? salaryStructure.includePf === true
+    : employee.compensation?.pfEnabled === true || employee.payroll?.pfEnabled === true;
+  const esiEnabled = Object.prototype.hasOwnProperty.call(salaryStructure, "includeEsi")
+    ? salaryStructure.includeEsi === true
+    : employee.compensation?.esiEnabled === true || employee.payroll?.esiEnabled === true;
+    const companyPfEnabled = statutoryRules.pf?.enabled === true;
+    const companyEsiEnabled = statutoryRules.esi?.enabled === true;
+    
+    const employeePfPercent = number(salaryStructure.employeePfPercent);
+    const employeeEsiPercent = number(salaryStructure.employeeEsiPercent);
+    
+    const monthlyBasicSalary = Math.max(
+      0,
+      number(salaryStructure.basicSalary)
+    );
+    
+    // Prorate Basic Salary according to this payroll month's payable days.
+    const earnedBasicSalary = scheduledDays
+      ? monthlyBasicSalary * payableDays / scheduledDays
+      : 0;
+    
+    // ---------------- PF ----------------
+    
+    const pfWageCeiling = number(
+      statutoryRules.pf?.wageCeiling
+    ) || 25000;
+    
+    const pfWages = Math.min(
+      earnedBasicSalary,
+      pfWageCeiling
+    );
+    
+    const pfDeduction =
+      pfEnabled &&
+      companyPfEnabled &&
+      employeePfPercent > 0
+        ? Math.round(
+            pfWages * employeePfPercent / 100
+          )
+        : 0;
+    
+    // ---------------- ESI ----------------
+    
+    const esiEligibilityThreshold =
+      number(statutoryRules.esi?.eligibilityThreshold) || 21000;
+    
+    // Eligibility is based on the employee's configured monthly gross salary.
+    const esiEligible =
+      grossSalary > 0 &&
+      grossSalary <= esiEligibilityThreshold;
+    
+    // ESI contribution is calculated on earned payroll wages.
+    const esiWages = Math.max(
+      0,
+      earnedSalary
+    );
+    
+    const esiDeduction =
+      esiEnabled &&
+      companyEsiEnabled &&
+      esiEligible &&
+      employeeEsiPercent > 0
+        ? Math.ceil(
+            esiWages * employeeEsiPercent / 100
+          )
+        : 0;
   const bonus = Math.max(0, number(adjustment.bonus));
   const otherDeduction = Math.max(0, number(adjustment.otherDeduction));
-  return { scheduledDays, presentDays, halfDays, absentDays, pendingDays, paidLeaveDays, payableDays, grossSalary, earnedSalary, advanceDeductions, advanceDeduction, pfEnabled, esiEnabled, pfDeduction, esiDeduction, bonus, otherDeduction, netSalary: Math.max(0, earnedSalary + bonus - advanceDeduction - pfDeduction - esiDeduction - otherDeduction) };
+  const breakdown = expenseBreakdown(expenses, advances, month);
+  const row = {
+    scheduledDays,
+    presentDays,
+    halfDays,
+    absentDays,
+    pendingDays,
+    paidLeaveDays,
+    payableDays,
+  
+    grossSalary,
+    earnedSalary,
+  
+    advanceDeductions,
+    advanceDeduction,
+    personalAdvanceDeduction: advanceDeduction,
+  
+    pfEnabled,
+    pfWages,
+    pfDeduction,
+  
+    esiEnabled,
+    esiEligible,
+    esiWages,
+    esiDeduction,
+  
+    bonus,
+    otherDeduction,
+  
+    ...breakdown,
+    breakdownVersion: 2
+  };
+  return { ...row, totalDeductions: totalDeductions(row), netSalary: netSalary(row) };
 }
 
-function createGeneratePayroll(db) {
+function createGeneratePayroll(db, previewOnly = false) {
   return onCall(async (request) => {
-    const actor = await actorFor(db, request, ["payroll.create", "payroll.edit", "payroll.manage"]);
+    const actor = await actorFor(db, request, previewOnly ? ["payroll.view"] : ["payroll.create", "payroll.edit", "payroll.manage"]);
     const month = clean(request.data?.month);
     if (!monthPattern.test(month)) fail("INVALID_PAYROLL_MONTH");
     const adjustments = request.data?.adjustments && typeof request.data.adjustments === "object" ? request.data.adjustments : {};
     const companyRef = db.collection("Companies").doc(actor.companyId);
-    const [employeesSnapshot, attendanceSnapshot, leaveSnapshot, advanceSnapshot, holidaySnapshot, shiftSnapshot] = await Promise.all([
+    if (previewOnly) {
+      const saved = await payrollCollection(companyRef).get();
+      const rows = saved.docs.filter((doc) => doc.data().month === month).map((doc) => ({ ...doc.data(), id: doc.id }));
+      if (rows.some((row) => row.companyId != null && row.companyId !== actor.companyId)) fail("FORBIDDEN");
+      if (rows.length) return { ok: true, month, rows: sortPayrollEmployees(rows), saved: true };
+    }
+    const [employeesSnapshot, attendanceSnapshot, leaveSnapshot, advanceSnapshot, holidaySnapshot, shiftSnapshot, payrollSettingsSnapshot, expenseSnapshot] = await Promise.all([
       companyRef.collection("Usermanagement").get(), companyRef.collection("Attendance").get(), companyRef.collection("LeaveRequests").get(),
       companyRef.collection("advance_requests").get(), companyRef.collection("Holidays").get(), companyRef.collection("ShiftPolicies").get(),
+      companyRef.collection("PayrollSettings").doc("current").get(),
+      companyRef.collection("Expenses").get(),
     ]);
+    const expenses = await Promise.all(expenseSnapshot.docs.filter((doc) => {
+      const expense = doc.data();
+      return normalize(expense.status) === "approved" && dateKey(expense.date).startsWith(month);
+    }).map(async (doc) => {
+      const expense = doc.data();
+      if (expense.companyId != null && expense.companyId !== actor.companyId) fail("FORBIDDEN");
+      const ledger = await doc.ref.collection("Reimbursements").get();
+      const reimbursements = ledger.docs.map((record) => record.data());
+      if (reimbursements.some((record) => record.companyId != null && record.companyId !== actor.companyId)) fail("FORBIDDEN");
+      return { ...expense, id: doc.id, reimbursements };
+    }));
+    const statutoryRules = payrollSettingsSnapshot.exists ? (payrollSettingsSnapshot.data()?.statutoryRules || {}) : {};
     const attendance = attendanceSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((item) => dateKey(item.date || item.checkIn).startsWith(month));
     const leaves = leaveSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((item) => dateKey(item.fromDate || item.startDate).startsWith(month));
     const advances = advanceSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -434,21 +554,28 @@ function createGeneratePayroll(db) {
     const rows = [];
     for (const employeeDoc of employeesSnapshot.docs) {
       const employee = employeeDoc.data();
-      if (["inactive", "terminated"].includes(normalize(employee.employment?.status || employee.status))) continue;
+      if (!isPayrollEmployee(employee)) continue;
       const id = employeeDoc.id;
       const ids = new Set([id, clean(employee.employeeId), clean(employee.login?.employeeId)].filter(Boolean));
       const employeeAttendance = attendance.filter((item) => ids.has(clean(item.employeeFirestoreId || item.employeeId)));
       const employeeLeaves = leaves.filter((item) => ids.has(clean(item.employeeFirestoreId || item.employeeId)));
-      const employeeAdvances = advances.filter((item) => ids.has(clean(item.employeeFirestoreId || item.employeeId)));
+      const employeeAdvances = advances.filter((item) => normalize(item.advanceType) === "company"
+        ? matchesCompanyAdvanceEmployee(item, id, ids)
+        : ids.has(clean(item.employeeFirestoreId || item.employeeId)));
+      if (employeeAdvances.some((item) => item.companyId != null && item.companyId !== actor.companyId)) fail("FORBIDDEN");
+      const employeeExpenses = expenses.filter((item) => item.employeeFirestoreId
+        ? clean(item.employeeFirestoreId) === id
+        : ids.has(clean(item.employeeId)));
       const shiftId = clean(employee.employment?.shiftPolicyId || employee.shiftPolicyId);
       const shift = shifts.get(shiftId) || {};
       const weeklyOff = clean(shift.weeklyOff?.primary || "Sunday");
       const payrollId = `${month}_${id}`;
-      const calculated = calculatePayrollRow({ employee, attendance: employeeAttendance, leaves: employeeLeaves, advances: employeeAdvances, month, holidays, weeklyOff, adjustment: adjustments[id] });
+      const calculated = calculatePayrollRow({ employee, attendance: employeeAttendance, leaves: employeeLeaves, advances: employeeAdvances, expenses: employeeExpenses, month, holidays, weeklyOff, adjustment: adjustments[id], statutoryRules });
       const row = { id: payrollId, month, companyId: actor.companyId, employeeFirestoreId: id, employeeId: clean(employee.employeeId || employee.login?.employeeId), employeeName: actorName({ employee }), department: clean(employee.employment?.department || employee.department), shiftPolicyId: shiftId, weeklyOff, ...calculated, status: "Draft", policySnapshot: { shiftPolicyId: shiftId, weeklyOff, generatedFrom: "finalized-attendance-v1" } };
       row.statutoryInputs = captureStatutoryInputs(employee, row, month);
       // A regenerated draft must not retain a previous month's calculation inputs/results.
       row.compliance = null;
+      if (previewOnly) { rows.push(row); continue; }
       const ref = payrollCollection(companyRef).doc(payrollId);
       await db.runTransaction(async (transaction) => {
         const existing = await transaction.get(ref);
@@ -457,7 +584,7 @@ function createGeneratePayroll(db) {
       });
       rows.push(row);
     }
-    return { ok: true, month, rows };
+    return { ok: true, month, rows: sortPayrollEmployees(rows), saved: !previewOnly };
   });
 }
 
@@ -477,10 +604,13 @@ function createTransitionPayroll(db) {
       const current = normalize(payroll.status);
       if (current === target) return;
       if ((target === "processed" && current !== "draft") || (target === "paid" && current !== "processed")) fail("PAYROLL_INVALID_TRANSITION");
+      if (number(payroll.companyAdvanceOutstanding ?? payroll.companyAdvance) > 0 && payroll.companyAdvanceSettlementVersion !== 1) {
+        fail("PAYROLL_COMPANY_SETTLEMENT_REGENERATION_REQUIRED", "This payroll predates full company advance settlement. Regenerate drafts; finalized payroll requires review before marking Paid.");
+      }
       const update = { status: target === "processed" ? "Processed" : "Paid", updatedAt: FieldValue.serverTimestamp(), reviewedByUid: actor.uid, reviewedByName: actorName(actor), reviewedByRole: actorRole(actor) };
       update[target === "processed" ? "finalizedAt" : "paidAt"] = FieldValue.serverTimestamp();
       if (target === "processed") {
-        update.finalizedSnapshot = { netSalary: payroll.netSalary, payableDays: payroll.payableDays, grossSalary: payroll.grossSalary, deductions: number(payroll.advanceDeduction) + number(payroll.pfDeduction) + number(payroll.esiDeduction) + number(payroll.otherDeduction) };
+        update.finalizedSnapshot = { netSalary: payroll.netSalary, payableDays: payroll.payableDays, grossSalary: payroll.grossSalary, deductions: totalDeductions(payroll) };
         update.compliance = buildPayrollStatutory(payroll);
       }
       const advanceRecords = [];
@@ -490,7 +620,44 @@ function createTransitionPayroll(db) {
         const snapshots = refs.length ? await transaction.getAll(...refs) : [];
         snapshots.forEach((advanceSnapshot, index) => advanceRecords.push({ deduction: deductions[index], advanceSnapshot }));
       }
+      const companySettlements = [];
+      if (target === "paid" && !payroll.companyAdvanceRecoveryAppliedAt && number(payroll.companyAdvanceOutstanding ?? payroll.companyAdvance) > 0) {
+        const items = payroll.companyAdvanceItems || [];
+        const ids = items.map((item) => clean(item.advanceId));
+        if (!ids.length || ids.some((id) => !id || id.includes("/")) || new Set(ids).size !== ids.length) fail("INVALID_COMPANY_ADVANCE_SNAPSHOT");
+        const snapshots = await transaction.getAll(...ids.map((id) => companyRef.collection("advance_requests").doc(id)));
+        let capturedCents = 0, coveredCents = 0, recoveredCents = 0;
+        const employeeIds = new Set([clean(payroll.employeeFirestoreId), clean(payroll.employeeId)].filter(Boolean));
+        snapshots.forEach((advanceSnapshot, index) => {
+          const item = items[index], advance = advanceSnapshot.data() || {};
+          const balance = Math.round(number(item.remainingAmount) * 100);
+          const covered = Math.round(number(item.expenseCoveredAmount) * 100);
+          const recovered = Math.round(number(item.salaryRecoveredAmount) * 100);
+          if (balance <= 0 || covered < 0 || recovered < 0 || covered + recovered !== balance) fail("INVALID_COMPANY_ADVANCE_SNAPSHOT");
+          if (!advanceSnapshot.exists || normalize(advance.advanceType) !== "company" || normalize(advance.status) !== "approved"
+            || advance.companyAdvanceSettlement || companyAdvanceBalance(advance) !== balance) fail("COMPANY_ADVANCE_BALANCE_CHANGED", "Company advance balance changed or was already settled. Payroll must be reviewed before marking Paid.");
+          if ((advance.companyId != null && advance.companyId !== actor.companyId)
+            || !matchesCompanyAdvanceEmployee(advance, clean(payroll.employeeFirestoreId), employeeIds)) fail("FORBIDDEN");
+          capturedCents += balance; coveredCents += covered; recoveredCents += recovered;
+          companySettlements.push({ advanceSnapshot, advance, amount: balance / 100, expenseCoveredAmount: covered / 100, salaryRecoveredAmount: recovered / 100 });
+        });
+        const expenses = Math.round(number(payroll.approvedExpenses) * 100);
+        if (capturedCents !== Math.round(number(payroll.companyAdvanceOutstanding) * 100)
+          || coveredCents !== Math.min(expenses, capturedCents) || recoveredCents !== Math.max(0, capturedCents - expenses)
+          || Math.round(number(payroll.expenseAdjustment) * 100) !== expenses - capturedCents) fail("INVALID_COMPANY_ADVANCE_SNAPSHOT");
+        update.companyAdvanceRecoveryAppliedAt = FieldValue.serverTimestamp();
+        update.companyAdvanceSettlement = { amount: capturedCents / 100, expenseCoveredAmount: coveredCents / 100, salaryRecoveredAmount: recoveredCents / 100 };
+      }
       transaction.update(ref, update);
+      for (const settlement of companySettlements) {
+        transaction.update(settlement.advanceSnapshot.ref, {
+          remainingAmount: 0, settledAmount: number(settlement.advance.settledAmount) + settlement.amount,
+          status: "Settled", updatedAt: FieldValue.serverTimestamp(),
+          companyAdvanceSettlement: { payrollId, month: payroll.month, amount: settlement.amount,
+            expenseCoveredAmount: settlement.expenseCoveredAmount, salaryRecoveredAmount: settlement.salaryRecoveredAmount,
+            settledAt: FieldValue.serverTimestamp() },
+        });
+      }
       if (target === "paid" && !payroll.advanceRecoveryAppliedAt) {
         for (const { deduction, advanceSnapshot } of advanceRecords) {
           if (!advanceSnapshot.exists) continue;
@@ -513,6 +680,7 @@ function createWorkforceFunctions(db) {
     decideGpsPunch: createDecideGpsPunch(db),
     decideLeaveRequest: createDecideLeaveRequest(db),
     correctAttendance: createCorrectAttendance(db),
+    previewPayroll: createGeneratePayroll(db, true),
     generatePayroll: createGeneratePayroll(db),
     transitionPayroll: createTransitionPayroll(db),
   };

@@ -56,6 +56,7 @@ exports.updateExpense = createUpdateExpense(db);
 exports.decideGpsPunch = workforceFunctions.decideGpsPunch;
 exports.decideLeaveRequest = workforceFunctions.decideLeaveRequest;
 exports.correctAttendance = workforceFunctions.correctAttendance;
+exports.previewPayroll = workforceFunctions.previewPayroll;
 exports.generatePayroll = workforceFunctions.generatePayroll;
 exports.transitionPayroll = workforceFunctions.transitionPayroll;
 

@@ -8,7 +8,7 @@ import { buildEcr, buildEsiWorkbook } from "../src/lib/esi-pf/exports.js";
 const { captureStatutoryInputs, buildPayrollStatutory } = statutory;
 function finalizedFixture() {
   const employee = { id: "employee-a", employeeId: "0001", personalInfo: { fullName: "Test Member" }, employment: { joiningDate: "2020-01-01" }, compensation: { monthlySalary: 18000, pfEnabled: true, esiEnabled: true }, salaryStructure: { includePf: true, includeEsi: true, employeePfPercent: 12, employerPfPercent: 12, employeeEsiPercent: 0.75, employerEsiPercent: 3.25 }, statutoryDetails: { uan: "001234567890", ipNumber: "0012345678" } };
-  const payroll = { id: "p", employeeFirestoreId: employee.id, employeeName: "Test Member", month: "2026-09", status: "Processed", grossSalary: 18000, earnedSalary: 18000, bonus: 0, scheduledDays: 26, payableDays: 26, pendingDays: 0, pfEnabled: true, esiEnabled: true, pfDeduction: 1800, esiDeduction: 135, netSalary: 16065, compliance: { pf: { epfWages: 15000, epsWages: 15000, edliWages: 15000, refunds: 0 } } };
+  const payroll = { id: "p", employeeFirestoreId: employee.id, employeeName: "Test Member", month: "2026-09", status: "Processed", grossSalary: 18000, earnedSalary: 18000, bonus: 0, scheduledDays: 26, payableDays: 26, pendingDays: 0, pfEnabled: true, esiEnabled: true, pfDeduction: 1800, esiDeduction: 135, pfWages: 15000, esiWages: 18000, employerPf: 550, employerEps: 1250, employerEsi: 585, netSalary: 16065, compliance: { pf: { epfWages: 15000, epsWages: 15000, edliWages: 15000, refunds: 0 } } };
   payroll.statutoryInputs = captureStatutoryInputs(employee, payroll, payroll.month);
   payroll.compliance = buildPayrollStatutory(payroll);
   return { month: payroll.month, employees: [employee], payroll: [payroll] };
@@ -91,7 +91,7 @@ test("unknown statutory inputs stay blocked while finalized ESI can be ready ind
   assert.equal(report.rows[0].pf.ready, false);
   assert.equal(report.rows[0].esi.ready, true);
   assert.equal(report.rows[0].pf.grossWages, 18000);
-  assert.equal(report.rows[0].pf.epfWages, null);
+  assert.equal(report.rows[0].pf.epfWages, 15000);
   assert.throws(() => buildEcr(report), /EXPORT_BLOCKED/);
   assert.ok(buildEsiWorkbook(report).length);
 });
