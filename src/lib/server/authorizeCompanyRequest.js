@@ -27,10 +27,28 @@ export async function authorizeCompanyRequest(request) {
   }
 
   const rootUsers = adminDb.collection("Usermanagement");
-  let rootUser = await rootUsers.doc(token.uid).get();
-  if (!rootUser.exists || rootUser.data()?.uid !== token.uid) {
-    const matches = await rootUsers.where("uid", "==", token.uid).limit(1).get();
-    if (matches.empty) error("UNAUTHENTICATED");
+
+  let rootUser = await rootUsers
+    .doc(token.uid)
+    .get();
+  
+  /*
+   * Preferred/current mapping:
+   * Usermanagement/{firebaseAuthUid}
+   *
+   * If an older record is not stored by UID document ID,
+   * fall back to searching its uid field.
+   */
+  if (!rootUser.exists) {
+    const matches = await rootUsers
+      .where("uid", "==", token.uid)
+      .limit(1)
+      .get();
+  
+    if (matches.empty) {
+      error("UNAUTHENTICATED");
+    }
+  
     rootUser = matches.docs[0];
   }
 
