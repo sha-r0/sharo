@@ -192,7 +192,7 @@ export async function GET(request) {
   } catch (error) {
     console.error(
       "[site-assignment:today]",
-      error,
+      { error: ["UNAUTHENTICATED", "FORBIDDEN", "COMPANY_INACTIVE"].includes(error?.message) ? error.message : "SITE_ASSIGNMENT_LOOKUP_FAILED" },
     );
 
     return errorResponse(error);
