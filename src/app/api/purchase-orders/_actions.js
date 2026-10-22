@@ -16,80 +16,184 @@ const jsonError = (error) => {
   return NextResponse.json({ error: code }, { status });
 };
 
-export async function transitionPurchaseOrder(request, { params }, {
-  permission,
-  targetStatus,
-  action,
-  notes,
-  extraMutations = {},
-  setApprovedBy = false,
-}) {
+export async function transitionPurchaseOrder(
+  request,
+  { params },
+  {
+    permission,
+    targetStatus,
+    action,
+    notes,
+    extraMutations = {},
+    setApprovedBy = false,
+  }
+) {
   try {
-    const context = await authorizeCompanyRequest(request);
-    requireCompanyPermission(context, permission);
+    const context =
+      await authorizeCompanyRequest(
+        request
+      );
+
+    requireCompanyPermission(
+      context,
+      permission
+    );
 
     const { id } = await params;
-    const ref = purchaseOrderRef(context.companyId, id);
-    const snapshot = await ref.get();
-    if (!snapshot.exists) throw new Error("PURCHASE_ORDER_NOT_FOUND");
 
-    const purchaseOrder = { id: snapshot.id, ...snapshot.data() };
-    const currentStatus = normalizePurchaseOrderStatus(purchaseOrder.status);
-    const normalizedTarget = normalizePurchaseOrderStatus(targetStatus);
+    const ref =
+      purchaseOrderRef(
+        context.companyId,
+        id
+      );
+
+    const normalizedTarget =
+      normalizePurchaseOrderStatus(
+        targetStatus
+      );
+
     const preparedBy = {
-      uid: context.employee?.uid || context.token.uid,
-      name: context.employee?.name || context.employee?.displayName || context.company?.ownerName || "System",
-      role: context.employee?.roleId || context.employee?.role || (context.isOwner ? "owner" : "employee"),
+      uid:
+        context.employee?.uid ||
+        context.token.uid,
+
+      name:
+        context.employee?.name ||
+        context.employee?.displayName ||
+        context.company?.ownerName ||
+        "System",
+
+      role:
+        context.employee?.roleId ||
+        context.employee?.role ||
+        (context.isOwner
+          ? "owner"
+          : "employee"),
     };
 
-    if (currentStatus === normalizedTarget) {
-      return NextResponse.json({
-        success: true,
-        purchaseOrder,
-        id: purchaseOrder.id,
-        idempotent: true,
-      });
-    }
+    let updatedPurchaseOrder = null;
+    let idempotent = false;
 
-    if (!canTransitionPurchaseOrderStatus(currentStatus, normalizedTarget)) {
-      throw new Error("PURCHASE_ORDER_STATUS_TRANSITION_NOT_ALLOWED");
-    }
+    await adminDb.runTransaction(
+      async (transaction) => {
+        const latest =
+          await transaction.get(ref);
 
-    const auditTrail = [
-      ...(Array.isArray(purchaseOrder.auditTrail) ? purchaseOrder.auditTrail : []),
-      buildPurchaseOrderAuditEntry(action, preparedBy, notes),
-    ];
+        if (!latest.exists) {
+          throw new Error(
+            "PURCHASE_ORDER_NOT_FOUND"
+          );
+        }
 
-    await adminDb.runTransaction(async (transaction) => {
-      const latest = await transaction.get(ref);
-      if (!latest.exists) throw new Error("PURCHASE_ORDER_NOT_FOUND");
-      const latestStatus = normalizePurchaseOrderStatus(latest.data()?.status);
-      if (latestStatus === normalizedTarget) return;
-      if (!canTransitionPurchaseOrderStatus(latestStatus, normalizedTarget)) {
-        throw new Error("PURCHASE_ORDER_STATUS_TRANSITION_NOT_ALLOWED");
+        const purchaseOrder = {
+          id: latest.id,
+          ...latest.data(),
+        };
+
+        const currentStatus =
+          normalizePurchaseOrderStatus(
+            purchaseOrder.status
+          );
+
+        if (
+          currentStatus ===
+          normalizedTarget
+        ) {
+          idempotent = true;
+          updatedPurchaseOrder =
+            purchaseOrder;
+          return;
+        }
+
+        if (
+          !canTransitionPurchaseOrderStatus(
+            currentStatus,
+            normalizedTarget
+          )
+        ) {
+          throw new Error(
+            "PURCHASE_ORDER_STATUS_TRANSITION_NOT_ALLOWED"
+          );
+        }
+
+        const auditTrail = [
+          ...(
+            Array.isArray(
+              purchaseOrder.auditTrail
+            )
+              ? purchaseOrder.auditTrail
+              : []
+          ),
+          buildPurchaseOrderAuditEntry(
+            action,
+            preparedBy,
+            notes
+          ),
+        ];
+
+        const next = {
+          status:
+            normalizedTarget,
+
+          auditTrail,
+
+          updatedAt:
+            FieldValue.serverTimestamp(),
+
+          ...extraMutations,
+        };
+
+        if (setApprovedBy) {
+          next.approvedBy =
+            preparedBy;
+        }
+
+        transaction.set(
+          ref,
+          next,
+          {
+            merge: true,
+          }
+        );
+
+        /*
+         * Build response locally.
+         * Avoid another Firestore read.
+         */
+        updatedPurchaseOrder = {
+          ...purchaseOrder,
+          ...next,
+
+          /*
+           * Do not expose unresolved
+           * serverTimestamp sentinel.
+           */
+          updatedAt:
+            purchaseOrder.updatedAt,
+        };
       }
-      const next = {
-        status: normalizedTarget,
-        auditTrail,
-        updatedAt: FieldValue.serverTimestamp(),
-        ...extraMutations,
-      };
-      if (setApprovedBy) {
-        next.approvedBy = preparedBy;
-      }
-      transaction.set(ref, next, { merge: true });
-    });
+    );
 
-    const updatedSnapshot = await ref.get();
     return NextResponse.json({
       success: true,
-      id: updatedSnapshot.id,
-      purchaseOrder: { id: updatedSnapshot.id, ...updatedSnapshot.data() },
+      id,
+      purchaseOrder:
+        updatedPurchaseOrder,
+      ...(idempotent
+        ? { idempotent: true }
+        : {}),
     });
   } catch (error) {
-    console.error("Purchase order transition failed", {
-      code: error?.message || error?.code || "unknown",
-    });
+    console.error(
+      "Purchase order transition failed",
+      {
+        code:
+          error?.message ||
+          error?.code ||
+          "unknown",
+      }
+    );
+
     return jsonError(error);
   }
 }

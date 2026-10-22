@@ -222,9 +222,10 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
                 employee.employeeId,
 
-            firestoreId:
-
-                employee.firestoreId,
+                firestoreId:
+                employee.firestoreId ||
+                employee.id ||
+                "",
 
             createdAt:
 
@@ -358,8 +359,11 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
                 resumeUrl:
                     employee.documents?.resumeUrl || "",
 
-                governmentIdUrl:
-                    employee.documents?.governmentId?.fileUrl || "",
+                    governmentIdUrl:
+                    employee.documents?.governmentIdUrl ||
+                    employee.documents?.governmentId?.fileUrl ||
+                    employee.documents?.governmentId?.url ||
+                    "",
 
             },
 
@@ -487,16 +491,23 @@ export default function EmployeeForm({ mode = "create", employee = null, }) {
 
             else {
 
-                result =
-                    await employeeService.update(
-
-                        company.id,
-
-                        employee.firestoreId,
-
-                        form
-
-                    );
+                const targetEmployeeId =
+                employee?.firestoreId ||
+                employee?.id ||
+                form.firestoreId;
+              
+              if (!targetEmployeeId) {
+                throw new Error(
+                  "Employee record ID is missing."
+                );
+              }
+              
+              result =
+                await employeeService.update(
+                  company.id,
+                  targetEmployeeId,
+                  form
+                );
 
             }
 

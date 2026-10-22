@@ -9,37 +9,109 @@ import {
 
 import BaseService from "../base/baseService";
 
-import { employeeCollection, employeeDoc } from "@/lib/firestore-firebase";
+import {
+  employeeCollection,
+  employeeDoc,
+} from "@/lib/firestore-firebase";
 
 class EmployeeRepository extends BaseService {
+  constructor() {
+    super();
+
+    // Cache full employee directory per company.
+    // Individual employee documents are still cached by BaseService.
+    this.collectionCache = new Map();
+
+    // 5 minutes is a good balance between freshness and read reduction.
+    this.collectionCacheTtl =
+      5 * 60 * 1000;
+  }
+
+  /* ==========================================
+      Collection Cache Helpers
+  ========================================== */
+
+  getCollectionCacheKey(companyId) {
+    return `employees:${companyId}`;
+  }
+
+  invalidateEmployeeList(companyId) {
+    if (!companyId) return;
+
+    this.collectionCache.delete(
+      this.getCollectionCacheKey(companyId)
+    );
+  }
+
+  invalidateCompany(companyId) {
+    this.invalidateEmployeeList(companyId);
+  }
+
+  clearEmployeeCollectionCache() {
+    this.collectionCache.clear();
+  }
 
   /* ==========================================
       Get All
   ========================================== */
 
-  async getAll(companyId) {
+  async getAll(
+    companyId,
+    { force = false } = {}
+  ) {
+    if (!companyId) {
+      return [];
+    }
 
-    return this.getCollection(
-      employeeCollection(companyId)
+    const cacheKey =
+      this.getCollectionCacheKey(companyId);
+
+    const cached =
+      this.collectionCache.get(cacheKey);
+
+    if (
+      !force &&
+      cached &&
+      Date.now() - cached.savedAt <
+        this.collectionCacheTtl
+    ) {
+      return cached.data;
+    }
+
+    const employees =
+      await this.getCollection(
+        employeeCollection(companyId)
+      );
+
+    this.collectionCache.set(
+      cacheKey,
+      {
+        data: employees,
+        savedAt: Date.now(),
+      }
     );
 
+    return employees;
   }
 
   /* ==========================================
       Get One
   ========================================== */
 
-  async get(companyId, firestoreId) {
+  async get(
+    companyId,
+    firestoreId
+  ) {
+    if (!companyId || !firestoreId) {
+      return null;
+    }
 
     return this.getDocument(
-
       employeeDoc(
         companyId,
         firestoreId
       )
-
     );
-
   }
 
   /* ==========================================
@@ -47,68 +119,62 @@ class EmployeeRepository extends BaseService {
   ========================================== */
 
   async create(
-
     companyId,
-
     firestoreId,
-
     data
-
   ) {
-
     await setDoc(
-
       employeeDoc(
         companyId,
         firestoreId
       ),
-
       data
+    );
 
+    // Newly created employee must appear
+    // on the next directory load.
+    this.invalidateEmployeeList(
+      companyId
+    );
+
+    // Remove any stale document cache.
+    this.removeCache(
+      employeeDoc(
+        companyId,
+        firestoreId
+      ).path
     );
 
     return {
-
       success: true,
-
       id: firestoreId,
-
     };
-
   }
 
   /* ==========================================
       Update
   ========================================== */
 
-  /* ==========================================
-      Update Employee
-  ========================================== */
-
   async update(
-
     companyId,
-
     firestoreId,
-
     data
-
   ) {
-
-    return await super.update(
-
+    await super.update(
       employeeDoc(
-
         companyId,
-
         firestoreId
-
       ),
-
       data
-
     );
 
+    this.invalidateEmployeeList(
+      companyId
+    );
+
+    return {
+      success: true,
+    };
   }
 
   /* ==========================================
@@ -116,22 +182,23 @@ class EmployeeRepository extends BaseService {
   ========================================== */
 
   async delete(
-
     companyId,
-
     firestoreId
-
   ) {
-
-    return super.delete(
-
+    await super.delete(
       employeeDoc(
         companyId,
         firestoreId
       )
-
     );
 
+    this.invalidateEmployeeList(
+      companyId
+    );
+
+    return {
+      success: true,
+    };
   }
 
   /* ==========================================
@@ -139,33 +206,34 @@ class EmployeeRepository extends BaseService {
   ========================================== */
 
   async emailExists(
-
     companyId,
-
     email
-
   ) {
+    const normalizedEmail =
+      String(email || "")
+        .trim()
+        .toLowerCase();
 
-    const snapshot = await getDocs(
+    if (!companyId || !normalizedEmail) {
+      return false;
+    }
 
-      query(
-
-        employeeCollection(companyId),
-
-        where(
-          "personalInfo.email",
-          "==",
-          email.toLowerCase()
-        ),
-
-        limit(1)
-
-      )
-
-    );
+    const snapshot =
+      await getDocs(
+        query(
+          employeeCollection(
+            companyId
+          ),
+          where(
+            "personalInfo.email",
+            "==",
+            normalizedEmail
+          ),
+          limit(1)
+        )
+      );
 
     return !snapshot.empty;
-
   }
 
   /* ==========================================
@@ -173,33 +241,32 @@ class EmployeeRepository extends BaseService {
   ========================================== */
 
   async phoneExists(
-
     companyId,
-
     phone
-
   ) {
+    const normalizedPhone =
+      String(phone || "").trim();
 
-    const snapshot = await getDocs(
+    if (!companyId || !normalizedPhone) {
+      return false;
+    }
 
-      query(
-
-        employeeCollection(companyId),
-
-        where(
-          "personalInfo.phone",
-          "==",
-          phone
-        ),
-
-        limit(1)
-
-      )
-
-    );
+    const snapshot =
+      await getDocs(
+        query(
+          employeeCollection(
+            companyId
+          ),
+          where(
+            "personalInfo.phone",
+            "==",
+            normalizedPhone
+          ),
+          limit(1)
+        )
+      );
 
     return !snapshot.empty;
-
   }
 
   /* ==========================================
@@ -207,50 +274,35 @@ class EmployeeRepository extends BaseService {
   ========================================== */
 
   async employeeIdExists(
-
     companyId,
-
     employeeId
-
   ) {
+    const normalizedEmployeeId =
+      String(employeeId || "").trim();
 
-    const snapshot = await getDocs(
+    if (
+      !companyId ||
+      !normalizedEmployeeId
+    ) {
+      return false;
+    }
 
-      query(
-
-        employeeCollection(companyId),
-
-        where(
-          "employeeId",
-          "==",
-          employeeId
-        ),
-
-        limit(1)
-
-      )
-
-    );
+    const snapshot =
+      await getDocs(
+        query(
+          employeeCollection(
+            companyId
+          ),
+          where(
+            "employeeId",
+            "==",
+            normalizedEmployeeId
+          ),
+          limit(1)
+        )
+      );
 
     return !snapshot.empty;
-
-  }
-
-  /* ==========================================
-    Get Employee
-========================================== */
-
-  async get(companyId, firestoreId) {
-
-    return await this.getDocument(
-
-      employeeDoc(
-        companyId,
-        firestoreId
-      )
-
-    );
-
   }
 
   /* ==========================================
@@ -261,30 +313,48 @@ class EmployeeRepository extends BaseService {
     companyId,
     firestoreId
   ) {
-
-    return await super.update(
-
+    await super.update(
       employeeDoc(
         companyId,
         firestoreId
       ),
-
       {
+        "employment.status":
+          "Inactive",
 
-        "employment.status": "Inactive",
+        deactivatedAt:
+          serverTimestamp(),
 
-        // isActive: false,
-
-        deactivatedAt: serverTimestamp(),
-
-        updatedAt: serverTimestamp(),
-
+        updatedAt:
+          serverTimestamp(),
       }
-
     );
 
+    this.invalidateEmployeeList(
+      companyId
+    );
+
+    return {
+      success: true,
+    };
   }
 
+  /* ==========================================
+      Force Refresh Employee Directory
+  ========================================== */
+
+  async refreshAll(companyId) {
+    this.invalidateEmployeeList(
+      companyId
+    );
+
+    return this.getAll(
+      companyId,
+      {
+        force: true,
+      }
+    );
+  }
 }
 
 export default new EmployeeRepository();

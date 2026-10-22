@@ -54,10 +54,10 @@ const formatDate = (value) => {
   return Number.isNaN(date.getTime())
     ? "—"
     : date.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
 };
 
 export default function PurchaseOrderDetailPage() {
@@ -135,20 +135,71 @@ export default function PurchaseOrderDetailPage() {
   }, [purchaseOrder?.id]);
 
   const run = async (label, action) => {
-    if (!firebaseUser || !purchaseOrder) return;
+    if (
+      !firebaseUser ||
+      !purchaseOrder ||
+      busy
+    ) {
+      return;
+    }
+
     setBusy(label);
+
     try {
-      const response = await action(firebaseUser, purchaseOrder.id);
-      const nextOrder = {
-        ...(response.purchaseOrder || purchaseOrder),
-        fulfillments: purchaseOrder.fulfillments || [],
-        bills: purchaseOrder.bills || [],
-      };
-      setPurchaseOrder(nextOrder);
-      toast.success(`${label} completed.`);
-      await load();
+      const response =
+        await action(
+          firebaseUser,
+          purchaseOrder.id
+        );
+
+      const updated =
+        response?.purchaseOrder;
+
+      if (!updated?.id) {
+        throw new Error(
+          "INVALID_PURCHASE_ORDER_RESPONSE"
+        );
+      }
+
+      setPurchaseOrder(
+        (current) => ({
+          ...current,
+          ...updated,
+
+          /*
+           * Lifecycle actions do not change
+           * fulfillment/bill child collections.
+           */
+          fulfillments:
+            current?.fulfillments ||
+            [],
+
+          bills:
+            current?.bills ||
+            [],
+        })
+      );
+
+      toast.success(
+        `${label} completed.`
+      );
     } catch (error) {
-      toast.error(error.message || "Action failed.");
+      console.error(
+        "[PurchaseOrder] Action failed",
+        {
+          purchaseOrderId:
+            purchaseOrder.id,
+          action: label,
+          code:
+            error?.message ||
+            "unknown",
+        }
+      );
+
+      toast.error(
+        error?.message ||
+        "Action failed."
+      );
     } finally {
       setBusy("");
     }
@@ -190,64 +241,268 @@ export default function PurchaseOrderDetailPage() {
     }));
   };
 
-  const submitFulfillment = async () => {
-    if (!purchaseOrder) return;
-    const items = fulfillmentDraft.items
-      .map((item) => ({ poItemId: item.poItemId, quantity: Number(item.quantity || 0) }))
-      .filter((item) => item.quantity > 0);
-    if (!items.length) {
-      toast.error("Enter at least one fulfillment quantity.");
-      return;
-    }
-    setBusy("fulfill");
-    try {
-      await PurchaseOrderService.recordFulfillment(firebaseUser, purchaseOrder.id, {
-        fulfillmentDate: fulfillmentDraft.fulfillmentDate,
-        referenceNumber: fulfillmentDraft.referenceNumber,
-        notes: fulfillmentDraft.notes,
-        items,
-      });
-      toast.success("Fulfillment recorded.");
-      setFulfillmentOpen(false);
-      await load();
-    } catch (error) {
-      toast.error(error.message || "Unable to record fulfillment.");
-    } finally {
-      setBusy("");
-    }
-  };
+  const submitFulfillment =
+    async () => {
+      if (
+        !purchaseOrder ||
+        !firebaseUser ||
+        busy
+      ) {
+        return;
+      }
 
-  const submitBill = async () => {
-    if (!purchaseOrder) return;
-    const items = billDraft.items
-      .map((item) => ({ poItemId: item.poItemId, quantity: Number(item.quantity || 0) }))
-      .filter((item) => item.quantity > 0);
-    if (!billDraft.billNumber.trim()) {
-      toast.error("Enter a vendor bill number.");
-      return;
-    }
-    if (!items.length) {
-      toast.error("Enter at least one bill quantity.");
-      return;
-    }
-    setBusy("bill");
-    try {
-      await PurchaseOrderService.recordBill(firebaseUser, purchaseOrder.id, {
-        billNumber: billDraft.billNumber,
-        billDate: billDraft.billDate,
-        attachmentUrl: billDraft.attachmentUrl,
-        remarks: billDraft.remarks,
-        items,
-      });
-      toast.success("Vendor bill recorded.");
-      setBillOpen(false);
-      await load();
-    } catch (error) {
-      toast.error(error.message || "Unable to record vendor bill.");
-    } finally {
-      setBusy("");
-    }
-  };
+      const items =
+        fulfillmentDraft.items
+          .map((item) => ({
+            poItemId:
+              item.poItemId,
+
+            quantity:
+              Number(
+                item.quantity ||
+                0
+              ),
+          }))
+          .filter(
+            (item) =>
+              item.quantity > 0
+          );
+
+      if (!items.length) {
+        toast.error(
+          "Enter at least one fulfillment quantity."
+        );
+
+        return;
+      }
+
+      setBusy("fulfill");
+
+      try {
+        const response =
+          await PurchaseOrderService.recordFulfillment(
+            firebaseUser,
+            purchaseOrder.id,
+            {
+              fulfillmentDate:
+                fulfillmentDraft.fulfillmentDate,
+
+              referenceNumber:
+                fulfillmentDraft.referenceNumber,
+
+              notes:
+                fulfillmentDraft.notes,
+
+              items,
+            }
+          );
+
+        const updated =
+          response?.purchaseOrder;
+
+        const fulfillment =
+          response?.fulfillment;
+
+        if (!updated?.id) {
+          throw new Error(
+            "INVALID_PURCHASE_ORDER_RESPONSE"
+          );
+        }
+
+        setPurchaseOrder(
+          (current) => ({
+            ...current,
+            ...updated,
+
+            /*
+             * Append only the new child record.
+             */
+            fulfillments:
+              fulfillment?.id
+                ? [
+                  ...(
+                    current?.fulfillments ||
+                    []
+                  ),
+                  fulfillment,
+                ]
+                : (
+                  current?.fulfillments ||
+                  []
+                ),
+
+            /*
+             * Fulfillment does not change bills.
+             */
+            bills:
+              current?.bills ||
+              [],
+          })
+        );
+
+        setFulfillmentOpen(
+          false
+        );
+
+        toast.success(
+          "Fulfillment recorded."
+        );
+      } catch (error) {
+        console.error(
+          "[PurchaseOrder] Fulfillment failed",
+          {
+            purchaseOrderId:
+              purchaseOrder.id,
+
+            code:
+              error?.message ||
+              "unknown",
+          }
+        );
+
+        toast.error(
+          error?.message ||
+          "Unable to record fulfillment."
+        );
+      } finally {
+        setBusy("");
+      }
+    };
+
+  const submitBill =
+    async () => {
+      if (
+        !purchaseOrder ||
+        !firebaseUser ||
+        busy
+      ) {
+        return;
+      }
+
+      const items =
+        billDraft.items
+          .map((item) => ({
+            poItemId:
+              item.poItemId,
+
+            quantity:
+              Number(
+                item.quantity ||
+                0
+              ),
+          }))
+          .filter(
+            (item) =>
+              item.quantity > 0
+          );
+
+      if (
+        !billDraft.billNumber.trim()
+      ) {
+        toast.error(
+          "Enter a vendor bill number."
+        );
+
+        return;
+      }
+
+      if (!items.length) {
+        toast.error(
+          "Enter at least one bill quantity."
+        );
+
+        return;
+      }
+
+      setBusy("bill");
+
+      try {
+        const response =
+          await PurchaseOrderService.recordBill(
+            firebaseUser,
+            purchaseOrder.id,
+            {
+              billNumber:
+                billDraft.billNumber,
+
+              billDate:
+                billDraft.billDate,
+
+              attachmentUrl:
+                billDraft.attachmentUrl,
+
+              remarks:
+                billDraft.remarks,
+
+              items,
+            }
+          );
+
+        const updated =
+          response?.purchaseOrder;
+
+        const bill =
+          response?.bill;
+
+        if (!updated?.id) {
+          throw new Error(
+            "INVALID_PURCHASE_ORDER_RESPONSE"
+          );
+        }
+
+        setPurchaseOrder(
+          (current) => ({
+            ...current,
+            ...updated,
+
+            fulfillments:
+              current?.fulfillments ||
+              [],
+
+            bills:
+              bill?.id
+                ? [
+                  ...(
+                    current?.bills ||
+                    []
+                  ),
+                  bill,
+                ]
+                : (
+                  current?.bills ||
+                  []
+                ),
+          })
+        );
+
+        setBillOpen(
+          false
+        );
+
+        toast.success(
+          "Vendor bill recorded."
+        );
+      } catch (error) {
+        console.error(
+          "[PurchaseOrder] Bill failed",
+          {
+            purchaseOrderId:
+              purchaseOrder.id,
+
+            code:
+              error?.message ||
+              "unknown",
+          }
+        );
+
+        toast.error(
+          error?.message ||
+          "Unable to record vendor bill."
+        );
+      } finally {
+        setBusy("");
+      }
+    };
 
   if (loading) {
     return <div className="space-y-4 p-5">{Array.from({ length: 5 }, (_, index) => <div key={index} className="h-24 animate-pulse rounded-2xl bg-white/70" />)}</div>;
@@ -262,6 +517,71 @@ export default function PurchaseOrderDetailPage() {
   const canFulfill = canFulfillPurchaseOrder(status) && can("purchase_order.fulfill");
   const canBill = canBillPurchaseOrder(status) && can("purchase_order.bill");
   const canCancel = canCancelPurchaseOrder(status, purchaseOrder) && can("purchase_order.cancel");
+
+  const handlePaymentSuccess = (
+    response
+  ) => {
+    const updatedBill =
+      response?.bill;
+  
+    const updatedPurchaseOrder =
+      response?.purchaseOrder;
+  
+    if (
+      !updatedBill?.id ||
+      !updatedPurchaseOrder?.id
+    ) {
+      toast.error(
+        "Payment saved, but the local purchase order could not be refreshed."
+      );
+  
+      return;
+    }
+  
+    setPurchaseOrder(
+      (current) => {
+        if (!current) {
+          return current;
+        }
+  
+        return {
+          ...current,
+  
+          paidAmount:
+            Number(
+              updatedPurchaseOrder.paidAmount ??
+                current.paidAmount ??
+                0
+            ),
+  
+          outstandingAmount:
+            Number(
+              updatedPurchaseOrder.outstandingAmount ??
+                current.outstandingAmount ??
+                0
+            ),
+  
+          bills:
+            (
+              current.bills ||
+              []
+            ).map(
+              (bill) =>
+                bill.id ===
+                updatedBill.id
+                  ? {
+                      ...bill,
+                      ...updatedBill,
+                    }
+                  : bill
+            ),
+        };
+      }
+    );
+  
+    setPaymentOpen(false);
+    setPaymentBill(null);
+  };
 
   return (
     <div className="space-y-5 px-2 py-2 sm:px-5">
@@ -407,11 +727,10 @@ export default function PurchaseOrderDetailPage() {
                 key={key}
                 type="button"
                 onClick={() => setActiveTab(key)}
-                className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
-                  activeTab === key
-                    ? "bg-indigo-600 text-white"
-                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
+                className={`rounded-xl px-4 py-2 text-sm font-bold transition ${activeTab === key
+                  ? "bg-indigo-600 text-white"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
               >
                 {label}
               </button>
@@ -541,13 +860,12 @@ export default function PurchaseOrderDetailPage() {
                         <td className="px-4 py-3 text-right">{money(entry.paidAmount)}</td>
                         <td className="px-4 py-3 text-right">{money(entry.outstandingAmount)}</td>
                         <td className="px-4 py-3">
-                          <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${
-                            entry.paymentStatus === "paid"
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : entry.paymentStatus === "partially_paid"
-                                ? "border-amber-200 bg-amber-50 text-amber-700"
-                                : "border-slate-200 bg-slate-50 text-slate-600"
-                          }`}>
+                          <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${entry.paymentStatus === "paid"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : entry.paymentStatus === "partially_paid"
+                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              : "border-slate-200 bg-slate-50 text-slate-600"
+                            }`}>
                             {entry.paymentStatus || "unpaid"}
                           </span>
                         </td>
@@ -793,7 +1111,7 @@ export default function PurchaseOrderDetailPage() {
             setPaymentOpen(false);
             setPaymentBill(null);
           }}
-          onSuccess={load}
+          onSuccess={handlePaymentSuccess}
           companyId={company?.id}
           vendors={[]}
           projects={[]}

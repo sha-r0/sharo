@@ -3,6 +3,15 @@ import { createHash } from "node:crypto";
 import { requireCompanyPermission } from "./companyPermission.js";
 import { calculateExpensePolicy, validateExpenseInput } from "../expenses/creationPolicy.js";
 import { assertExpensePeriodOpen } from "./expensePeriodService.js";
+import {
+  applyExpenseSummaryDelta,
+  emptyExpenseMonthlySummary,
+  expenseMonthKey,
+  expenseSummaryDelta,
+} from "../expenses/monthlySummary.js";
+import {
+  buildExpenseSearchTerms,
+} from "../expenses/searchIndex.js";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const employeeError = () => { throw new Error("EMPLOYEE_PROFILE_REQUIRED"); };
@@ -76,22 +85,214 @@ export function createExpenseCreationService(db, timestamp) {
         const policy = calculateExpensePolicy(category, input);
         const actor = { uid: context.token.uid, name: identity.employeeName, role: actorContext.isOwner ? "owner" : context.employee?.access?.roleId || "employee" };
         const payload = {
-          expenseId: expense.id, companyId: context.companyId, ...identity,
-          projectFirestoreId: projectSnapshot.id, projectId: String(project.projectId || projectSnapshot.id), projectName: project.projectName,
-          categoryId: categorySnapshot.id, category: category.name, categoryName: category.name,
-          description: input.description, date: input.date, month: Number(input.date.slice(5, 7)), year: Number(input.date.slice(0, 4)),
-          ...policy, ...resolveTravelRoute(category, input), amount: input.amount, billUrl: input.billUrl, status: actorContext.isOwner ? "approved" : "pending",
-          ...(actorContext.isOwner ? {
-            submitterType: "owner", approvedBy: { ...actor, employeeFirestoreId: null }, approvedAt: timestamp(),
-            reviewedBy: { ...actor, employeeFirestoreId: null }, reviewedAt: timestamp(),
-            reviewedByUid: actor.uid, reviewedByName: actor.name, reviewedByRole: actor.role,
-          } : {}),
-          createdBy: actor, createdAt: timestamp(), updatedAt: timestamp(),
+          expenseId: expense.id,
+          companyId: context.companyId,
+
+          ...identity,
+
+          ...(identity.employeeFirestoreId
+            ? {
+              employeeFilterKey:
+                identity.employeeFirestoreId,
+            }
+            : {}),
+
+          projectFirestoreId:
+            projectSnapshot.id,
+
+          projectFilterKey:
+            projectSnapshot.id,
+
+          projectId:
+            String(
+              project.projectId ||
+              projectSnapshot.id
+            ),
+
+          projectName:
+            project.projectName,
+
+          categoryId:
+            categorySnapshot.id,
+
+          categoryFilterKey:
+            categorySnapshot.id,
+
+          category:
+            category.name,
+
+          categoryName:
+            category.name,
+
+          description:
+            input.description,
+
+          date:
+            input.date,
+
+          month:
+            Number(
+              input.date.slice(5, 7)
+            ),
+
+          year:
+            Number(
+              input.date.slice(0, 4)
+            ),
+
+          ...policy,
+
+          ...resolveTravelRoute(
+            category,
+            input
+          ),
+
+          amount:
+            input.amount,
+
+          billUrl:
+            input.billUrl,
+
+          status:
+            actorContext.isOwner
+              ? "approved"
+              : "pending",
+
+          ...(actorContext.isOwner
+            ? {
+              submitterType:
+                "owner",
+
+              approvedBy: {
+                ...actor,
+                employeeFirestoreId:
+                  null,
+              },
+
+              approvedAt:
+                timestamp(),
+
+              reviewedBy: {
+                ...actor,
+                employeeFirestoreId:
+                  null,
+              },
+
+              reviewedAt:
+                timestamp(),
+
+              reviewedByUid:
+                actor.uid,
+
+              reviewedByName:
+                actor.name,
+
+              reviewedByRole:
+                actor.role,
+            }
+            : {}),
+
+          createdBy:
+            actor,
+
+          createdAt:
+            timestamp(),
+
+          updatedAt:
+            timestamp(),
         };
-        transaction.create(expense, payload);
-        if (employee) transaction.create(employee.collection("Expenses").doc(expense.id), payload);
-        transaction.create(receipt, { expenseId: expense.id, requestHash, createdAt: timestamp() });
-        return { expenseId: expense.id, duplicate: false };
+        payload.searchTerms =
+          buildExpenseSearchTerms(
+            payload
+          );
+        const summaryMonth = expenseMonthKey(payload);
+
+        if (!summaryMonth) {
+          throw new Error("INVALID_EXPENSE: Invalid expense date.");
+        }
+
+        const summaryRef =
+          parent
+            .collection("ExpenseMonthlySummaries")
+            .doc(summaryMonth);
+
+        /*
+         * Read the monthly summary inside the same transaction.
+         * This guarantees the expense and its summary are committed together.
+         */
+        const summarySnapshot =
+          await transaction.get(summaryRef);
+
+        const currentSummary =
+          summarySnapshot.exists
+            ? summarySnapshot.data()
+            : emptyExpenseMonthlySummary(summaryMonth);
+
+        const delta =
+          expenseSummaryDelta(
+            null,
+            payload
+          );
+
+        const nextSummary =
+          applyExpenseSummaryDelta(
+            currentSummary,
+            delta
+          );
+
+        transaction.create(
+          expense,
+          payload
+        );
+
+        if (employee) {
+          transaction.create(
+            employee
+              .collection("Expenses")
+              .doc(expense.id),
+            payload
+          );
+        }
+
+        transaction.set(
+          summaryRef,
+          {
+            ...nextSummary,
+
+            month:
+              summaryMonth,
+
+            companyId:
+              context.companyId,
+
+            updatedAt:
+              timestamp(),
+          },
+          {
+            merge: true,
+          }
+        );
+
+        transaction.create(
+          receipt,
+          {
+            expenseId:
+              expense.id,
+
+            requestHash,
+
+            createdAt:
+              timestamp(),
+          }
+        );
+
+        return {
+          expenseId:
+            expense.id,
+
+          duplicate:
+            false,
+        };
       });
     },
   };

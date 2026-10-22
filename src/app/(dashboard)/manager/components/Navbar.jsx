@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
@@ -20,6 +20,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/app/(auth)/context/AuthContext";
 import NotificationBell from "../notifications/components/NotificationBell";
+import GlobalSearch from "./GlobalSearch";
 
 export default function Navbar() {
 
@@ -34,56 +35,49 @@ export default function Navbar() {
   const [openMenu, setOpenMenu] =
     useState(false);
 
-  const [currentTime, setCurrentTime] =
-    useState(new Date());
+  // const [currentTime, setCurrentTime] =
+  //   useState(new Date());
 
   // =====================================
   // Live Clock
   // =====================================
 
-  useEffect(() => {
+  // useEffect(() => {
 
-    const timer = setInterval(() => {
+  //   const timer = setInterval(() => {
 
-      setCurrentTime(new Date());
+  //     setCurrentTime(new Date());
 
-    }, 1000);
+  //   }, 1000);
 
-    return () => clearInterval(timer);
+  //   return () => clearInterval(timer);
 
-  }, []);
+  // }, []);
 
   // =====================================
   // Date & Time
   // =====================================
 
-  const formattedTime = useMemo(() => {
+  // const formattedTime = useMemo(() => {
 
-    return currentTime.toLocaleTimeString([], {
+  //   return currentTime.toLocaleTimeString([], {
 
-      hour: "2-digit",
+  //     hour: "2-digit",
 
-      minute: "2-digit",
+  //     minute: "2-digit",
 
-    });
+  //   });
 
-  }, [currentTime]);
+  // }, [currentTime]);
 
   const formattedDate = useMemo(() => {
-
-    return currentTime.toLocaleDateString("en-IN", {
-
-      weekday: "long",
-
+    return new Date().toLocaleDateString("en-IN", {
+      weekday: "short",
       day: "numeric",
-
-      month: "long",
-
+      month: "short",
       year: "numeric",
-
     });
-
-  }, [currentTime]);
+  }, []);
 
   // =====================================
   // Logout
@@ -101,19 +95,28 @@ export default function Navbar() {
   // Helpers
   // =====================================
 
-  const userInitial =
-    (
-      currentUser?.name ||
-      currentUser?.displayName ||
-      "A"
-    )
-      .charAt(0)
-      .toUpperCase();
+  // const userInitial =
+  //   (
+  //     currentUser?.name ||
+  //     currentUser?.displayName ||
+  //     "A"
+  //   )
+  //     .charAt(0)
+  //     .toUpperCase();
 
   const companyName =
     company?.shortName ||
     company?.companyName ||
     "SHARO";
+
+  const companyPlan =
+    company?.plan?.name ||
+    company?.plan ||
+    company?.subscription?.plan ||
+    "Professional";
+
+  const employeeCount =
+    company?.employeeCount ?? 0;
 
   const companyLogo =
     company?.logoUrl || null;
@@ -139,51 +142,41 @@ export default function Navbar() {
                   LEFT
           ===================================== */}
 
-        <div className="flex items-center gap-6">
-
-          {/* Company */}
-
-          <div className="flex items-center gap-3">
-
-            {/* <div className="w-11 h-11 rounded-xl bg-[#EEF3FB] overflow-hidden flex items-center justify-center">
-
-              {companyLogo ? (
-
-                <img
-                  src={companyLogo}
-                  alt="Company"
-                  className="w-full h-full object-cover"
-                />
-
-              ) : (
-
-                <Building2
-                  size={22}
-                  className="text-blue-600"
-                />
-
-              )}
-
-            </div> */}
-
-            <div>
-
-              <h2 className="text-xl font-bold text-slate-800">
-
-                Hi, {companyName}
-
-              </h2>
-
-              <p className="text-xs text-slate-500">
-
-                Welcome back 👋
-
-              </p>
-
-            </div>
-
+        <div className="flex min-w-[260px] items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+            {companyLogo ? (
+              <Image
+                src={companyLogo}
+                alt={companyName}
+                width={40}
+                height={40}
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            ) : (
+              <Building2
+                size={20}
+                className="text-slate-700"
+              />
+            )}
           </div>
 
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h2 className="truncate text-sm font-bold text-slate-900">
+                {companyName}
+              </h2>
+            </div>
+
+            <p className="mt-0.5 text-xs text-slate-500">
+              {companyPlan} Plan • {employeeCount} Employees
+            </p>
+          </div>
+        </div>
+
+        <div className="hidden flex-1 justify-center px-8 lg:flex">
+          <div className="hidden flex-1 justify-center px-8 lg:flex">
+            <GlobalSearch />
+          </div>
         </div>
 
         {/* =====================================
@@ -194,29 +187,15 @@ export default function Navbar() {
 
           {/* Time */}
 
-          <div className="hidden lg:flex items-center gap-3 rounded-xl px-4 py-2">
-
+          <div className="hidden items-center gap-2 text-sm text-slate-600 lg:flex">
             <Clock3
-              size={18}
-              className="text-blue-600"
+              size={16}
+              className="text-slate-500"
             />
 
-            <div>
-
-              <h4 className="text-sm font-semibold">
-
-                {formattedTime}
-
-              </h4>
-
-              <p className="text-[11px] text-slate-500">
-
-                {formattedDate}
-
-              </p>
-
-            </div>
-
+            <span>
+              {formattedDate}
+            </span>
           </div>
 
           {/* Add Expense */}
@@ -268,24 +247,19 @@ export default function Navbar() {
                 "
             >
 
-              <div
-                className="
-                    w-10
-                    h-10
-                    rounded-full
-                    bg-gradient-to-r
-                    from-blue-600
-                    to-blue-700
-                    text-white
-                    flex
-                    items-center
-                    justify-center
-                    font-bold
-                  "
-              >
-
-                {userInitial}
-
+              <div className="
+  w-10
+  h-10
+  rounded-full
+  bg-slate-100
+  text-slate-600
+  flex
+  items-center
+  justify-center
+  border
+  border-slate-200
+">
+                <User size={20} />
               </div>
 
               <div className="hidden md:block text-left">

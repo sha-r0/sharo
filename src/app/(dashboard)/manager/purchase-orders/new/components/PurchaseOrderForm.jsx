@@ -63,16 +63,16 @@ const initialForm = () => ({
 const hydrateItems = (items) =>
   Array.isArray(items) && items.length
     ? items.map((item, index) => ({
-        id: item.id || crypto.randomUUID(),
-        lineNo: Number(item.lineNo || index + 1),
-        description: item.description || "",
-        hsnSac: item.hsnSac || "",
-        quantity: Number(item.quantity ?? 1),
-        unit: item.unit || "Nos",
-        rate: Number(item.rate ?? 0),
-        gstRate: Number(item.gstRate ?? 0),
-        notes: item.notes || "",
-      }))
+      id: item.id || crypto.randomUUID(),
+      lineNo: Number(item.lineNo || index + 1),
+      description: item.description || "",
+      hsnSac: item.hsnSac || "",
+      quantity: Number(item.quantity ?? 1),
+      unit: item.unit || "Nos",
+      rate: Number(item.rate ?? 0),
+      gstRate: Number(item.gstRate ?? 0),
+      notes: item.notes || "",
+    }))
     : [createItem()];
 
 const input =
@@ -87,6 +87,10 @@ export default function PurchaseOrderForm() {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
   const [initData, setInitData] = useState({
     company: null,
     settings: null,
@@ -189,12 +193,64 @@ export default function PurchaseOrderForm() {
   }, [initData.nextPurchaseOrderNumber, initData.purchaseOrder, initData.settings]);
 
   const user = firebaseUser || auth.currentUser;
+  const filteredProjects = useMemo(() => {
+    const query = projectSearch.trim().toLowerCase();
+
+    if (!query) {
+      return initData.projects;
+    }
+
+    return initData.projects.filter((project) => {
+      const text = [
+        project.projectNameSnapshot,
+        project.projectName,
+        project.name,
+        project.projectNumberSnapshot,
+        project.projectId,
+        project.projectNumber,
+        project.projectCode,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(query);
+    });
+  }, [initData.projects, projectSearch]);
   const activeProject = useMemo(
     () =>
       initData.projects.find((item) => item.id === form.projectFirestoreId || item.projectId === form.projectId) ||
       null,
     [form.projectFirestoreId, form.projectId, initData.projects]
   );
+  const filteredVendors = useMemo(() => {
+    const query = vendorSearch.trim().toLowerCase();
+
+    if (!query) {
+      return initData.vendors;
+    }
+
+    return initData.vendors.filter((vendor) => {
+      const text = [
+        vendor.vendorNameSnapshot,
+        vendor.vendorName,
+        vendor.companyName,
+        vendor.name,
+        vendor.vendorCodeSnapshot,
+        vendor.vendorId,
+        vendor.vendorCode,
+        vendor.code,
+        vendor.contactPerson,
+        vendor.phone,
+        vendor.email,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(query);
+    });
+  }, [initData.vendors, vendorSearch]);
   const activeVendor = useMemo(
     () =>
       initData.vendors.find((item) => item.id === form.vendorFirestoreId || item.vendorId === form.vendorId) ||
@@ -476,34 +532,197 @@ export default function PurchaseOrderForm() {
                 />
               </Field>
               <Field label="Project">
-                <select
-                  value={form.projectFirestoreId}
-                  disabled={readOnly}
-                  onChange={(event) => selectProject(event.target.value)}
-                  className={input}
-                >
-                  <option value="">Select project</option>
-                  {initData.projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {(project.projectNameSnapshot || project.projectName || project.name || "Project")} · {(project.projectNumberSnapshot || project.projectId || project.id || "")}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative mt-1.5">
+                  <button
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => {
+                      if (!readOnly) {
+                        setProjectDropdownOpen((current) => !current);
+                      }
+                    }}
+                    className={`${input} flex items-center justify-between text-left`}
+                  >
+                    <span className={activeProject ? "text-slate-800" : "text-slate-500"}>
+                      {activeProject
+                        ? `${activeProject.projectNameSnapshot ||
+                        activeProject.projectName ||
+                        activeProject.name ||
+                        "Project"
+                        } · ${activeProject.projectNumberSnapshot ||
+                        activeProject.projectId ||
+                        activeProject.projectNumber ||
+                        activeProject.projectCode ||
+                        activeProject.id ||
+                        ""
+                        }`
+                        : "Select project"}
+                    </span>
+
+                    <span className="text-slate-400">⌄</span>
+                  </button>
+
+                  {projectDropdownOpen && !readOnly && (
+                    <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                      <div className="border-b border-slate-100 p-2">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={projectSearch}
+                          onChange={(event) => setProjectSearch(event.target.value)}
+                          placeholder="Search by project name or project ID..."
+                          className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
+                        />
+                      </div>
+
+                      <div className="max-h-72 overflow-y-auto">
+                        {filteredProjects.length ? (
+                          filteredProjects.map((project) => {
+                            const name =
+                              project.projectNameSnapshot ||
+                              project.projectName ||
+                              project.name ||
+                              "Project";
+
+                            const number =
+                              project.projectNumberSnapshot ||
+                              project.projectId ||
+                              project.projectNumber ||
+                              project.projectCode ||
+                              project.id ||
+                              "";
+
+                            return (
+                              <button
+                                key={project.id}
+                                type="button"
+                                onClick={() => {
+                                  selectProject(project.id);
+                                  setProjectSearch("");
+                                  setProjectDropdownOpen(false);
+                                }}
+                                className="flex w-full flex-col border-b border-slate-100 px-3 py-2.5 text-left hover:bg-indigo-50"
+                              >
+                                <span className="text-sm font-semibold text-slate-800">
+                                  {name}
+                                </span>
+
+                                <span className="mt-0.5 text-xs text-slate-500">
+                                  {number}
+                                </span>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-4 py-8 text-center text-sm text-slate-500">
+                            No project found.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </Field>
               <Field label="Vendor">
-                <select
-                  value={form.vendorFirestoreId}
-                  disabled={readOnly}
-                  onChange={(event) => selectVendor(event.target.value)}
-                  className={input}
-                >
-                  <option value="">Select vendor</option>
-                  {initData.vendors.map((vendor) => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {(vendor.vendorNameSnapshot || vendor.vendorName || vendor.companyName || vendor.name || "Vendor")} · {(vendor.vendorCodeSnapshot || vendor.vendorId || vendor.id || "")}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative mt-1.5">
+                  <button
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => {
+                      if (!readOnly) {
+                        setVendorDropdownOpen((current) => !current);
+                      }
+                    }}
+                    className={`${input} flex items-center justify-between text-left`}
+                  >
+                    <span className={activeVendor ? "text-slate-800" : "text-slate-500"}>
+                      {activeVendor
+                        ? `${activeVendor.vendorNameSnapshot ||
+                        activeVendor.vendorName ||
+                        activeVendor.companyName ||
+                        activeVendor.name ||
+                        "Vendor"
+                        } · ${activeVendor.vendorCodeSnapshot ||
+                        activeVendor.vendorId ||
+                        activeVendor.vendorCode ||
+                        activeVendor.code ||
+                        activeVendor.id ||
+                        ""
+                        }`
+                        : "Select vendor"}
+                    </span>
+
+                    <span className="text-slate-400">⌄</span>
+                  </button>
+
+                  {vendorDropdownOpen && !readOnly && (
+                    <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                      <div className="border-b border-slate-100 p-2">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={vendorSearch}
+                          onChange={(event) => setVendorSearch(event.target.value)}
+                          placeholder="Search vendor name, code, phone or email..."
+                          className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
+                        />
+                      </div>
+
+                      <div className="max-h-72 overflow-y-auto">
+                        {filteredVendors.length ? (
+                          filteredVendors.map((vendor) => {
+                            const name =
+                              vendor.vendorNameSnapshot ||
+                              vendor.vendorName ||
+                              vendor.companyName ||
+                              vendor.name ||
+                              "Vendor";
+
+                            const code =
+                              vendor.vendorCodeSnapshot ||
+                              vendor.vendorId ||
+                              vendor.vendorCode ||
+                              vendor.code ||
+                              vendor.id ||
+                              "";
+
+                            const contact =
+                              vendor.contactPerson ||
+                              vendor.phone ||
+                              vendor.email ||
+                              "";
+
+                            return (
+                              <button
+                                key={vendor.id}
+                                type="button"
+                                onClick={() => {
+                                  selectVendor(vendor.id);
+                                  setVendorSearch("");
+                                  setVendorDropdownOpen(false);
+                                }}
+                                className="flex w-full flex-col border-b border-slate-100 px-3 py-2.5 text-left hover:bg-indigo-50"
+                              >
+                                <span className="text-sm font-semibold text-slate-800">
+                                  {name}
+                                </span>
+
+                                <span className="mt-0.5 text-xs text-slate-500">
+                                  {code}
+                                  {contact ? ` · ${contact}` : ""}
+                                </span>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-4 py-8 text-center text-sm text-slate-500">
+                            No vendor found.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </Field>
             </div>
           </section>

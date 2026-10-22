@@ -15,7 +15,7 @@ function evaluate(code, mocks) {
   new Function('require', 'module', 'exports', code)((id) => { if (!(id in mocks)) throw new Error(id); return mocks[id]; }, module, module.exports);
   return module.exports;
 }
-function harness({ owner = false, role = 'accounts_manager', permissions = ['employee.view'], tokenCompany = 'tenant-a', rootField = 'employeeFirestoreId', tokenEmployee = 'staff-doc', mutate = () => {}, verifyError } = {}) {
+function harness({ owner = false, role = 'accounts_manager', permissions = ['employee.view'], tokenCompany = 'tenant-a', rootField = 'employeeFirestoreId', tokenEmployee = 'staff-doc', mutate = () => {}, authorizationCode = authorizeCode, verifyError } = {}) {
   const uid = owner ? 'owner-uid' : 'staff-uid';
   const reads = [];
   const records = {
@@ -43,7 +43,7 @@ function harness({ owner = false, role = 'accounts_manager', permissions = ['emp
     };
   }
   const db = { collection };
-  const authorization = evaluate(authorizeCode, {
+  const authorization = evaluate(authorizationCode, {
     '@/lib/firebase-admin': { adminDb: db, adminAuth: { verifyIdToken: async (token, revoked) => { assert.equal(token, 'valid'); assert.equal(revoked, true); if (verifyError) throw verifyError; return { uid, companyId: tokenCompany, companyEmployeeId: owner ? undefined : tokenEmployee, roleId: 'employee' }; } } },
     '@/app/allservice/rbac/permissionCatalog': { ALL_PERMISSIONS: [] },
     './companyPermission.js': {},
@@ -53,7 +53,7 @@ function harness({ owner = false, role = 'accounts_manager', permissions = ['emp
     '@/lib/server/authorizeCompanyRequest': authorization,
     'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
   });
-  return { records, reads, get: (companyId = 'tenant-a', authenticated = true) => route.GET(new Request(`http://localhost/api/employees/active?companyId=${companyId}`, { headers: authenticated ? { Authorization: 'Bearer valid' } : {} })) };
+  return { records, reads, get: (companyId = 'tenant-a', authenticated = true, header = 'Bearer valid') => route.GET(new Request(`http://localhost/api/site-assignments/today?companyId=${companyId}`, { headers: authenticated ? { Authorization: header } : {} })) };
 }
 
 test('UID-keyed root without uid field authorizes using employeeFirestoreId', async () => {
@@ -144,4 +144,58 @@ test('today returns only the resolved employee assignment', async () => {
   const result = await response.json();
   assert.equal(result.assignment.assignmentId, 'own');
   assert.equal(result.assignment.projectName, 'Own project');
+});
+
+
+test('historical uid-field requirement reproduces the reported 401', async () => {
+  const source = fs.readFileSync('src/lib/server/authorizeCompanyRequest.js', 'utf8').replace('if (!rootUser.exists)', 'if (!rootUser.exists || rootUser.data()?.uid !== token.uid)');
+  const oldCode = (await transform(source, { jsc: { parser: { syntax: 'ecmascript' } }, module: { type: 'commonjs' } })).code;
+  assert.notEqual(oldCode, authorizeCode);
+  assert.equal((await harness({ authorizationCode: oldCode }).get()).status, 401);
+  assert.equal((await harness().get()).status, 200);
+});
+
+test('Bearer scheme is case insensitive and missing or ambiguous credentials are rejected', async () => {
+  for (const header of ['bearer valid', 'BEARER valid', 'Bearer   valid']) {
+    assert.equal((await harness().get('tenant-a', true, header)).status, 200);
+  }
+  for (const header of ['', 'Basic valid', 'Bearer', 'Bearer valid extra', 'Bearer valid,valid']) {
+    assert.equal((await harness().get('tenant-a', true, header)).status, 401);
+  }
+});
+
+test('session failures are 401; unexpected verifier failures are sanitized 500', async () => {
+  for (const code of ['auth/id-token-expired', 'auth/id-token-revoked', 'auth/user-disabled', 'auth/user-not-found', 'auth/invalid-id-token', 'auth/internal-error', 'auth/invalid-credential', 'auth/insufficient-permission', 'auth/invalid-argument', 'app/network-error']) {
+    const sessionFailure = ['auth/id-token-expired', 'auth/id-token-revoked', 'auth/user-disabled', 'auth/user-not-found', 'auth/invalid-id-token'].includes(code);
+    const response = await harness({ verifyError: Object.assign(new Error('private SDK details'), { code }) }).get();
+    assert.equal(response.status, sessionFailure ? 401 : 500, code);
+    assert.deepEqual(await response.json(), { error: sessionFailure ? 'UNAUTHENTICATED' : 'SITE_ASSIGNMENT_LOOKUP_FAILED' });
+  }
+});
+
+test('legacy authUid cannot override conflicting access.authUid', async () => {
+  const h = harness({ mutate(r) {
+    const employee = r['Companies/tenant-a/Usermanagement/staff-doc'];
+    employee.access.authUid = 'someone-else';
+    employee.authUid = 'staff-uid';
+  } });
+  assert.equal((await h.get()).status, 403);
+});
+
+test('inactive employee and company are forbidden, including inactive owner company', async () => {
+  for (const options of [
+    { mutate: r => { r['Companies/tenant-a/Usermanagement/staff-doc'].access.status = 'inactive'; } },
+    { mutate: r => { r['Companies/tenant-a'].serviceStatus = 'inactive'; } },
+    { owner: true, mutate: r => { r['Companies/tenant-a'].serviceStatus = 'inactive'; } },
+  ]) assert.equal((await harness(options).get()).status, 403);
+});
+
+test('foreign tenant mapping cannot authorize with another employee UID', async () => {
+  const h = harness({ mutate(r) {
+    r['Usermanagement/staff-uid'].companyId = 'tenant-b';
+    r['Usermanagement/staff-uid'].employeeFirestoreId = 'other-doc';
+    r['Companies/tenant-b/Usermanagement/other-doc'].access = { authUid: 'other-uid' };
+  } });
+  assert.equal((await h.get()).status, 403);
+  assert.ok(!h.reads.includes('Companies/tenant-a/SiteAssignments'));
 });

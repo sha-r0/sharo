@@ -222,7 +222,41 @@ export async function POST(request) {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      responsePayload = { payment, bill: { id: bill.id, paidAmount: nextBillPaid, outstandingAmount: nextBillOutstanding, paymentStatus: nextBillOutstanding <= 0 ? "paid" : nextBillPaid > 0 ? "partially_paid" : "unpaid" } };
+      responsePayload = {
+        payment: {
+          ...payment,
+          createdAt: null,
+          updatedAt: null,
+        },
+
+        bill: {
+          id: bill.id,
+
+          paidAmount:
+            nextBillPaid,
+
+          outstandingAmount:
+            nextBillOutstanding,
+
+          paymentStatus:
+            nextBillOutstanding <= 0
+              ? "paid"
+              : nextBillPaid > 0
+                ? "partially_paid"
+                : "unpaid",
+        },
+
+        purchaseOrder: {
+          id:
+            purchaseOrder.id,
+
+          paidAmount:
+            nextPoPaid,
+
+          outstandingAmount:
+            nextPoOutstanding,
+        },
+      };
     });
 
     return NextResponse.json({ success: true, ...responsePayload });

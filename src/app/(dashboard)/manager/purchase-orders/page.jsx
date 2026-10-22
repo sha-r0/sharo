@@ -25,11 +25,91 @@ const formatDate = (value) => {
   return Number.isNaN(date.getTime())
     ? "—"
     : date.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
 };
+
+function summarizeOrders(orders) {
+  return orders.reduce(
+    (summary, order) => {
+      summary.total += 1;
+
+      const currentStatus =
+        normalizePurchaseOrderStatus(
+          order.status
+        );
+
+      if (currentStatus === "draft") {
+        summary.draft += 1;
+      }
+
+      if (
+        currentStatus ===
+        "pending_approval"
+      ) {
+        summary.pendingApproval += 1;
+      }
+
+      if (
+        currentStatus === "approved"
+      ) {
+        summary.approved += 1;
+      }
+
+      if (
+        currentStatus === "issued"
+      ) {
+        summary.issued += 1;
+      }
+
+      if (
+        currentStatus ===
+        "partially_fulfilled"
+      ) {
+        summary.partiallyFulfilled += 1;
+      }
+
+      if (
+        currentStatus === "completed"
+      ) {
+        summary.completed += 1;
+      }
+
+      if (
+        currentStatus === "rejected"
+      ) {
+        summary.rejected += 1;
+      }
+
+      if (
+        currentStatus === "cancelled"
+      ) {
+        summary.cancelled += 1;
+      }
+
+      summary.grandTotal +=
+        Number(
+          order.grandTotal || 0
+        );
+
+      return summary;
+    },
+    {
+      total: 0,
+      draft: 0,
+      pendingApproval: 0,
+      approved: 0,
+      issued: 0,
+      partiallyFulfilled: 0,
+      completed: 0,
+      rejected: 0,
+      cancelled: 0,
+      grandTotal: 0,
+    }
+  );
+}
 
 export default function PurchaseOrdersPage() {
   const { company, firebaseUser, can } = useAuth();
@@ -96,15 +176,81 @@ export default function PurchaseOrdersPage() {
     });
   }, [purchaseOrders, search, status]);
 
-  const doAction = async (order, action, method) => {
-    if (!firebaseUser) return;
+  const doAction = async (
+    order,
+    action,
+    method
+  ) => {
+    if (
+      !firebaseUser ||
+      !order?.id ||
+      busyId
+    ) {
+      return;
+    }
+
     setBusyId(order.id);
+
     try {
-      await method(firebaseUser, order.id);
-      toast.success(`${formatPurchaseOrderStatusLabel(action)} action completed.`);
-      await load();
+      const result =
+        await method(
+          firebaseUser,
+          order.id
+        );
+
+      const updatedOrder =
+        result?.purchaseOrder;
+
+      if (!updatedOrder?.id) {
+        throw new Error(
+          "INVALID_PURCHASE_ORDER_RESPONSE"
+        );
+      }
+
+      setPurchaseOrders(
+        (currentOrders) => {
+          const nextOrders =
+            currentOrders.map(
+              (item) =>
+                item.id ===
+                  updatedOrder.id
+                  ? {
+                    ...item,
+                    ...updatedOrder,
+                  }
+                  : item
+            );
+
+          setSummary(
+            summarizeOrders(nextOrders)
+          );
+
+          return nextOrders;
+        }
+      );
+
+      toast.success(
+        `${formatPurchaseOrderStatusLabel(
+          action
+        )} action completed.`
+      );
     } catch (actionError) {
-      toast.error(actionError.message || "Action failed.");
+      console.error(
+        "[PurchaseOrders] Action failed",
+        {
+          purchaseOrderId:
+            order.id,
+          action,
+          code:
+            actionError?.message ||
+            "unknown",
+        }
+      );
+
+      toast.error(
+        actionError?.message ||
+        "Action failed."
+      );
     } finally {
       setBusyId("");
     }
@@ -261,68 +407,68 @@ function OrderTable({
     <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="hidden md:block">
         <table className="w-full min-w-[1080px] text-sm">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
-            <th className="px-6 py-4">PO Number</th>
-            <th className="px-4 py-4">Date</th>
-            <th className="px-4 py-4">Project</th>
-            <th className="px-4 py-4">Vendor</th>
-            <th className="px-4 py-4 text-right">Grand Total</th>
-            <th className="px-4 py-4 text-right">Ledger</th>
-            <th className="px-4 py-4">Status</th>
-            <th className="px-4 py-4">Created By</th>
-            <th className="px-6 py-4 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-200">
-          {orders.map((item) => {
-            const status = normalizePurchaseOrderStatus(item.status);
-            return (
-              <tr key={item.id} className="align-top hover:bg-slate-50/80">
-                <td className="px-6 py-5">
-                  <button onClick={() => onView(item)} className="text-left text-[15px] font-extrabold tracking-tight text-indigo-700 transition hover:text-indigo-600">
-                    {item.poNumber || "Draft"}
-                  </button>
-                </td>
-                <td className="px-4 py-5 whitespace-nowrap text-sm text-slate-600">{formatDate(item.poDate)}</td>
-                <td className="px-4 py-5">
-                  <div className="space-y-1">
-                    <strong className="block font-semibold text-slate-900">{item.projectNameSnapshot || "—"}</strong>
-                    <span className="block text-[11px] text-slate-500">{item.projectNumberSnapshot || item.projectId || item.projectFirestoreId || "—"}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-5">
-                  <div className="space-y-1">
-                    <strong className="block font-semibold text-slate-900">{item.vendorNameSnapshot || "—"}</strong>
-                    <span className="block text-[11px] text-slate-500">{item.vendorCodeSnapshot || item.vendorId || item.vendorFirestoreId || "—"}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-5 text-right">
-                  <div className="text-[15px] font-extrabold tracking-tight text-slate-900">₹ {money(item.grandTotal)}</div>
-                </td>
-                <td className="px-4 py-5 text-right">
-                  <div className="inline-grid gap-1 text-[12px] leading-5 text-slate-500">
-                    <div className="grid grid-cols-[auto_auto] gap-x-3">
-                      <span>Fulfilled</span><span className="font-semibold text-slate-800">₹ {money(item.fulfilledAmount)}</span>
-                      <span>Billed</span><span className="font-semibold text-slate-800">₹ {money(item.billedAmount)}</span>
-                      <span>Paid</span><span className="font-semibold text-slate-800">₹ {money(item.paidAmount)}</span>
-                      <span>Outstanding</span><span className="font-semibold text-slate-800">₹ {money(item.outstandingAmount)}</span>
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
+              <th className="px-6 py-4">PO Number</th>
+              <th className="px-4 py-4">Date</th>
+              <th className="px-4 py-4">Project</th>
+              <th className="px-4 py-4">Vendor</th>
+              <th className="px-4 py-4 text-right">Grand Total</th>
+              <th className="px-4 py-4 text-right">Ledger</th>
+              <th className="px-4 py-4">Status</th>
+              <th className="px-4 py-4">Created By</th>
+              <th className="px-6 py-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {orders.map((item) => {
+              const status = normalizePurchaseOrderStatus(item.status);
+              return (
+                <tr key={item.id} className="align-top hover:bg-slate-50/80">
+                  <td className="px-6 py-5">
+                    <button onClick={() => onView(item)} className="text-left text-[15px] font-extrabold tracking-tight text-indigo-700 transition hover:text-indigo-600">
+                      {item.poNumber || "Draft"}
+                    </button>
+                  </td>
+                  <td className="px-4 py-5 whitespace-nowrap text-sm text-slate-600">{formatDate(item.poDate)}</td>
+                  <td className="px-4 py-5">
+                    <div className="space-y-1">
+                      <strong className="block font-semibold text-slate-900">{item.projectNameSnapshot || "—"}</strong>
+                      <span className="block text-[11px] text-slate-500">{item.projectNumberSnapshot || item.projectId || item.projectFirestoreId || "—"}</span>
                     </div>
-                  </div>
-                </td>
-                <td className="px-4 py-5">
-                  <span className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-bold ${purchaseOrderStatusTone(status)}`}>
-                    {formatPurchaseOrderStatusLabel(status)}
-                  </span>
-                </td>
-                <td className="px-4 py-5 text-sm text-slate-600">{item.preparedBy?.name || "—"}</td>
-                <td className="px-6 py-5">
-                  {renderActions(item, status)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
+                  </td>
+                  <td className="px-4 py-5">
+                    <div className="space-y-1">
+                      <strong className="block font-semibold text-slate-900">{item.vendorNameSnapshot || "—"}</strong>
+                      <span className="block text-[11px] text-slate-500">{item.vendorCodeSnapshot || item.vendorId || item.vendorFirestoreId || "—"}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-5 text-right">
+                    <div className="text-[15px] font-extrabold tracking-tight text-slate-900">₹ {money(item.grandTotal)}</div>
+                  </td>
+                  <td className="px-4 py-5 text-right">
+                    <div className="inline-grid gap-1 text-[12px] leading-5 text-slate-500">
+                      <div className="grid grid-cols-[auto_auto] gap-x-3">
+                        <span>Fulfilled</span><span className="font-semibold text-slate-800">₹ {money(item.fulfilledAmount)}</span>
+                        <span>Billed</span><span className="font-semibold text-slate-800">₹ {money(item.billedAmount)}</span>
+                        <span>Paid</span><span className="font-semibold text-slate-800">₹ {money(item.paidAmount)}</span>
+                        <span>Outstanding</span><span className="font-semibold text-slate-800">₹ {money(item.outstandingAmount)}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-5">
+                    <span className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-bold ${purchaseOrderStatusTone(status)}`}>
+                      {formatPurchaseOrderStatusLabel(status)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-5 text-sm text-slate-600">{item.preparedBy?.name || "—"}</td>
+                  <td className="px-6 py-5">
+                    {renderActions(item, status)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
         </table>
       </div>
 

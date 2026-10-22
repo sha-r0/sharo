@@ -9,6 +9,24 @@ export const PERMISSION_ACTIONS = [
   "manage",
 ];
 
+export const PERMISSION_ACTIONS_BY_MODULE = {
+  performance: [
+    "view",
+    "manage",
+  ],
+};
+
+export function permissionActionsForModule(
+  module
+) {
+  return (
+    PERMISSION_ACTIONS_BY_MODULE[
+      module
+    ] ||
+    PERMISSION_ACTIONS
+  );
+}
+
 export const PERMISSION_MODULES = [
   "dashboard",
   "employee",
@@ -47,12 +65,22 @@ export const DEDICATED_PERMISSIONS = [
 ];
 
 export const ALL_PERMISSIONS = [
-  ...PERMISSION_MODULES.flatMap((module) =>
-    (
-      module === "performance"
-        ? ["view"]
-        : PERMISSION_ACTIONS
-    ).map((action) => permissionKey(module, action)),
+  ...PERMISSION_MODULES.flatMap(
+    (module) =>
+      permissionActionsForModule(
+        module
+      )
+        .map((action) =>
+          permissionKey(
+            module,
+            action
+          )
+        )
+        .filter(
+          (permission) =>
+            permission !==
+            "performance.manage"
+        )
   ),
 
   ...DEDICATED_PERMISSIONS,
@@ -74,16 +102,40 @@ export function calculateEffectivePermissions({
   grantedPermissions = [],
   deniedPermissions = [],
 }) {
-  const permissions = new Set([
-    ...rolePermissions,
-    ...grantedPermissions,
-  ]);
-
-  deniedPermissions.forEach((permission) =>
-    permissions.delete(permission),
+  const valid = new Set(
+    ALL_PERMISSIONS
   );
 
-  return [...permissions];
+  const permissions =
+    new Set(
+      [
+        ...rolePermissions,
+        ...grantedPermissions,
+      ].filter(
+        (permission) =>
+          valid.has(
+            permission
+          )
+      )
+    );
+
+  deniedPermissions
+    .filter(
+      (permission) =>
+        valid.has(
+          permission
+        )
+    )
+    .forEach(
+      (permission) =>
+        permissions.delete(
+          permission
+        )
+    );
+
+  return [
+    ...permissions,
+  ];
 }
 
 const modulePermissions = (

@@ -17,16 +17,10 @@ function indiaDateKey() {
 }
 
 function errorResponse(error) {
-  const code =
-    error?.message ||
-    "SITE_ASSIGNMENT_LOOKUP_FAILED";
-
-  const status =
-    code === "UNAUTHENTICATED"
-      ? 401
-      : code === "FORBIDDEN"
-        ? 403
-        : 400;
+  const code = ["UNAUTHENTICATED", "FORBIDDEN", "COMPANY_INACTIVE"].includes(error?.message)
+    ? error.message : "SITE_ASSIGNMENT_LOOKUP_FAILED";
+  const status = code === "UNAUTHENTICATED" ? 401
+    : ["FORBIDDEN", "COMPANY_INACTIVE"].includes(code) ? 403 : 500;
 
   return NextResponse.json(
     { error: code },

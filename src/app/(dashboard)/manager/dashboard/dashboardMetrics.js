@@ -198,13 +198,69 @@ export function buildDashboardMetrics(data, range) {
 
   return {
     summary: {
-      employees: employees.length, present: present.length, absent, onLeave: onLeave.length,
-      working: working.length, running: runningProjects.length, completed: completedProjects.length,
-      delayed: delayedProjects.length, todayExpense: todayExpenses.reduce((s, i) => s + amount(i.amount), 0),
-      monthlyExpense: monthlyExpenses.reduce((s, i) => s + amount(i.amount), 0),
-      pendingExpenses: expenses.filter((item) => statusIs(item, "pending")).length,
-      pendingLeaves: leaves.filter((item) => statusIs(item, "pending")).length,
-      pendingAdvances: allAdvances.filter((item) => statusIs(item, "pending") || !item.status).length,
+      // =========================================================
+      // OWNER DASHBOARD KPI CARDS
+      // =========================================================
+    
+      // Current active workforce
+      totalEmployees: activeEmployees.length,
+    
+      // Expense follows selected dashboard range:
+      // Today / This Week / This Month / Custom
+      expense: expenses.reduce(
+        (sum, item) => sum + amount(item.amount),
+        0
+      ),
+    
+      // Current active/running projects
+      activeProjects: runningProjects.length,
+    
+      // We will connect these later from trusted finance data.
+      // Do not calculate these from quotation/project values.
+      yearProfitLoss: null,
+      yearBilling: null,
+    
+      // =========================================================
+      // EXISTING DASHBOARD METRICS
+      // Keep these so current dashboard components don't break
+      // =========================================================
+    
+      employees: activeEmployees.length,
+    
+      present: present.length,
+      absent,
+      onLeave: onLeave.length,
+    
+      working: working.length,
+    
+      running: runningProjects.length,
+      completed: completedProjects.length,
+      delayed: delayedProjects.length,
+    
+      todayExpense: todayExpenses.reduce(
+        (sum, item) => sum + amount(item.amount),
+        0
+      ),
+    
+      monthlyExpense: monthlyExpenses.reduce(
+        (sum, item) => sum + amount(item.amount),
+        0
+      ),
+    
+      pendingExpenses: expenses.filter((item) =>
+        statusIs(item, "pending")
+      ).length,
+    
+      pendingLeaves: leaves.filter((item) =>
+        statusIs(item, "pending")
+      ).length,
+    
+      pendingAdvances: allAdvances.filter(
+        (item) =>
+          statusIs(item, "pending") ||
+          !item.status
+      ).length,
+    
       todayHours,
     },
     employee: { departments: departments.size, newEmployees: [...employees].sort((a, b) => (asDate(b.createdAt)?.getTime() || 0) - (asDate(a.createdAt)?.getTime() || 0)).slice(0, 5), performers: performers.slice(0, 5), lowestAttendance, withoutWorkLogs: activeEmployees.filter((employee) => !employeeHours.has(employee.id) && !employeeHours.has(employee.employeeId)).length },

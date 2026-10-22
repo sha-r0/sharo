@@ -17,11 +17,59 @@ import QRCode from "qrcode";
 import QuotationCalculationService from "../../services/QuotationCalculationService";
 import QuotationExportService from "../../services/QuotationExportService";
 
-const money = (value) =>
-    Number(value || 0).toLocaleString("en-IN", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    });
+const CURRENCIES = {
+    INR: {
+        symbol: "₹",
+        locale: "en-IN",
+    },
+
+    USD: {
+        symbol: "$",
+        locale: "en-US",
+    },
+
+    EUR: {
+        symbol: "€",
+        locale: "en-IE",
+    },
+
+    GBP: {
+        symbol: "£",
+        locale: "en-GB",
+    },
+
+    AED: {
+        symbol: "د.إ",
+        locale: "en-AE",
+    },
+
+    SAR: {
+        symbol: "﷼",
+        locale: "en-SA",
+    },
+};
+
+const currencyInfo = (code) =>
+    CURRENCIES[code] ||
+    CURRENCIES.INR;
+
+const money = (
+    value,
+    currency = "INR"
+) => {
+    const info =
+        currencyInfo(currency);
+
+    return `${info.symbol}${Number(
+        value || 0
+    ).toLocaleString(
+        info.locale,
+        {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }
+    )}`;
+};
 
 const addressText = (value) =>
     typeof value === "object" && value
@@ -93,6 +141,7 @@ export default function QuotationPreview({
     template = "modern",
 }) {
     const total = QuotationCalculationService.calculate(form);
+    const currency = form.currency || "INR";
     const [websiteQr, setWebsiteQr] = useState("");
     const branding = settings?.branding || {};
     const bank = settings?.bank || {};
@@ -291,10 +340,20 @@ export default function QuotationPreview({
                                             ))}
                                         </td>
                                         <td className="px-2 py-3 align-top">{item.hsn || "—"}</td>
-                                        <td className="px-2 py-3 text-right align-top">₹{money(item.rate)}</td>
+                                        <td className="px-2 py-3 text-right align-top">
+                                            {money(
+                                                item.rate,
+                                                currency
+                                            )}
+                                        </td>
                                         <td className="px-2 py-3 text-right align-top">{Number(item.qty || 0)}</td>
                                         <td className="px-2 py-3 align-top">{item.unit || "—"}</td>
-                                        <td className="px-3 py-3 text-right align-top font-bold">₹{money(item.total)}</td>
+                                        <td className="px-3 py-3 text-right align-top font-bold">
+                                            {money(
+                                                item.total,
+                                                currency
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -337,7 +396,10 @@ export default function QuotationPreview({
                                     className="whitespace-nowrap text-[22px] font-extrabold"
                                     style={{ color: palette.dark }}
                                 >
-                                    ₹{money(total.subtotal)}
+                                    {money(
+                                        total.subtotal,
+                                        currency
+                                    )}
                                 </strong>
                             </div>
 
@@ -346,7 +408,7 @@ export default function QuotationPreview({
                                 {total.taxMode === "igst" && (
                                     <div className="flex justify-between gap-4">
                                         <span>IGST 18%</span>
-                                        <span>₹{money(total.igst)}</span>
+                                        <span>{money(total.igst, currency)}</span>
                                     </div>
                                 )}
 
@@ -354,12 +416,12 @@ export default function QuotationPreview({
                                     <>
                                         <div className="flex justify-between gap-4">
                                             <span>CGST 9%</span>
-                                            <span>₹{money(total.cgst)}</span>
+                                            <span>{money(total.cgst, currency)}</span>
                                         </div>
 
                                         <div className="flex justify-between gap-4">
                                             <span>SGST 9%</span>
-                                            <span>₹{money(total.sgst)}</span>
+                                            <span>{money(total.sgst, currency)}</span>
                                         </div>
                                     </>
                                 )}
@@ -367,7 +429,10 @@ export default function QuotationPreview({
                                 {total.extraCharges > 0 && (
                                     <div className="flex justify-between gap-4">
                                         <span>Other charges</span>
-                                        <span>₹{money(total.extraCharges)}</span>
+                                        <span>{money(
+                                            total.extraCharges,
+                                            currency
+                                        )}</span>
                                     </div>
                                 )}
                             </div>
@@ -382,7 +447,10 @@ export default function QuotationPreview({
                                     className="whitespace-nowrap text-[14px]"
                                     style={{ color: palette.dark }}
                                 >
-                                    ₹{money(total.grandTotal)}
+                                    {money(
+                                        total.grandTotal,
+                                        currency
+                                    )}
                                 </strong>
                             </div>
 
@@ -426,24 +494,33 @@ export default function QuotationPreview({
                         </section>
                     )}
 
-                    <section className="quotation-signatures relative justify-between mt-9 grid grid-cols-1 gap-6 border-t border-slate-200 pt-7 text-center sm:grid-cols-2">
-                        <div className="flex min-h-28 flex-col items-center justify-end">
-                            <p className="mb-auto text-[10px] font-bold uppercase tracking-wider text-slate-500">Prepared By</p>
-                            {signature.preparedBySignature && <img src={proxiedImage(signature.preparedBySignature)} crossOrigin="anonymous" alt="Prepared By signature" onError={(event) => { event.currentTarget.style.display = "none"; }} className="mb-1 max-h-20 max-w-40 object-contain" />}
+                    <section className="quotation-signatures relative mt-9 flex justify-center border-t border-slate-200 pt-7 text-center">
+                        <div className="flex min-h-28 w-full max-w-[220px] flex-col items-center justify-end">
+                            <p className="mb-auto text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Authorized Signatory
+                            </p>
+
+                            {signature.signature && (
+                                <img
+                                    src={proxiedImage(signature.signature)}
+                                    crossOrigin="anonymous"
+                                    alt="Authorized signature"
+                                    className="mb-1 max-h-14 max-w-32 object-contain"
+                                />
+                            )}
+
                             <div className="w-32 border-b border-slate-400" />
-                            <p className="mt-2 text-xs font-bold" style={{ color: palette.dark }}>{form.salesPerson || companyName}</p>
-                            <p className="text-[10px] text-slate-500">{companyName}</p>
-                        </div>
-                        {/* <div className="flex min-h-28 flex-col items-center justify-between">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Company Stamp</p>
-                            {signature.seal && <img src={proxiedImage(signature.seal)} crossOrigin="anonymous" alt="Company stamp" className="max-h-20 max-w-32 object-contain" />}
-                        </div> */}
-                        <div className="flex min-h-28 flex-col items-center justify-end">
-                            <p className="mb-auto text-[10px] font-bold uppercase tracking-wider text-slate-500">Authorized Signatory</p>
-                            {signature.signature && <img src={proxiedImage(signature.signature)} crossOrigin="anonymous" alt="Authorized signature" className="mb-1 max-h-14 max-w-32 object-contain" />}
-                            <div className="w-32 border-b border-slate-400" />
-                            <p className="mt-2 text-xs font-bold" style={{ color: palette.dark }}>{signature.signatory || "Authorized Signatory"}</p>
-                            <p className="text-[10px] text-slate-500">{companyName}</p>
+
+                            <p
+                                className="mt-2 text-xs font-bold"
+                                style={{ color: palette.dark }}
+                            >
+                                {signature.signatory || "Authorized Signatory"}
+                            </p>
+
+                            <p className="text-[10px] text-slate-500">
+                                {companyName}
+                            </p>
                         </div>
                     </section>
 
@@ -564,9 +641,15 @@ export default function QuotationPreview({
                         flex: 1 1 0% !important;
                     }
 
-                    #quotation-print-root .quotation-bank-fields,
-                    #quotation-print-root .quotation-signatures {
+                    #quotation-print-root .quotation-bank-fields {
                         grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+                    }
+
+                    #quotation-print-root .quotation-signatures {
+                        display: flex !important;
+                        justify-content: center !important;
+                        align-items: flex-start !important;
+                        width: 100% !important;
                     }
 
                     #quotation-print-root .quotation-watermark {

@@ -126,26 +126,136 @@ export async function loadVendorByReferences(companyId, input = {}) {
   return null;
 }
 
-export async function loadCompanyPurchaseOrderAssets(companyId, purchaseOrderId = "") {
-  const [companySnapshot, settingsSnapshot, purchaseOrderSnapshot, projectsSnapshot, vendorsSnapshot] = await Promise.all([
-    companyRef(companyId).get(),
-    purchaseOrderSettingsRef(companyId).get(),
-    purchaseOrderId ? purchaseOrderRef(companyId, purchaseOrderId).get() : Promise.resolve(null),
-    projectCollectionRef(companyId).get(),
-    vendorCollectionRef(companyId).get(),
+export async function loadCompanyPurchaseOrderAssets(
+  companyId,
+  purchaseOrderId = "",
+  options = {}
+) {
+  const {
+    company = null,
+  } = options;
+
+  const [
+    settingsSnapshot,
+    purchaseOrderSnapshot,
+    projectsSnapshot,
+    vendorsSnapshot,
+  ] = await Promise.all([
+    purchaseOrderSettingsRef(
+      companyId
+    ).get(),
+
+    purchaseOrderId
+      ? purchaseOrderRef(
+        companyId,
+        purchaseOrderId
+      ).get()
+      : Promise.resolve(
+        null
+      ),
+
+    projectCollectionRef(
+      companyId
+    ).get(),
+
+    vendorCollectionRef(
+      companyId
+    ).get(),
   ]);
 
-  const company = companySnapshot.exists ? { id: companySnapshot.id, ...companySnapshot.data() } : null;
-  const settings = settingsSnapshot.exists ? { id: settingsSnapshot.id, ...settingsSnapshot.data() } : null;
-  const purchaseOrder = purchaseOrderSnapshot?.exists ? { id: purchaseOrderSnapshot.id, ...purchaseOrderSnapshot.data() } : null;
-  const projects = projectsSnapshot.docs
-    .map((snapshot) => ({ id: snapshot.id, ...snapshot.data() }))
-    .sort((left, right) => String(left.projectName || left.projectId || "").localeCompare(String(right.projectName || right.projectId || ""), "en", { sensitivity: "base" }));
-  const vendors = vendorsSnapshot.docs
-    .map((snapshot) => ({ id: snapshot.id, ...snapshot.data() }))
-    .sort((left, right) => String(left.vendorName || left.companyName || left.name || left.vendorId || "").localeCompare(String(right.vendorName || right.companyName || right.name || right.vendorId || ""), "en", { sensitivity: "base" }));
+  const settings =
+    settingsSnapshot.exists
+      ? {
+        id:
+          settingsSnapshot.id,
+        ...settingsSnapshot.data(),
+      }
+      : null;
 
-  return { company, settings, purchaseOrder, projects, vendors };
+  const purchaseOrder =
+    purchaseOrderSnapshot?.exists
+      ? {
+        id:
+          purchaseOrderSnapshot.id,
+        ...purchaseOrderSnapshot.data(),
+      }
+      : null;
+
+  const projects =
+    projectsSnapshot.docs
+      .map(
+        (snapshot) => ({
+          id:
+            snapshot.id,
+          ...snapshot.data(),
+        })
+      )
+      .sort(
+        (
+          left,
+          right
+        ) =>
+          String(
+            left.projectName ||
+            left.projectId ||
+            ""
+          ).localeCompare(
+            String(
+              right.projectName ||
+              right.projectId ||
+              ""
+            ),
+            "en",
+            {
+              sensitivity:
+                "base",
+            }
+          )
+      );
+
+  const vendors =
+    vendorsSnapshot.docs
+      .map(
+        (snapshot) => ({
+          id:
+            snapshot.id,
+          ...snapshot.data(),
+        })
+      )
+      .sort(
+        (
+          left,
+          right
+        ) =>
+          String(
+            left.vendorName ||
+            left.companyName ||
+            left.name ||
+            left.vendorId ||
+            ""
+          ).localeCompare(
+            String(
+              right.vendorName ||
+              right.companyName ||
+              right.name ||
+              right.vendorId ||
+              ""
+            ),
+            "en",
+            {
+              sensitivity:
+                "base",
+            }
+          )
+      );
+
+  return {
+    company,
+    settings,
+    purchaseOrder,
+    projects,
+    vendors,
+  };
 }
 
 export async function loadPurchaseOrderSequence(companyId, financialYearKey) {
@@ -232,11 +342,26 @@ export function sanitizePurchaseOrderInput(input = {}) {
   };
 }
 
-export async function resolvePurchaseOrderReferences(companyId, input = {}) {
-  const project = await loadProjectByReferences(companyId, input);
-  const vendor = await loadVendorByReferences(companyId, input);
+export async function resolvePurchaseOrderReferences(
+  companyId,
+  input = {}
+) {
+  const [project, vendor] =
+    await Promise.all([
+      loadProjectByReferences(
+        companyId,
+        input
+      ),
+      loadVendorByReferences(
+        companyId,
+        input
+      ),
+    ]);
 
-  return { project, vendor };
+  return {
+    project,
+    vendor,
+  };
 }
 
 export function buildPreparedBy(actor = {}, company = {}) {

@@ -3,61 +3,125 @@ import { serverTimestamp } from "firebase/firestore";
 import { EMPLOYEE_STATUS } from "./employee.constants";
 
 /* ==========================================================
+   Helpers
+========================================================== */
+
+function text(value) {
+  return String(value ?? "").trim();
+}
+
+function lower(value) {
+  return text(value).toLowerCase();
+}
+
+function normalizeRole(value) {
+  return lower(value || "employee").replace(
+    /[^a-z0-9]+/g,
+    "_"
+  );
+}
+
+/* ==========================================================
    Map Employee
 ========================================================== */
 
 export function mapEmployee({
-
   companyId,
-
   firestoreId,
-
   employeeId,
-
   form,
-
   photoUrl = "",
-
   resumeUrl = "",
-
   governmentIdUrl = "",
-
 }) {
+  const firstName =
+    text(form?.firstName);
+
+  const lastName =
+    text(form?.lastName);
+
+  const fullName =
+    `${firstName} ${lastName}`.trim();
+
+  const roleId =
+    normalizeRole(
+      form?.role
+    );
+
+  const existingAccess =
+    form?.access || {};
+
+  const existingLogin =
+    form?.login || {};
+
+  const accountStatus =
+    text(
+      form?.accountStatus ||
+        existingAccess?.status ||
+        EMPLOYEE_STATUS.ACTIVE
+    ).toLowerCase();
+
+  const reporting =
+    form?.reporting || {};
+
+  const salaryStructure =
+    form?.salaryStructure || {};
+
+  const statutoryDetails =
+    form?.statutoryDetails || {};
+
+  const bankDetails =
+    form?.bankDetails || {};
+
+  const address =
+    form?.address || {};
+
+  const documents =
+    form?.documents || {};
+
+  const governmentId =
+    documents?.governmentId || {};
+
+  /* ========================================================
+     Result
+  ======================================================== */
 
   return {
-
     /* ==========================================
        IDs
     ========================================== */
 
-    employeeId,
+    employeeId:
+      text(employeeId),
 
-    companyId,
+    companyId:
+      text(companyId),
 
-    firestoreId,
+    firestoreId:
+      text(firestoreId),
 
     /* ==========================================
        Personal Information
     ========================================== */
 
     personalInfo: {
+      firstName,
 
-      firstName: form.firstName.trim(),
+      lastName,
 
-      lastName: form.lastName.trim(),
+      fullName,
 
-      fullName:
+      email:
+        lower(form?.email),
 
-        `${form.firstName} ${form.lastName}`.trim(),
+      phone:
+        text(form?.phone),
 
-      email: form.email.trim().toLowerCase(),
+      gender:
+        text(form?.gender),
 
-      phone: form.phone.trim(),
-
-      gender: form.gender,
-
-      dob: form.dob,
-
+      dob:
+        form?.dob || "",
     },
 
     /* ==========================================
@@ -65,28 +129,62 @@ export function mapEmployee({
     ========================================== */
 
     employment: {
+      department:
+        text(
+          form?.department
+        ),
 
-      department: form.department,
+      designation:
+        text(
+          form?.designation
+        ),
 
-      designation: form.designation,
+      role:
+        roleId,
 
-      role: form.role,
+      employeeType:
+        text(
+          form?.employeeType
+        ),
 
-      employeeType: form.employeeType,
+      joiningDate:
+        form?.joiningDate ||
+        "",
 
-      joiningDate: form.joiningDate,
+      shift:
+        text(
+          form?.shift
+        ),
 
-      shift: form.shift,
-
-      status: EMPLOYEE_STATUS.ACTIVE,
-
+      /*
+       * Do NOT force every edit back to Active.
+       */
+      status:
+        accountStatus ||
+        EMPLOYEE_STATUS.ACTIVE,
     },
 
+    /* ==========================================
+       Reporting
+    ========================================== */
+
     reporting: {
-      ...(form.reporting || {}),
-      teamId: form.reporting?.teamId || form.teamId || null,
-      teamLeadId: form.reporting?.teamLeadId || form.teamLeadId || null,
-      reportsTo: form.reporting?.reportsTo || form.reportsTo || null,
+      ...reporting,
+
+      teamId:
+        reporting?.teamId ||
+        form?.teamId ||
+        null,
+
+      teamLeadId:
+        reporting?.teamLeadId ||
+        form?.teamLeadId ||
+        null,
+
+      reportsTo:
+        reporting?.reportsTo ||
+        form?.reportsTo ||
+        null,
     },
 
     /* ==========================================
@@ -94,21 +192,55 @@ export function mapEmployee({
     ========================================== */
 
     salaryStructure: {
-
-      ...form.salaryStructure,
-
+      ...salaryStructure,
     },
 
-    ...(form.statutoryDetails ? { statutoryDetails: { ...form.statutoryDetails } } : {}),
+    ...(Object.keys(
+      statutoryDetails
+    ).length
+      ? {
+          statutoryDetails: {
+            ...statutoryDetails,
+          },
+        }
+      : {}),
 
     /* ==========================================
        Bank
     ========================================== */
 
     bankDetails: {
+      ...bankDetails,
 
-      ...form.bankDetails,
+      bankName:
+        text(
+          bankDetails?.bankName
+        ),
 
+      accountNumber:
+        text(
+          bankDetails?.accountNumber
+        ),
+
+      ifsc:
+        text(
+          bankDetails?.ifsc
+        ).toUpperCase(),
+
+      branch:
+        text(
+          bankDetails?.branch
+        ),
+
+      accountHolderName:
+        text(
+          bankDetails?.accountHolderName
+        ),
+
+      upi:
+        text(
+          bankDetails?.upi
+        ),
     },
 
     /* ==========================================
@@ -116,9 +248,33 @@ export function mapEmployee({
     ========================================== */
 
     address: {
+      ...address,
 
-      ...form.address,
+      addressLine:
+        text(
+          address?.addressLine
+        ),
 
+      city:
+        text(
+          address?.city
+        ),
+
+      state:
+        text(
+          address?.state
+        ),
+
+      country:
+        text(
+          address?.country ||
+            "India"
+        ),
+
+      pincode:
+        text(
+          address?.pincode
+        ),
     },
 
     /* ==========================================
@@ -126,94 +282,136 @@ export function mapEmployee({
     ========================================== */
 
     documents: {
+      photoUrl:
+        photoUrl || "",
 
-      photoUrl,
-
-      resumeUrl,
+      resumeUrl:
+        resumeUrl || "",
 
       governmentId: {
-
         type:
-          form.documents.governmentId.type,
+          text(
+            governmentId?.type ||
+              "Aadhaar Card"
+          ),
 
         number:
-          form.documents.governmentId.number,
+          text(
+            governmentId?.number
+          ),
 
         fileUrl:
-          governmentIdUrl,
-
+          governmentIdUrl ||
+          "",
       },
-
     },
 
     /* ==========================================
        Login
+
+       Preserve existing login metadata during
+       normal employee edits.
     ========================================== */
 
     login: {
+      ...existingLogin,
 
-      employeeId,
+      employeeId:
+        text(employeeId),
 
-      temporaryPasswordSet: Boolean(form.password),
+      temporaryPasswordSet:
+        form?.password
+          ? true
+          : existingLogin
+              ?.temporaryPasswordSet ??
+            false,
 
       lastLogin:
-
-        form.login?.lastLogin ||
-
+        existingLogin
+          ?.lastLogin ??
         null,
-
-    },
-
-    access: {
-      ...(form.access || {}),
-      authUid: form.authUid || null,
-      loginEnabled: form.loginEnabled !== false,
-      roleId: String(form.role || "employee").toLowerCase().replace(/[^a-z0-9]+/g, "_"),
-      status: form.accountStatus || "active",
-      requirePasswordChange: form.requirePasswordChange !== false,
-      policyAccepted: false,
-      permissionOverrides: form.permissionOverrides || { grant: [], deny: [] },
-      effectivePermissions: form.effectivePermissions || [],
     },
 
     /* ==========================================
-       Search
+       Access
+    ========================================== */
+
+    access: {
+      ...existingAccess,
+
+      authUid:
+        form?.authUid ||
+        existingAccess?.authUid ||
+        null,
+
+      loginEnabled:
+        form?.loginEnabled !==
+        false,
+
+      roleId,
+
+      status:
+        accountStatus ||
+        "active",
+
+      requirePasswordChange:
+        form
+          ?.requirePasswordChange !==
+        false,
+
+      /*
+       * IMPORTANT:
+       * Preserve existing acceptance state.
+       */
+      policyAccepted:
+        existingAccess
+          ?.policyAccepted ??
+        false,
+
+      permissionOverrides:
+        form
+          ?.permissionOverrides || {
+          grant: [],
+          deny: [],
+        },
+
+      effectivePermissions:
+        Array.isArray(
+          form
+            ?.effectivePermissions
+        )
+          ? form
+              .effectivePermissions
+          : [],
+    },
+
+    /* ==========================================
+       Search Fields
     ========================================== */
 
     search: {
-
       fullName:
-
-        `${form.firstName} ${form.lastName}`
-
-          .trim()
-
-          .toLowerCase(),
+        fullName.toLowerCase(),
 
       email:
-
-        form.email
-
-          .trim()
-
-          .toLowerCase(),
+        lower(
+          form?.email
+        ),
 
       phone:
-
-        form.phone.trim(),
+        text(
+          form?.phone
+        ),
 
       department:
-
-        form.department
-
-          .toLowerCase(),
+        lower(
+          form?.department
+        ),
 
       designation:
-
-        form.designation
-
-          .toLowerCase(),
-
+        lower(
+          form?.designation
+        ),
     },
 
     /* ==========================================
@@ -221,15 +419,10 @@ export function mapEmployee({
     ========================================== */
 
     createdAt:
-
-      form.createdAt ||
-
+      form?.createdAt ||
       serverTimestamp(),
 
     updatedAt:
-
       serverTimestamp(),
-
   };
-
 }

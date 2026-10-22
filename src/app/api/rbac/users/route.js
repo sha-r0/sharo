@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import { syncEmployeeClaims, ensureEmployeeClaims } from "@/lib/server/syncEmployeeClaims.mjs";
+import {
+  adminAuth,
+  adminDb,
+} from "@/lib/firebase-admin";
+
+import {
+  syncEmployeeClaims,
+  ensureEmployeeClaims,
+} from "@/lib/server/syncEmployeeClaims.mjs";
+
 import {
   ALL_PERMISSIONS,
   DEFAULT_ROLE_LEVELS,
@@ -10,9 +18,22 @@ import {
   permissionsForRole,
   normalizeRoleId,
 } from "@/app/allservice/rbac/permissionCatalog";
-import { buildEmployeeLoginEmail, canonicalEmployeeId, resolveEmployeeAuthUid, resolveEmployeeRoleId, resolvePermissionOverrides } from "@/app/allservice/rbac/employeeAuth";
+
+import {
+  buildEmployeeLoginEmail,
+  canonicalEmployeeId,
+  resolveEmployeeAuthUid,
+  resolveEmployeeRoleId,
+  resolvePermissionOverrides,
+} from "@/app/allservice/rbac/employeeAuth";
+
 import { authorizeCompanyRequest } from "@/lib/server/authorizeCompanyRequest";
+
 import { mergeEmployeeStatutory } from "@/app/allservice/employee/employeeStatutory";
+
+/* ==========================================================
+   Plan Limits
+========================================================== */
 
 const PLAN_LIMITS = {
   starter: 5,
@@ -22,78 +43,321 @@ const PLAN_LIMITS = {
   enterprise: Infinity,
 };
 
-/* =====================================================
+/* ==========================================================
    Helpers
-===================================================== */
+========================================================== */
 
-const validPermissions = (values) => [...new Set((Array.isArray(values) ? values : []).filter((value) => ALL_PERMISSIONS.includes(value)))];
+const validPermissions = (
+  values
+) => [
+  ...new Set(
+    (
+      Array.isArray(values)
+        ? values
+        : []
+    ).filter((value) =>
+      ALL_PERMISSIONS.includes(
+        value
+      )
+    )
+  ),
+];
 
-async function loadRole(companyId, roleId) {
-  const normalized = normalizeRoleId(roleId);
-  const snap = await adminDb.collection("Companies").doc(companyId).collection("Roles").doc(normalized).get();
-  const data = snap.exists ? snap.data() : null;
-  const permissions = data?.permissions || permissionsForRole(normalized);
-  if (!data && !permissions.length) throw new Error("ROLE_NOT_FOUND");
-  return { id: normalized, ...(data || {}), level: Number(data?.level ?? DEFAULT_ROLE_LEVELS[normalized] ?? 10), permissions: validPermissions(permissions) };
-}
+/* ==========================================================
+   Load Role
+========================================================== */
 
-async function authorize(request) {
-  const authorized = await authorizeCompanyRequest(request);
-  const { token, companyId } = authorized;
-  const company = { id: companyId, ...authorized.company };
-  const owner = authorized.isOwner;
-  const caller = owner
-    ? { id: token.uid, uid: token.uid, companyId, role: "owner" }
-    : { ...authorized.employee, uid: token.uid, companyId };
+async function loadRole(
+  companyId,
+  roleId
+) {
+  const normalized =
+    normalizeRoleId(roleId);
 
-  let callerEmployee = null;
-  let callerPermissions = owner ? ALL_PERMISSIONS : [];
-  let callerRole = owner ? { id: "owner", level: 100 } : null;
-  if (!owner) {
-    callerEmployee = authorized.employee;
-    callerRole = await loadRole(companyId, resolveEmployeeRoleId(callerEmployee, caller));
-    callerPermissions = authorized.permissions;
+  const snap =
+    await adminDb
+      .collection("Companies")
+      .doc(companyId)
+      .collection("Roles")
+      .doc(normalized)
+      .get();
+
+  const data =
+    snap.exists
+      ? snap.data()
+      : null;
+
+  const permissions =
+    data?.permissions ||
+    permissionsForRole(
+      normalized
+    );
+
+  if (
+    !data &&
+    !permissions.length
+  ) {
+    throw new Error(
+      "ROLE_NOT_FOUND"
+    );
   }
 
-  if (String(company.serviceStatus || "active").toLowerCase() !== "active") throw new Error("COMPANY_INACTIVE");
+  return {
+    id: normalized,
+
+    ...(data || {}),
+
+    level:
+      Number(
+        data?.level ??
+          DEFAULT_ROLE_LEVELS[
+            normalized
+          ] ??
+          10
+      ),
+
+    permissions:
+      validPermissions(
+        permissions
+      ),
+  };
+}
+
+/* ==========================================================
+   Authorization
+========================================================== */
+
+async function authorize(
+  request
+) {
+  const authorized =
+    await authorizeCompanyRequest(
+      request
+    );
+
+  const {
+    token,
+    companyId,
+  } = authorized;
+
+  const company = {
+    id: companyId,
+
+    ...authorized.company,
+  };
+
+  const owner =
+    authorized.isOwner;
+
+  const caller =
+    owner
+      ? {
+          id:
+            token.uid,
+
+          uid:
+            token.uid,
+
+          companyId,
+
+          role:
+            "owner",
+        }
+      : {
+          ...authorized.employee,
+
+          uid:
+            token.uid,
+
+          companyId,
+        };
+
+  let callerEmployee =
+    null;
+
+  let callerPermissions =
+    owner
+      ? ALL_PERMISSIONS
+      : [];
+
+  let callerRole =
+    owner
+      ? {
+          id:
+            "owner",
+
+          level:
+            100,
+        }
+      : null;
+
+  if (!owner) {
+    callerEmployee =
+      authorized.employee;
+
+    callerRole =
+      await loadRole(
+        companyId,
+        resolveEmployeeRoleId(
+          callerEmployee,
+          caller
+        )
+      );
+
+    callerPermissions =
+      authorized.permissions;
+  }
+
+  if (
+    String(
+      company.serviceStatus ||
+        "active"
+    ).toLowerCase() !==
+    "active"
+  ) {
+    throw new Error(
+      "COMPANY_INACTIVE"
+    );
+  }
 
   return {
     token,
+
     caller,
+
     company,
+
     companyId,
+
     owner,
+
     callerEmployee,
+
     callerPermissions,
+
     callerRole,
   };
 }
 
-function requirePermission(context, permission) { if (!context.owner && !context.callerPermissions.includes(permission)) throw new Error("FORBIDDEN"); }
+/* ==========================================================
+   Require Permission
+========================================================== */
 
-function validateTarget(context, target, targetRole) {
-  if (targetRole.id === "owner") throw new Error("OWNER_PROTECTED");
-  if (!context.owner && targetRole.level >= context.callerRole.level) throw new Error("ROLE_HIERARCHY_VIOLATION");
-  if (context.callerRole.id === "team_leader") {
-    const actorTeam = context.callerEmployee?.reporting?.teamId || context.callerEmployee?.employment?.teamId;
-    const targetTeam = target?.reporting?.teamId || target?.employment?.teamId;
-    if (!actorTeam || actorTeam !== targetTeam) throw new Error("TEAM_BOUNDARY_VIOLATION");
+function requirePermission(
+  context,
+  permission
+) {
+  if (
+    !context.owner &&
+    !context.callerPermissions.includes(
+      permission
+    )
+  ) {
+    throw new Error(
+      "FORBIDDEN"
+    );
   }
 }
 
-function responseError(error) {
-  const code = error?.message || "UNKNOWN_ERROR";
+/* ==========================================================
+   Validate Target
+========================================================== */
 
-  const status =
-    code === "UNAUTHENTICATED"
-      ? 401
-      : code === "FORBIDDEN"
-        ? 403
-        : code === "LIMIT_REACHED"
-          ? 409
-          : code === "EMAIL_EXISTS"
-            ? 409
-            : 400;
+function validateTarget(
+  context,
+  target,
+  targetRole
+) {
+  if (
+    targetRole.id ===
+    "owner"
+  ) {
+    throw new Error(
+      "OWNER_PROTECTED"
+    );
+  }
+
+  if (
+    !context.owner &&
+    targetRole.level >=
+      context.callerRole.level
+  ) {
+    throw new Error(
+      "ROLE_HIERARCHY_VIOLATION"
+    );
+  }
+
+  if (
+    context.callerRole.id ===
+    "team_leader"
+  ) {
+    const actorTeam =
+      context
+        .callerEmployee
+        ?.reporting
+        ?.teamId ||
+      context
+        .callerEmployee
+        ?.employment
+        ?.teamId;
+
+    const targetTeam =
+      target?.reporting
+        ?.teamId ||
+      target?.employment
+        ?.teamId;
+
+    if (
+      !actorTeam ||
+      actorTeam !==
+        targetTeam
+    ) {
+      throw new Error(
+        "TEAM_BOUNDARY_VIOLATION"
+      );
+    }
+  }
+}
+
+/* ==========================================================
+   Error Response
+========================================================== */
+
+function responseError(
+  error
+) {
+  const code =
+    error?.message ||
+    "UNKNOWN_ERROR";
+
+  let status = 400;
+
+  if (
+    code ===
+    "UNAUTHENTICATED"
+  ) {
+    status = 401;
+  } else if (
+    code ===
+    "FORBIDDEN"
+  ) {
+    status = 403;
+  } else if (
+    [
+      "LIMIT_REACHED",
+      "EMAIL_EXISTS",
+      "PHONE_EXISTS",
+      "LOGIN_ACCOUNT_ALREADY_EXISTS",
+      "EMPLOYEE_REQUEST_CONFLICT",
+    ].includes(code)
+  ) {
+    status = 409;
+  } else if (
+    code ===
+    "EMPLOYEE_NOT_FOUND"
+  ) {
+    status = 404;
+  }
 
   return NextResponse.json(
     {
@@ -101,564 +365,1890 @@ function responseError(error) {
     },
     {
       status,
-    },
+    }
   );
 }
 
-function requiredText(value, code) {
-  const text = String(value || "").trim();
-  if (!text) throw new Error(code);
+/* ==========================================================
+   Required Text
+========================================================== */
+
+function requiredText(
+  value,
+  code
+) {
+  const text =
+    String(
+      value || ""
+    ).trim();
+
+  if (!text) {
+    throw new Error(
+      code
+    );
+  }
+
   return text;
 }
 
-function employeeProfileUpdates(profile, existing, isCreate = false) {
-  const firstName = requiredText(profile?.personalInfo?.firstName, "FIRST_NAME_REQUIRED");
-  const lastName = requiredText(profile?.personalInfo?.lastName, "LAST_NAME_REQUIRED");
-  const email = requiredText(profile?.personalInfo?.email, "EMAIL_REQUIRED").toLowerCase();
-  const phone = requiredText(profile?.personalInfo?.phone, "PHONE_REQUIRED");
-  const department = requiredText(profile?.employment?.department, "DEPARTMENT_REQUIRED");
-  const designation = requiredText(profile?.employment?.designation, "DESIGNATION_REQUIRED");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("EMAIL_INVALID");
-  if (!/^[6-9]\d{9}$/.test(phone)) throw new Error("PHONE_INVALID");
+/* ==========================================================
+   Employee Profile Updates
+========================================================== */
 
+function employeeProfileUpdates(
+  profile,
+  existing,
+  isCreate = false
+) {
+  const firstName =
+    requiredText(
+      profile
+        ?.personalInfo
+        ?.firstName,
+      "FIRST_NAME_REQUIRED"
+    );
+
+  const lastName =
+    requiredText(
+      profile
+        ?.personalInfo
+        ?.lastName,
+      "LAST_NAME_REQUIRED"
+    );
+
+  const email =
+    requiredText(
+      profile
+        ?.personalInfo
+        ?.email,
+      "EMAIL_REQUIRED"
+    ).toLowerCase();
+
+  const phone =
+    requiredText(
+      profile
+        ?.personalInfo
+        ?.phone,
+      "PHONE_REQUIRED"
+    );
+
+  const department =
+    requiredText(
+      profile
+        ?.employment
+        ?.department,
+      "DEPARTMENT_REQUIRED"
+    );
+
+  const designation =
+    requiredText(
+      profile
+        ?.employment
+        ?.designation,
+      "DESIGNATION_REQUIRED"
+    );
+
+  if (
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      email
+    )
+  ) {
+    throw new Error(
+      "EMAIL_INVALID"
+    );
+  }
+
+  if (
+    !/^[6-9]\d{9}$/.test(
+      phone
+    )
+  ) {
+    throw new Error(
+      "PHONE_INVALID"
+    );
+  }
+
+  /*
+   * Employment lifecycle status is not
+   * changed through ordinary profile edits.
+   *
+   * Deactivate/enable/lock actions use PATCH.
+   */
   const employment = {
-    ...(profile.employment || {}),
+    ...(profile?.employment ||
+      {}),
+
     department,
+
     designation,
-    status: existing.employment?.status || "Active",
+
+    status:
+      existing
+        ?.employment
+        ?.status ||
+      profile
+        ?.employment
+        ?.status ||
+      "Active",
   };
 
   return {
     personalInfo: {
-      ...(profile.personalInfo || {}),
+      ...(profile
+        ?.personalInfo ||
+        {}),
+
       firstName,
+
       lastName,
-      fullName: `${firstName} ${lastName}`.trim(),
+
+      fullName:
+        `${firstName} ${lastName}`.trim(),
+
       email,
+
       phone,
     },
+
     employment,
-    reporting: profile.reporting || {},
-    ...mergeEmployeeStatutory(profile, isCreate ? null : existing),
-    bankDetails: profile.bankDetails || {},
-    address: profile.address || {},
-    documents: profile.documents || {},
+
+    reporting:
+      profile?.reporting ||
+      {},
+
+    ...mergeEmployeeStatutory(
+      profile,
+      isCreate
+        ? null
+        : existing
+    ),
+
+    bankDetails:
+      profile?.bankDetails ||
+      {},
+
+    address:
+      profile?.address ||
+      {},
+
+    documents:
+      profile?.documents ||
+      {},
+
     search: {
-      fullName: `${firstName} ${lastName}`.trim().toLowerCase(),
+      fullName:
+        `${firstName} ${lastName}`
+          .trim()
+          .toLowerCase(),
+
       email,
+
       phone,
-      department: department.toLowerCase(),
-      designation: designation.toLowerCase(),
+
+      department:
+        department.toLowerCase(),
+
+      designation:
+        designation.toLowerCase(),
     },
-    updatedAt: FieldValue.serverTimestamp(),
+
+    updatedAt:
+      FieldValue.serverTimestamp(),
   };
 }
 
-/* =====================================================
-   Update Employee Profile
-===================================================== */
+/* ==========================================================
+   PUT — Update Employee Profile
+========================================================== */
 
-export async function PUT(request) {
+export async function PUT(
+  request
+) {
   try {
-    const context = await authorize(request);
-    const input = await request.json();
-    requirePermission(context, "employee.edit");
+    const context =
+      await authorize(
+        request
+      );
 
-    const employeeFirestoreId = requiredText(input.employeeFirestoreId, "EMPLOYEE_ID_REQUIRED");
-    const employeeRef = adminDb.collection("Companies").doc(context.companyId).collection("Usermanagement").doc(employeeFirestoreId);
-    const targetSnapshot = await employeeRef.get();
-    if (!targetSnapshot.exists) throw new Error("EMPLOYEE_NOT_FOUND");
+    const input =
+      await request.json();
 
-    const existing = targetSnapshot.data() || {};
-    const currentRole = await loadRole(context.companyId, resolveEmployeeRoleId(existing));
-    validateTarget(context, existing, currentRole);
+    requirePermission(
+      context,
+      "employee.edit"
+    );
 
-    const updates = employeeProfileUpdates(input.profile, existing);
-    const duplicateEmail = await employeeRef.parent.where("personalInfo.email", "==", updates.personalInfo.email).get();
-    if (duplicateEmail.docs.some((document) => document.id !== employeeFirestoreId)) throw new Error("EMAIL_EXISTS");
-    const duplicatePhone = await employeeRef.parent.where("personalInfo.phone", "==", updates.personalInfo.phone).get();
-    if (duplicatePhone.docs.some((document) => document.id !== employeeFirestoreId)) throw new Error("PHONE_EXISTS");
-    const requestedAccess = input.access || {};
-    const requestedRoleId = normalizeRoleId(requestedAccess.roleId || currentRole.id);
-    const requestedLoginEnabled = requestedAccess.loginEnabled !== false;
-    const currentLoginEnabled = existing.access?.loginEnabled !== false;
+    const employeeFirestoreId =
+      requiredText(
+        input.employeeFirestoreId,
+        "EMPLOYEE_ID_REQUIRED"
+      );
+
+    const employeeRef =
+      adminDb
+        .collection(
+          "Companies"
+        )
+        .doc(
+          context.companyId
+        )
+        .collection(
+          "Usermanagement"
+        )
+        .doc(
+          employeeFirestoreId
+        );
+
+    /* ======================================
+       Read Employee Once
+    ====================================== */
+
+    const targetSnapshot =
+      await employeeRef.get();
+
+    if (
+      !targetSnapshot.exists
+    ) {
+      throw new Error(
+        "EMPLOYEE_NOT_FOUND"
+      );
+    }
+
+    const existing =
+      targetSnapshot.data() ||
+      {};
+
+    /* ======================================
+       Current Role
+    ====================================== */
+
+    const currentRole =
+      await loadRole(
+        context.companyId,
+        resolveEmployeeRoleId(
+          existing
+        )
+      );
+
+    validateTarget(
+      context,
+      existing,
+      currentRole
+    );
+
+    /* ======================================
+       Build Updates
+    ====================================== */
+
+    const updates =
+      employeeProfileUpdates(
+        input.profile,
+        existing
+      );
+
+    /* ======================================
+       Duplicate Checks
+
+       Only query fields that actually changed.
+       Email and phone checks run in parallel.
+    ====================================== */
+
+    const oldEmail =
+      String(
+        existing
+          ?.personalInfo
+          ?.email ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const newEmail =
+      String(
+        updates
+          ?.personalInfo
+          ?.email ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const oldPhone =
+      String(
+        existing
+          ?.personalInfo
+          ?.phone ||
+          ""
+      ).trim();
+
+    const newPhone =
+      String(
+        updates
+          ?.personalInfo
+          ?.phone ||
+          ""
+      ).trim();
+
+    const emailChanged =
+      oldEmail !==
+      newEmail;
+
+    const phoneChanged =
+      oldPhone !==
+      newPhone;
+
+    const [
+      duplicateEmail,
+      duplicatePhone,
+    ] = await Promise.all([
+      emailChanged
+        ? employeeRef.parent
+            .where(
+              "personalInfo.email",
+              "==",
+              newEmail
+            )
+            .limit(2)
+            .get()
+        : Promise.resolve(
+            null
+          ),
+
+      phoneChanged
+        ? employeeRef.parent
+            .where(
+              "personalInfo.phone",
+              "==",
+              newPhone
+            )
+            .limit(2)
+            .get()
+        : Promise.resolve(
+            null
+          ),
+    ]);
+
+    if (
+      duplicateEmail?.docs.some(
+        (document) =>
+          document.id !==
+          employeeFirestoreId
+      )
+    ) {
+      throw new Error(
+        "EMAIL_EXISTS"
+      );
+    }
+
+    if (
+      duplicatePhone?.docs.some(
+        (document) =>
+          document.id !==
+          employeeFirestoreId
+      )
+    ) {
+      throw new Error(
+        "PHONE_EXISTS"
+      );
+    }
+
+    /* ======================================
+       Access Changes
+    ====================================== */
+
+    const requestedAccess =
+      input.access || {};
+
+    const requestedRoleId =
+      normalizeRoleId(
+        requestedAccess.roleId ||
+          currentRole.id
+      );
+
+    const requestedLoginEnabled =
+      requestedAccess.loginEnabled !==
+      false;
+
+    const currentLoginEnabled =
+      existing.access
+        ?.loginEnabled !==
+      false;
+
     const requestedOverrides = {
-      grant: validPermissions(requestedAccess.permissionOverrides?.grant),
-      deny: validPermissions(requestedAccess.permissionOverrides?.deny),
-    };
-    const currentOverrides = resolvePermissionOverrides(existing);
-    const accessChanged = requestedRoleId !== currentRole.id
-      || requestedLoginEnabled !== currentLoginEnabled
-      || JSON.stringify(requestedOverrides) !== JSON.stringify(currentOverrides);
+      grant:
+        validPermissions(
+          requestedAccess
+            ?.permissionOverrides
+            ?.grant
+        ),
 
-    const authUid = resolveEmployeeAuthUid(existing);
+      deny:
+        validPermissions(
+          requestedAccess
+            ?.permissionOverrides
+            ?.deny
+        ),
+    };
+
+    const currentOverrides =
+      resolvePermissionOverrides(
+        existing
+      );
+
+    const overridesChanged =
+      JSON.stringify(
+        requestedOverrides
+      ) !==
+      JSON.stringify(
+        currentOverrides
+      );
+
+    const roleChanged =
+      requestedRoleId !==
+      currentRole.id;
+
+    const loginChanged =
+      requestedLoginEnabled !==
+      currentLoginEnabled;
+
+    const accessChanged =
+      roleChanged ||
+      loginChanged ||
+      overridesChanged;
+
+    const authUid =
+      resolveEmployeeAuthUid(
+        existing
+      );
+
+    /* ======================================
+       Access Processing
+    ====================================== */
+
     if (accessChanged) {
-      requirePermission(context, "employee.manage");
-      const requestedRole = await loadRole(context.companyId, requestedRoleId);
-      validateTarget(context, existing, requestedRole);
-      if (!context.owner && requestedOverrides.grant.some((permission) => !context.callerPermissions.includes(permission))) throw new Error("PERMISSION_ESCALATION");
-      if (context.callerRole.id === "team_leader" && requestedOverrides.grant.some((permission) => permission.endsWith(".manage"))) throw new Error("PERMISSION_ESCALATION");
-      const effectivePermissions = calculateEffectivePermissions({
-        rolePermissions: requestedRole.permissions,
-        grantedPermissions: requestedOverrides.grant,
-        deniedPermissions: requestedOverrides.deny,
-      });
-      updates["access.roleId"] = requestedRoleId;
-      updates["access.permissionOverrides"] = requestedOverrides;
-      updates["access.effectivePermissions"] = effectivePermissions;
-      updates["access.loginEnabled"] = requestedLoginEnabled;
-      updates["access.status"] = requestedLoginEnabled ? "active" : "inactive";
+      requirePermission(
+        context,
+        "employee.manage"
+      );
+
+      /*
+       * Reuse current role when the role itself
+       * did not change.
+       */
+      const requestedRole =
+        roleChanged
+          ? await loadRole(
+              context.companyId,
+              requestedRoleId
+            )
+          : currentRole;
+
+      validateTarget(
+        context,
+        existing,
+        requestedRole
+      );
+
+      if (
+        !context.owner &&
+        requestedOverrides.grant.some(
+          (permission) =>
+            !context
+              .callerPermissions
+              .includes(
+                permission
+              )
+        )
+      ) {
+        throw new Error(
+          "PERMISSION_ESCALATION"
+        );
+      }
+
+      if (
+        context
+          .callerRole
+          .id ===
+          "team_leader" &&
+        requestedOverrides.grant.some(
+          (permission) =>
+            permission.endsWith(
+              ".manage"
+            )
+        )
+      ) {
+        throw new Error(
+          "PERMISSION_ESCALATION"
+        );
+      }
+
+      const effectivePermissions =
+        calculateEffectivePermissions({
+          rolePermissions:
+            requestedRole.permissions,
+
+          grantedPermissions:
+            requestedOverrides.grant,
+
+          deniedPermissions:
+            requestedOverrides.deny,
+        });
+
+      updates[
+        "access.roleId"
+      ] = requestedRoleId;
+
+      updates[
+        "access.permissionOverrides"
+      ] = requestedOverrides;
+
+      updates[
+        "access.effectivePermissions"
+      ] =
+        effectivePermissions;
+
+      updates[
+        "access.loginEnabled"
+      ] =
+        requestedLoginEnabled;
+
+      updates[
+        "access.status"
+      ] =
+        requestedLoginEnabled
+          ? "active"
+          : "inactive";
+
+      /* ====================================
+         Sync Firebase Auth Only If Account
+         Already Exists
+      ==================================== */
 
       if (authUid) {
-        await syncEmployeeClaims(adminAuth, {
-          uid: authUid, companyId: context.companyId, employeeFirestoreId,
-          employee: { ...existing, access: { ...existing.access, roleId: requestedRoleId } },
-        });
-        await adminAuth.updateUser(authUid, { disabled: !requestedLoginEnabled });
-        if (!requestedLoginEnabled) await adminAuth.revokeRefreshTokens(authUid);
+        /*
+         * Claims only need syncing if the role
+         * or permission-related access changed.
+         */
+        if (
+          roleChanged ||
+          overridesChanged
+        ) {
+          await syncEmployeeClaims(
+            adminAuth,
+            {
+              uid:
+                authUser.uid,
+          
+              companyId:
+                context.companyId,
+          
+              employeeFirestoreId:
+                employeeRef.id,
+          
+              employee: {
+                ...employeeData,
+          
+                access: {
+                  ...employeeData.access,
+          
+                  authUid:
+                    authUser.uid,
+          
+                  roleId,
+          
+                  effectivePermissions:
+                    permissions,
+          
+                  permissionOverrides,
+                },
+              },
+          
+              // Already returned by createUser().
+              // Avoid another Firebase Auth lookup.
+              authUser,
+            }
+          );
+        }
+
+        /*
+         * Only call Firebase Auth update when
+         * login-enabled state actually changed.
+         */
+        if (loginChanged) {
+          await adminAuth.updateUser(
+            authUid,
+            {
+              disabled:
+                !requestedLoginEnabled,
+            }
+          );
+
+          if (
+            !requestedLoginEnabled
+          ) {
+            await adminAuth.revokeRefreshTokens(
+              authUid
+            );
+          }
+        }
       }
     }
 
-    const logRef = adminDb.collection("Companies").doc(context.companyId).collection("ActivityLogs").doc();
-    const batch = adminDb.batch();
-    batch.update(employeeRef, updates);
-    batch.set(logRef, {
-      type: "employee.profile-updated",
-      actorId: context.token.uid,
-      targetUserId: authUid || null,
-      targetEmployeeId: employeeFirestoreId,
-      metadata: { accessChanged },
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    /* ======================================
+       Firestore Update + Audit
+       Single Batch / Single Round Trip
+    ====================================== */
+
+    const logRef =
+      adminDb
+        .collection(
+          "Companies"
+        )
+        .doc(
+          context.companyId
+        )
+        .collection(
+          "ActivityLogs"
+        )
+        .doc();
+
+    const batch =
+      adminDb.batch();
+
+    batch.update(
+      employeeRef,
+      updates
+    );
+
+    batch.set(
+      logRef,
+      {
+        type:
+          "employee.profile-updated",
+
+        actorId:
+          context.token.uid,
+
+        targetUserId:
+          authUid || null,
+
+        targetEmployeeId:
+          employeeFirestoreId,
+
+        metadata: {
+          accessChanged,
+
+          emailChanged,
+
+          phoneChanged,
+        },
+
+        createdAt:
+          FieldValue.serverTimestamp(),
+      }
+    );
+
     await batch.commit();
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+    });
   } catch (error) {
-    console.error("Employee profile update failed:", error);
-    return responseError(error);
+    console.error(
+      "Employee profile update failed:",
+      error
+    );
+
+    return responseError(
+      error
+    );
   }
 }
 
-/* =====================================================
-   Create Employee Login Account
-===================================================== */
+/* ==========================================================
+   POST — Create Employee / Login Account
+========================================================== */
 
-export async function POST(request) {
+export async function POST(
+  request
+) {
   let createdUid = null;
-  let createdEmployeeRef = null;
+
+  let createdEmployeeRef =
+    null;
 
   try {
-    const context = await authorize(request);
-    const input = await request.json();
+    const context =
+      await authorize(
+        request
+      );
 
-    if (!input.employeeFirestoreId) {
-      throw new Error("EMPLOYEE_ID_REQUIRED");
+    const input =
+      await request.json();
+
+    if (
+      !input.employeeFirestoreId
+    ) {
+      throw new Error(
+        "EMPLOYEE_ID_REQUIRED"
+      );
     }
 
-    if (input.loginEnabled !== false && !input.password) {
-      throw new Error("PASSWORD_REQUIRED");
+    if (
+      input.loginEnabled !==
+        false &&
+      !input.password
+    ) {
+      throw new Error(
+        "PASSWORD_REQUIRED"
+      );
     }
 
-    const employeeRef = adminDb
-      .collection("Companies")
-      .doc(context.companyId)
-      .collection("Usermanagement")
-      .doc(input.employeeFirestoreId);
+    const employeeRef =
+      adminDb
+        .collection(
+          "Companies"
+        )
+        .doc(
+          context.companyId
+        )
+        .collection(
+          "Usermanagement"
+        )
+        .doc(
+          input.employeeFirestoreId
+        );
+
+    let employeeData =
+      null;
+
+    let preparedRole =
+      null;
+
+    /* ======================================
+       Create Employee Profile
+    ====================================== */
 
     if (input.profile) {
-      requirePermission(context, "employee.create");
-      requirePermission(context, "employee.manage");
+      requirePermission(
+        context,
+        "employee.create"
+      );
 
-      const existingRequest = await employeeRef.get();
-      if (existingRequest.exists) {
-        const existingData = existingRequest.data() || {};
-        if (existingData.createdBy !== context.token.uid) throw new Error("EMPLOYEE_REQUEST_CONFLICT");
-        if (existingData.access?.loginEnabled === true && existingData.access?.status === "active" && resolveEmployeeAuthUid(existingData)) {
-          await ensureEmployeeClaims(adminAuth, { uid: resolveEmployeeAuthUid(existingData), companyId: context.companyId, employeeFirestoreId: employeeRef.id, employee: existingData });
-        } else if (input.loginEnabled !== false) {
-          throw new Error("EMPLOYEE_PROVISIONING_INCOMPLETE");
+      requirePermission(
+        context,
+        "employee.manage"
+      );
+
+      /* ====================================
+         Idempotency Check
+      ==================================== */
+
+      const existingRequest =
+        await employeeRef.get();
+
+      if (
+        existingRequest.exists
+      ) {
+        const existingData =
+          existingRequest.data() ||
+          {};
+
+        if (
+          existingData.createdBy !==
+          context.token.uid
+        ) {
+          throw new Error(
+            "EMPLOYEE_REQUEST_CONFLICT"
+          );
         }
+
+        const existingUid =
+          resolveEmployeeAuthUid(
+            existingData
+          );
+
+        if (
+          existingData.access
+            ?.loginEnabled ===
+            true &&
+          existingData.access
+            ?.status ===
+            "active" &&
+          existingUid
+        ) {
+          await ensureEmployeeClaims(
+            adminAuth,
+            {
+              uid:
+                existingUid,
+
+              companyId:
+                context.companyId,
+
+              employeeFirestoreId:
+                employeeRef.id,
+
+              employee:
+                existingData,
+            }
+          );
+        } else if (
+          input.loginEnabled !==
+          false
+        ) {
+          throw new Error(
+            "EMPLOYEE_PROVISIONING_INCOMPLETE"
+          );
+        }
+
         return NextResponse.json({
           success: true,
-          employeeId: existingData.employeeId,
-          employeeFirestoreId: employeeRef.id,
+
+          employeeId:
+            existingData.employeeId,
+
+          employeeFirestoreId:
+            employeeRef.id,
+
           idempotent: true,
         });
       }
 
-      const employeesSnapshot = await employeeRef.parent.get();
-      const activeEmployeeCount = employeesSnapshot.docs.filter((document) => String(document.data().employment?.status || "active").toLowerCase() !== "inactive").length;
-      const planName = String(context.company.plan || "").toLowerCase();
-      const planLimit = PLAN_LIMITS[planName] ?? (Number(context.company.employeeCount || 0) || Infinity);
-      const configuredLimit = Number(context.company.employeeLimit || context.company.employeeCount || planLimit);
-      const employeeLimit = planName === "enterprise" ? Infinity : Math.min(configuredLimit || planLimit, planLimit || configuredLimit);
-      if (activeEmployeeCount >= employeeLimit) throw new Error("LIMIT_REACHED");
+      /* ====================================
+         Role + Employee Collection
 
-      const profileEmail = String(input.profile.personalInfo?.email || "").trim().toLowerCase();
-      const profilePhone = String(input.profile.personalInfo?.phone || "").trim();
-      if (employeesSnapshot.docs.some((document) => String(document.data().personalInfo?.email || "").trim().toLowerCase() === profileEmail)) throw new Error("EMAIL_EXISTS");
-      if (employeesSnapshot.docs.some((document) => String(document.data().personalInfo?.phone || "").trim() === profilePhone)) throw new Error("PHONE_EXISTS");
+         These are independent and therefore
+         run in parallel.
+      ==================================== */
 
-      const usedEmployeeIds = new Set(employeesSnapshot.docs.map((document) => {
-        const raw = String(document.data().employeeId || document.data().login?.employeeId || "").trim();
-        return canonicalEmployeeId(raw);
-      }).filter(Boolean));
-      const roleId = normalizeRoleId(input.access?.roleId || input.profile.employment?.role || "employee");
-      const role = await loadRole(context.companyId, roleId);
-      validateTarget(context, input.profile, role);
+      const roleId =
+        normalizeRoleId(
+          input.access
+            ?.roleId ||
+            input.profile
+              ?.employment
+              ?.role ||
+            "employee"
+        );
+
+      const [
+        employeesSnapshot,
+        role,
+      ] = await Promise.all([
+        employeeRef.parent.get(),
+
+        loadRole(
+          context.companyId,
+          roleId
+        ),
+      ]);
+
+      preparedRole =
+        role;
+
+      validateTarget(
+        context,
+        input.profile,
+        role
+      );
+
+      /* ====================================
+         Subscription Limit
+      ==================================== */
+
+      const activeEmployeeCount =
+        employeesSnapshot.docs.filter(
+          (document) =>
+            String(
+              document.data()
+                .employment
+                ?.status ||
+                "active"
+            ).toLowerCase() !==
+            "inactive"
+        ).length;
+
+      const planName =
+        String(
+          context.company.plan ||
+            ""
+        ).toLowerCase();
+
+      const planLimit =
+        PLAN_LIMITS[
+          planName
+        ] ??
+        (
+          Number(
+            context.company
+              .employeeCount ||
+              0
+          ) ||
+          Infinity
+        );
+
+      const configuredLimit =
+        Number(
+          context.company
+            .employeeLimit ||
+            context.company
+              .employeeCount ||
+            planLimit
+        );
+
+      const employeeLimit =
+        planName ===
+        "enterprise"
+          ? Infinity
+          : Math.min(
+              configuredLimit ||
+                planLimit,
+
+              planLimit ||
+                configuredLimit
+            );
+
+      if (
+        activeEmployeeCount >=
+        employeeLimit
+      ) {
+        throw new Error(
+          "LIMIT_REACHED"
+        );
+      }
+
+      /* ====================================
+         Duplicate Email / Phone
+         Reuse the same snapshot.
+      ==================================== */
+
+      const profileEmail =
+        String(
+          input.profile
+            ?.personalInfo
+            ?.email ||
+            ""
+        )
+          .trim()
+          .toLowerCase();
+
+      const profilePhone =
+        String(
+          input.profile
+            ?.personalInfo
+            ?.phone ||
+            ""
+        ).trim();
+
+      if (
+        employeesSnapshot.docs.some(
+          (document) =>
+            String(
+              document.data()
+                .personalInfo
+                ?.email ||
+                ""
+            )
+              .trim()
+              .toLowerCase() ===
+            profileEmail
+        )
+      ) {
+        throw new Error(
+          "EMAIL_EXISTS"
+        );
+      }
+
+      if (
+        employeesSnapshot.docs.some(
+          (document) =>
+            String(
+              document.data()
+                .personalInfo
+                ?.phone ||
+                ""
+            ).trim() ===
+            profilePhone
+        )
+      ) {
+        throw new Error(
+          "PHONE_EXISTS"
+        );
+      }
+
+      /* ====================================
+         Used Employee IDs
+      ==================================== */
+
+      const usedEmployeeIds =
+        new Set(
+          employeesSnapshot.docs
+            .map(
+              (document) => {
+                const raw =
+                  String(
+                    document.data()
+                      .employeeId ||
+                      document.data()
+                        .login
+                        ?.employeeId ||
+                      ""
+                  ).trim();
+
+                return canonicalEmployeeId(
+                  raw
+                );
+              }
+            )
+            .filter(Boolean)
+        );
+
+      /* ====================================
+         Permission Overrides
+      ==================================== */
+
       const requestedOverrides = {
-        grant: validPermissions(input.access?.permissionOverrides?.grant),
-        deny: validPermissions(input.access?.permissionOverrides?.deny),
+        grant:
+          validPermissions(
+            input.access
+              ?.permissionOverrides
+              ?.grant
+          ),
+
+        deny:
+          validPermissions(
+            input.access
+              ?.permissionOverrides
+              ?.deny
+          ),
       };
-      if (!context.owner && requestedOverrides.grant.some((permission) => !context.callerPermissions.includes(permission))) throw new Error("PERMISSION_ESCALATION");
-      const effectivePermissions = calculateEffectivePermissions({ rolePermissions: role.permissions, grantedPermissions: requestedOverrides.grant, deniedPermissions: requestedOverrides.deny });
-      const companyRef = adminDb.collection("Companies").doc(context.companyId);
 
-      await adminDb.runTransaction(async (transaction) => {
-        const companySnapshot = await transaction.get(companyRef);
-        if (!companySnapshot.exists) throw new Error("COMPANY_NOT_FOUND");
-        let nextEmployeeNumber = Number(companySnapshot.data().nextEmployeeNumber || 1);
-        while (usedEmployeeIds.has(String(nextEmployeeNumber))) nextEmployeeNumber += 1;
-        const employeeId = String(nextEmployeeNumber).padStart(8, "0");
-        const profile = employeeProfileUpdates(input.profile, {}, true);
-        transaction.create(employeeRef, {
-          ...profile,
-          employeeId,
-          companyId: context.companyId,
-          firestoreId: input.employeeFirestoreId,
-          createdBy: context.token.uid,
-          employment: { ...profile.employment, roleId },
-          login: { employeeId, temporaryPasswordSet: false, lastLogin: null },
-          access: {
-            authUid: null,
-            loginEnabled: false,
-            roleId,
-            status: "active",
-            requirePasswordChange: input.requirePasswordChange !== false,
-            policyAccepted: false,
-            effectivePermissions,
-            permissionOverrides: requestedOverrides,
-          },
-          createdAt: FieldValue.serverTimestamp(),
+      if (
+        !context.owner &&
+        requestedOverrides.grant.some(
+          (permission) =>
+            !context
+              .callerPermissions
+              .includes(
+                permission
+              )
+        )
+      ) {
+        throw new Error(
+          "PERMISSION_ESCALATION"
+        );
+      }
+
+      if (
+        context
+          .callerRole
+          .id ===
+          "team_leader" &&
+        requestedOverrides.grant.some(
+          (permission) =>
+            permission.endsWith(
+              ".manage"
+            )
+        )
+      ) {
+        throw new Error(
+          "PERMISSION_ESCALATION"
+        );
+      }
+
+      const effectivePermissions =
+        calculateEffectivePermissions({
+          rolePermissions:
+            role.permissions,
+
+          grantedPermissions:
+            requestedOverrides.grant,
+
+          deniedPermissions:
+            requestedOverrides.deny,
         });
-        transaction.update(companyRef, { nextEmployeeNumber: nextEmployeeNumber + 1 });
+
+      const companyRef =
+        adminDb
+          .collection(
+            "Companies"
+          )
+          .doc(
+            context.companyId
+          );
+
+      let createdEmployeeData =
+        null;
+
+      /* ====================================
+         Allocate Employee Number
+      ==================================== */
+
+      await adminDb.runTransaction(
+        async (
+          transaction
+        ) => {
+          const companySnapshot =
+            await transaction.get(
+              companyRef
+            );
+
+          if (
+            !companySnapshot.exists
+          ) {
+            throw new Error(
+              "COMPANY_NOT_FOUND"
+            );
+          }
+
+          let nextEmployeeNumber =
+            Number(
+              companySnapshot.data()
+                .nextEmployeeNumber ||
+                1
+            );
+
+          while (
+            usedEmployeeIds.has(
+              canonicalEmployeeId(
+                String(
+                  nextEmployeeNumber
+                )
+              )
+            )
+          ) {
+            nextEmployeeNumber +=
+              1;
+          }
+
+          const employeeId =
+            String(
+              nextEmployeeNumber
+            ).padStart(
+              8,
+              "0"
+            );
+
+          const profile =
+            employeeProfileUpdates(
+              input.profile,
+              {},
+              true
+            );
+
+          createdEmployeeData = {
+            ...profile,
+
+            employeeId,
+
+            companyId:
+              context.companyId,
+
+            firestoreId:
+              input.employeeFirestoreId,
+
+            createdBy:
+              context.token.uid,
+
+            employment: {
+              ...profile.employment,
+
+              roleId,
+            },
+
+            login: {
+              employeeId,
+
+              temporaryPasswordSet:
+                false,
+
+              lastLogin:
+                null,
+            },
+
+            access: {
+              authUid:
+                null,
+
+              loginEnabled:
+                false,
+
+              roleId,
+
+              status:
+                "active",
+
+              requirePasswordChange:
+                input.requirePasswordChange !==
+                false,
+
+              policyAccepted:
+                false,
+
+              effectivePermissions,
+
+              permissionOverrides:
+                requestedOverrides,
+            },
+
+            createdAt:
+              FieldValue.serverTimestamp(),
+          };
+
+          transaction.create(
+            employeeRef,
+            createdEmployeeData
+          );
+
+          transaction.update(
+            companyRef,
+            {
+              nextEmployeeNumber:
+                nextEmployeeNumber +
+                1,
+            }
+          );
+        }
+      );
+
+      createdEmployeeRef =
+        employeeRef;
+
+      /*
+       * Important performance improvement:
+       * do NOT read employeeRef again.
+       *
+       * We already have the exact data written
+       * by the transaction.
+       */
+      employeeData =
+        createdEmployeeData;
+    }
+
+    /* ======================================
+       Existing Employee Provisioning
+
+       Only read the employee here if this POST
+       was called without creating profile data.
+    ====================================== */
+
+    if (!employeeData) {
+      const employeeDoc =
+        await employeeRef.get();
+
+      if (
+        !employeeDoc.exists
+      ) {
+        throw new Error(
+          "EMPLOYEE_NOT_FOUND"
+        );
+      }
+
+      employeeData =
+        employeeDoc.data() ||
+        {};
+    }
+
+    /* ======================================
+       No Login Requested
+    ====================================== */
+
+    if (
+      input.loginEnabled ===
+      false
+    ) {
+      return NextResponse.json({
+        success: true,
+
+        employeeId:
+          employeeData.employeeId,
+
+        employeeFirestoreId:
+          employeeRef.id,
       });
-      createdEmployeeRef = employeeRef;
     }
 
-    const employeeDoc = await employeeRef.get();
+    requirePermission(
+      context,
+      "employee.create"
+    );
 
-    if (!employeeDoc.exists) {
-      throw new Error("EMPLOYEE_NOT_FOUND");
-    }
+    requirePermission(
+      context,
+      "employee.manage"
+    );
 
-    const employeeData = employeeDoc.data() || {};
-    if (input.loginEnabled === false) {
-      return NextResponse.json({ success: true, employeeId: employeeData.employeeId, employeeFirestoreId: employeeRef.id });
-    }
-    requirePermission(context, "employee.create");
-    requirePermission(context, "employee.manage");
+    const employeeId =
+      String(
+        employeeData.employeeId ||
+          employeeData.login
+            ?.employeeId ||
+          ""
+      ).trim();
 
-    const employeeId = String(
-      employeeData.employeeId || employeeData.login?.employeeId || "",
-    ).trim();
-
-    const corporateId = String(
-      context.company.corporateId || context.company.companyCode || "",
-    )
-      .trim()
-      .toLowerCase();
+    const corporateId =
+      String(
+        context.company
+          .corporateId ||
+          context.company
+            .companyCode ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
 
     if (!employeeId) {
-      throw new Error("EMPLOYEE_ID_MISSING");
+      throw new Error(
+        "EMPLOYEE_ID_MISSING"
+      );
     }
 
     if (!corporateId) {
-      throw new Error("CORPORATE_ID_MISSING");
+      throw new Error(
+        "CORPORATE_ID_MISSING"
+      );
     }
 
-    /*
-     * This email is used internally by Firebase Authentication.
-     * The employee never needs to see or enter it.
-     */
-    const loginEmail = buildEmployeeLoginEmail(corporateId, employeeId);
+    const loginEmail =
+      buildEmployeeLoginEmail(
+        corporateId,
+        employeeId
+      );
 
-    /* =================================================
-       Check employee subscription limit
-    ================================================= */
+    /* ======================================
+       Role and Permissions
 
-    const employees = await adminDb
-      .collection("Companies")
-      .doc(context.companyId)
-      .collection("Usermanagement")
-      .get();
+       Reuse the role loaded during employee
+       creation when available.
+    ====================================== */
 
-    const activeEmployeeCount = employees.docs.filter((document) => {
-      const employee = document.data();
+    const roleId =
+      normalizeRoleId(
+        employeeData.access
+          ?.roleId ||
+          employeeData.roleId ||
+          employeeData.employment
+            ?.role
+      );
 
-      const employmentStatus = String(
-        employee.employment?.status || "active",
-      ).toLowerCase();
-
-      return employmentStatus !== "inactive";
-    }).length;
-
-    const planName = String(context.company.plan || "").toLowerCase();
-
-    const planLimit =
-      PLAN_LIMITS[planName] ??
-      (Number(context.company.employeeCount || 0) || Infinity);
-
-    const configuredLimit = Number(
-      context.company.employeeLimit ||
-        context.company.employeeCount ||
-        planLimit,
-    );
-
-    const limit =
-      planName === "enterprise"
-        ? Infinity
-        : Math.min(
-            configuredLimit || planLimit,
-            planLimit || configuredLimit,
+    const role =
+      preparedRole &&
+      preparedRole.id ===
+        roleId
+        ? preparedRole
+        : await loadRole(
+            context.companyId,
+            roleId
           );
 
-    if (activeEmployeeCount > limit) {
-      throw new Error("LIMIT_REACHED");
+    validateTarget(
+      context,
+      employeeData,
+      role
+    );
+
+    const requestedOverrides =
+      resolvePermissionOverrides(
+        employeeData
+      );
+
+    const grant =
+      validPermissions(
+        requestedOverrides.grant
+      );
+
+    const deny =
+      validPermissions(
+        requestedOverrides.deny
+      );
+
+    if (
+      !context.owner &&
+      grant.some(
+        (permission) =>
+          !context
+            .callerPermissions
+            .includes(
+              permission
+            )
+      )
+    ) {
+      throw new Error(
+        "PERMISSION_ESCALATION"
+      );
     }
 
-    /* =================================================
-       Role and permissions
-    ================================================= */
+    if (
+      context
+        .callerRole
+        .id ===
+        "team_leader" &&
+      grant.some(
+        (permission) =>
+          permission.endsWith(
+            ".manage"
+          )
+      )
+    ) {
+      throw new Error(
+        "PERMISSION_ESCALATION"
+      );
+    }
 
-    const roleId = normalizeRoleId(employeeData.access?.roleId || employeeData.roleId || employeeData.employment?.role);
-    const role = await loadRole(context.companyId, roleId);
-    validateTarget(context, employeeData, role);
-    const requestedOverrides = resolvePermissionOverrides(employeeData);
-    const grant = validPermissions(requestedOverrides.grant);
-    const deny = validPermissions(requestedOverrides.deny);
-    if (!context.owner && grant.some((permission) => !context.callerPermissions.includes(permission))) throw new Error("PERMISSION_ESCALATION");
-    if (context.callerRole.id === "team_leader" && grant.some((permission) => permission.endsWith(".manage"))) throw new Error("PERMISSION_ESCALATION");
-    const permissionOverrides = { grant, deny };
-    const permissions = calculateEffectivePermissions({ rolePermissions: role.permissions, grantedPermissions: grant, deniedPermissions: deny });
+    const permissionOverrides = {
+      grant,
 
-    /* =================================================
-       Normalize phone number
-    ================================================= */
+      deny,
+    };
 
-    const rawPhoneNumber = String(input.phoneNumber || "").trim();
+    const permissions =
+      calculateEffectivePermissions({
+        rolePermissions:
+          role.permissions,
 
-    const phoneNumber = /^\+[1-9]\d{7,14}$/.test(rawPhoneNumber)
-      ? rawPhoneNumber
-      : /^\d{10}$/.test(rawPhoneNumber)
-        ? `+91${rawPhoneNumber}`
-        : undefined;
+        grantedPermissions:
+          grant,
 
-    /* =================================================
-       Prevent duplicate Firebase login
-    ================================================= */
+        deniedPermissions:
+          deny,
+      });
+
+    /* ======================================
+       Phone Number
+    ====================================== */
+
+    const rawPhoneNumber =
+      String(
+        input.phoneNumber ||
+          ""
+      ).trim();
+
+    const phoneNumber =
+      /^\+[1-9]\d{7,14}$/.test(
+        rawPhoneNumber
+      )
+        ? rawPhoneNumber
+        : /^\d{10}$/.test(
+              rawPhoneNumber
+            )
+          ? `+91${rawPhoneNumber}`
+          : undefined;
+
+    /* ======================================
+       Create Firebase Auth User
+
+       No getUserByEmail pre-check.
+       createUser itself is authoritative.
+    ====================================== */
+
+    let authUser;
 
     try {
-      await adminAuth.getUserByEmail(loginEmail);
-      throw new Error("LOGIN_ACCOUNT_ALREADY_EXISTS");
+      authUser =
+        await adminAuth.createUser({
+          email:
+            loginEmail,
+
+          password:
+            input.password,
+
+          displayName:
+            input.displayName ||
+            employeeData
+              .personalInfo
+              ?.fullName ||
+            employeeId,
+
+          phoneNumber,
+
+          disabled:
+            false,
+        });
     } catch (error) {
-      if (error.message === "LOGIN_ACCOUNT_ALREADY_EXISTS") {
-        throw error;
+      if (
+        error?.code ===
+          "auth/email-already-exists" ||
+        error?.code ===
+          "auth/phone-number-already-exists"
+      ) {
+        throw new Error(
+          "LOGIN_ACCOUNT_ALREADY_EXISTS"
+        );
       }
 
-      if (error.code !== "auth/user-not-found") {
-        throw error;
-      }
+      throw error;
     }
 
-    /* =================================================
-       Create Firebase Authentication user
-    ================================================= */
+    createdUid =
+      authUser.uid;
 
-    const authUser = await adminAuth.createUser({
-      email: loginEmail,
-      password: input.password,
-      displayName:
-        input.displayName ||
-        employeeData.personalInfo?.fullName ||
-        employeeId,
-      phoneNumber,
-      disabled: false,
-    });
+    /* ======================================
+       Custom Claims
+    ====================================== */
 
-    createdUid = authUser.uid;
+    await syncEmployeeClaims(
+      adminAuth,
+      {
+        uid:
+          authUser.uid,
 
-    /* =================================================
-       Set Firebase custom claims
-    ================================================= */
+        companyId:
+          context.companyId,
 
-    await syncEmployeeClaims(adminAuth, {
-      uid: authUser.uid, companyId: employeeRef.parent.parent.id, employeeFirestoreId: employeeRef.id,
-      // The server has just allocated this UID; the same link is committed below.
-      employee: { ...employeeData, access: { ...employeeData.access, authUid: authUser.uid, roleId } },
-    });
+        employeeFirestoreId:
+          employeeRef.id,
 
-    /* =================================================
-       Save login and access records
-    ================================================= */
+        employee: {
+          ...employeeData,
 
-    const batch = adminDb.batch();
+          access: {
+            ...employeeData.access,
 
-    const rootUserRef = adminDb
-      .collection("Usermanagement")
-      .doc(authUser.uid);
+            authUid:
+              authUser.uid,
 
-    const personalEmail = String(
-      employeeData.personalInfo?.email || input.email || "",
-    )
-      .trim()
-      .toLowerCase();
+            roleId,
+
+            effectivePermissions:
+              permissions,
+
+            permissionOverrides,
+          },
+        },
+      }
+    );
+
+    /* ======================================
+       Firestore Login Records
+    ====================================== */
+
+    const batch =
+      adminDb.batch();
+
+    const rootUserRef =
+      adminDb
+        .collection(
+          "Usermanagement"
+        )
+        .doc(
+          authUser.uid
+        );
+
+    const personalEmail =
+      String(
+        employeeData
+          .personalInfo
+          ?.email ||
+          input.email ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
 
     batch.set(
       rootUserRef,
       {
-        uid: authUser.uid,
+        uid:
+          authUser.uid,
 
-        companyId: context.companyId,
-        companyEmployeeId: input.employeeFirestoreId,
+        companyId:
+          context.companyId,
+
+        companyEmployeeId:
+          employeeRef.id,
+
+        employeeFirestoreId:
+          employeeRef.id,
 
         corporateId,
+
         employeeId,
 
-        /*
-         * Internal Firebase Authentication email.
-         */
         loginEmail,
 
-        /*
-         * Actual employee communication email.
-         */
-        email: personalEmail,
+        email:
+          personalEmail,
 
-        role: roleId,
-        status: "active",
+        role:
+          roleId,
 
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
+        status:
+          "active",
+
+        createdAt:
+          FieldValue.serverTimestamp(),
+
+        updatedAt:
+          FieldValue.serverTimestamp(),
       },
       {
-        merge: true,
-      },
+        merge:
+          true,
+      }
     );
 
     batch.set(
       employeeRef,
       {
         access: {
-          authUid: authUser.uid,
-          loginEnabled: true,
+          authUid:
+            authUser.uid,
+
+          loginEnabled:
+            true,
+
           roleId,
-          status: "active",
+
+          status:
+            "active",
 
           requirePasswordChange:
-            input.requirePasswordChange !== false,
+            input.requirePasswordChange !==
+            false,
 
-          policyAccepted: false,
+          policyAccepted:
+            false,
 
-          effectivePermissions: permissions,
+          effectivePermissions:
+            permissions,
 
           permissionOverrides,
         },
 
         login: {
           corporateId,
+
           employeeId,
+
           loginEmail,
 
-          lastLogin: null,
+          lastLogin:
+            null,
 
           temporaryPasswordSet:
-            input.requirePasswordChange !== false,
+            input.requirePasswordChange !==
+            false,
         },
 
-        updatedAt: FieldValue.serverTimestamp(),
+        updatedAt:
+          FieldValue.serverTimestamp(),
       },
       {
-        merge: true,
-      },
+        merge:
+          true,
+      }
     );
 
-    const activityLogRef = adminDb
-      .collection("Companies")
-      .doc(context.companyId)
-      .collection("ActivityLogs")
-      .doc();
+    const activityLogRef =
+      adminDb
+        .collection(
+          "Companies"
+        )
+        .doc(
+          context.companyId
+        )
+        .collection(
+          "ActivityLogs"
+        )
+        .doc();
 
-    batch.set(activityLogRef, {
-      type: "employee.account-created",
+    batch.set(
+      activityLogRef,
+      {
+        type:
+          "employee.account-created",
 
-      actorId: context.token.uid,
-      targetUserId: authUser.uid,
-      targetEmployeeId: input.employeeFirestoreId,
+        actorId:
+          context.token.uid,
 
-      metadata: {
-        roleId,
-        employeeId,
-        permissionCount: permissions.length,
-      },
+        targetUserId:
+          authUser.uid,
 
-      createdAt: FieldValue.serverTimestamp(),
-    });
+        targetEmployeeId:
+          employeeRef.id,
+
+        metadata: {
+          roleId,
+
+          employeeId,
+
+          permissionCount:
+            permissions.length,
+        },
+
+        createdAt:
+          FieldValue.serverTimestamp(),
+      }
+    );
 
     await batch.commit();
 
     return NextResponse.json({
       success: true,
-      uid: authUser.uid,
+
+      uid:
+        authUser.uid,
+
       employeeId,
+
+      employeeFirestoreId:
+        employeeRef.id,
+
       loginEmail,
     });
   } catch (error) {
     /*
-     * If Firebase Auth user was created but Firestore saving failed,
-     * delete the Firebase account to avoid an incomplete account.
+     * Firebase Auth was created but Firestore
+     * failed: remove the Auth account.
      */
     if (createdUid) {
-      await adminAuth.deleteUser(createdUid).catch(() => {});
-    }
-    if (createdEmployeeRef) {
-      await createdEmployeeRef.delete().catch(() => {});
+      await adminAuth
+        .deleteUser(
+          createdUid
+        )
+        .catch(
+          () => {}
+        );
     }
 
-    console.error("RBAC user creation failed:", error);
+    /*
+     * Employee profile was created as part of
+     * this request but provisioning failed:
+     * rollback the incomplete employee.
+     */
+    if (
+      createdEmployeeRef
+    ) {
+      await createdEmployeeRef
+        .delete()
+        .catch(
+          () => {}
+        );
+    }
 
-    return responseError(error);
+    console.error(
+      "RBAC user creation failed:",
+      error
+    );
+
+    return responseError(
+      error
+    );
   }
 }
 
-/* =====================================================
-   Update Employee Login Account
-===================================================== */
+/* ==========================================================
+   PATCH — Employee Security / Login Actions
+========================================================== */
 
-export async function PATCH(request) {
+export async function PATCH(
+  request
+) {
   try {
-    const context = await authorize(request);
-    const input = await request.json();
+    const context =
+      await authorize(
+        request
+      );
+
+    const input =
+      await request.json();
 
     if (!input.action) {
-      throw new Error("ACTION_REQUIRED");
+      throw new Error(
+        "ACTION_REQUIRED"
+      );
     }
 
-    requirePermission(context, input.action === "role" ? "employee.manage" : "employee.manage");
+    requirePermission(
+      context,
+      "employee.manage"
+    );
 
-    let employeeRef = null;
-    let employeeData = null;
-    if (input.employeeFirestoreId) {
-      employeeRef = adminDb.collection("Companies").doc(context.companyId).collection("Usermanagement").doc(input.employeeFirestoreId);
-      const targetSnap = await employeeRef.get();
-      if (!targetSnap.exists) throw new Error("EMPLOYEE_NOT_FOUND");
-      employeeData = targetSnap.data() || {};
-      const currentTargetRole = await loadRole(context.companyId, resolveEmployeeRoleId(employeeData));
-      validateTarget(context, employeeData, currentTargetRole);
-      const storedUid = resolveEmployeeAuthUid(employeeData);
-      if (input.targetUid && storedUid && input.targetUid !== storedUid) throw new Error("TARGET_MISMATCH");
-      input.targetUid = storedUid || input.targetUid;
+    let employeeRef =
+      null;
+
+    let employeeData =
+      null;
+
+    let requestedRole =
+      null;
+
+    /* ======================================
+       Target Employee
+    ====================================== */
+
+    if (
+      input.employeeFirestoreId
+    ) {
+      employeeRef =
+        adminDb
+          .collection(
+            "Companies"
+          )
+          .doc(
+            context.companyId
+          )
+          .collection(
+            "Usermanagement"
+          )
+          .doc(
+            input.employeeFirestoreId
+          );
+
+      const targetSnap =
+        await employeeRef.get();
+
+      if (
+        !targetSnap.exists
+      ) {
+        throw new Error(
+          "EMPLOYEE_NOT_FOUND"
+        );
+      }
+
+      employeeData =
+        targetSnap.data() ||
+        {};
+
+      const currentTargetRole =
+        await loadRole(
+          context.companyId,
+          resolveEmployeeRoleId(
+            employeeData
+          )
+        );
+
+      validateTarget(
+        context,
+        employeeData,
+        currentTargetRole
+      );
+
+      const storedUid =
+        resolveEmployeeAuthUid(
+          employeeData
+        );
+
+      if (
+        input.targetUid &&
+        storedUid &&
+        input.targetUid !==
+          storedUid
+      ) {
+        throw new Error(
+          "TARGET_MISMATCH"
+        );
+      }
+
+      input.targetUid =
+        storedUid ||
+        input.targetUid;
     }
+
+    /* ======================================
+       Owner Protection
+    ====================================== */
 
     const protectedActions = [
       "disable",
@@ -669,177 +2259,578 @@ export async function PATCH(request) {
     ];
 
     if (
-      input.targetUid === context.company.ownerUid &&
-      protectedActions.includes(input.action)
+      input.targetUid ===
+        context.company
+          .ownerUid &&
+      protectedActions.includes(
+        input.action
+      )
     ) {
-      throw new Error("OWNER_PROTECTED");
+      throw new Error(
+        "OWNER_PROTECTED"
+      );
     }
 
-    if (
-      input.targetUid === context.token.uid &&
-      ["disable", "deactivate", "lock", "delete"].includes(input.action)
-    ) {
-      throw new Error("SELF_PROTECTED");
-    }
+    /* ======================================
+       Self Protection
+    ====================================== */
 
     if (
-      !["reset-password", "enable", "role", "deactivate"].includes(input.action) &&
+      input.targetUid ===
+        context.token.uid &&
+      [
+        "disable",
+        "deactivate",
+        "lock",
+        "delete",
+      ].includes(
+        input.action
+      )
+    ) {
+      throw new Error(
+        "SELF_PROTECTED"
+      );
+    }
+
+    /* ======================================
+       UID Requirement
+    ====================================== */
+
+    if (
+      ![
+        "reset-password",
+        "enable",
+        "role",
+        "deactivate",
+      ].includes(
+        input.action
+      ) &&
       !input.targetUid
     ) {
-      throw new Error("TARGET_UID_REQUIRED");
+      throw new Error(
+        "TARGET_UID_REQUIRED"
+      );
     }
 
-    /* =================================================
-       Firebase Authentication actions
-    ================================================= */
+    /* ======================================
+       Revoke Sessions
+    ====================================== */
 
-    if (input.action === "revoke") {
-      await adminAuth.revokeRefreshTokens(input.targetUid);
+    if (
+      input.action ===
+      "revoke"
+    ) {
+      await adminAuth.revokeRefreshTokens(
+        input.targetUid
+      );
     }
 
-    if (["disable", "deactivate", "lock"].includes(input.action) && input.targetUid) {
-      await adminAuth.updateUser(input.targetUid, {
-        disabled: true,
-      });
-    
-      await adminAuth.revokeRefreshTokens(input.targetUid);
+    /* ======================================
+       Disable / Deactivate / Lock
+    ====================================== */
+
+    if (
+      [
+        "disable",
+        "deactivate",
+        "lock",
+      ].includes(
+        input.action
+      ) &&
+      input.targetUid
+    ) {
+      await adminAuth.updateUser(
+        input.targetUid,
+        {
+          disabled:
+            true,
+        }
+      );
+
+      await adminAuth.revokeRefreshTokens(
+        input.targetUid
+      );
     }
 
-    if (["enable", "unlock"].includes(input.action)) {
-      if (!employeeRef || !employeeData || resolveEmployeeAuthUid(employeeData) !== input.targetUid) throw new Error("TARGET_MISMATCH");
-      await syncEmployeeClaims(adminAuth, { uid: input.targetUid, companyId: employeeRef.parent.parent.id, employeeFirestoreId: employeeRef.id, employee: employeeData });
+    /* ======================================
+       Enable / Unlock
+    ====================================== */
+
+    if (
+      [
+        "enable",
+        "unlock",
+      ].includes(
+        input.action
+      )
+    ) {
+      if (
+        !employeeRef ||
+        !employeeData ||
+        resolveEmployeeAuthUid(
+          employeeData
+        ) !==
+          input.targetUid
+      ) {
+        throw new Error(
+          "TARGET_MISMATCH"
+        );
+      }
+
+      await ensureEmployeeClaims(
+        adminAuth,
+        {
+          uid:
+            input.targetUid,
+      
+          companyId:
+            context.companyId,
+      
+          employeeFirestoreId:
+            employeeRef.id,
+      
+          employee:
+            employeeData,
+        }
+      );
+
+      await adminAuth.updateUser(
+        input.targetUid,
+        {
+          disabled:
+            false,
+        }
+      );
     }
 
-    if (input.action === "enable") {
-      if (!input.targetUid) throw new Error("TARGET_UID_REQUIRED");
-      await adminAuth.updateUser(input.targetUid, { disabled: false });
+    /* ======================================
+       Delete Auth User
+    ====================================== */
+
+    if (
+      input.action ===
+      "delete"
+    ) {
+      await adminAuth.deleteUser(
+        input.targetUid
+      );
     }
 
-    if (input.action === "unlock") {
-      await adminAuth.updateUser(input.targetUid, {
-        disabled: false,
-      });
-    }
+    /* ======================================
+       Password Reset
 
-    if (input.action === "delete") {
-      await adminAuth.deleteUser(input.targetUid);
-    }
+       Returns early intentionally because
+       no employee Firestore state changes.
+    ====================================== */
 
-    /*
-     * Generate password reset link using the Firebase account's
-     * internal login email instead of the personal email.
-     */
-    if (input.action === "reset-password") {
-      let loginEmail = String(input.loginEmail || "").trim();
+    if (
+      input.action ===
+      "reset-password"
+    ) {
+      let loginEmail =
+        String(
+          input.loginEmail ||
+            ""
+        ).trim();
 
-      if (!loginEmail && input.targetUid) {
-        const authUser = await adminAuth.getUser(input.targetUid);
-        loginEmail = authUser.email || "";
+      if (
+        !loginEmail &&
+        input.targetUid
+      ) {
+        const authUser =
+          await adminAuth.getUser(
+            input.targetUid
+          );
+
+        loginEmail =
+          authUser.email ||
+          "";
       }
 
       if (!loginEmail) {
-        throw new Error("LOGIN_EMAIL_REQUIRED");
+        throw new Error(
+          "LOGIN_EMAIL_REQUIRED"
+        );
       }
 
       const resetLink =
-        await adminAuth.generatePasswordResetLink(loginEmail);
+        await adminAuth.generatePasswordResetLink(
+          loginEmail
+        );
 
       return NextResponse.json({
         success: true,
+
         resetLink,
       });
     }
 
-    if (input.action === "role") {
-      const roleId = normalizeRoleId(input.roleId);
-      const role = await loadRole(context.companyId, roleId);
-      validateTarget(context, employeeData, role);
+    /* ======================================
+       Role Change
 
-      await syncEmployeeClaims(adminAuth, {
-        uid: input.targetUid, companyId: context.companyId, employeeFirestoreId: employeeRef.id,
-        employee: { ...employeeData, access: { ...employeeData.access, roleId } },
-      });
+       Load once and reuse below.
+    ====================================== */
+
+    if (
+      input.action ===
+      "role"
+    ) {
+      if (
+        !employeeRef ||
+        !employeeData
+      ) {
+        throw new Error(
+          "EMPLOYEE_NOT_FOUND"
+        );
+      }
+
+      const roleId =
+        normalizeRoleId(
+          input.roleId
+        );
+
+      requestedRole =
+        await loadRole(
+          context.companyId,
+          roleId
+        );
+
+      validateTarget(
+        context,
+        employeeData,
+        requestedRole
+      );
+
+      if (
+        !input.targetUid
+      ) {
+        throw new Error(
+          "TARGET_UID_REQUIRED"
+        );
+      }
+
+      await syncEmployeeClaims(
+        adminAuth,
+        {
+          uid:
+            input.targetUid,
+
+          companyId:
+            context.companyId,
+
+          employeeFirestoreId:
+            employeeRef.id,
+
+          employee: {
+            ...employeeData,
+
+            access: {
+              ...employeeData.access,
+
+              roleId,
+            },
+          },
+        }
+      );
     }
 
-    /* =================================================
-       Update employee Firestore document
-    ================================================= */
+    /* ======================================
+       Firestore Updates
+    ====================================== */
 
-    if (input.employeeFirestoreId) {
-      const updates = {
-        "access.updatedAt": FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      };
+    const updates = {};
 
-      if (["disable", "deactivate", "lock"].includes(input.action)) {
-        updates["access.status"] =
-          input.action === "lock" ? "locked" : "inactive";
-        updates["access.loginEnabled"] = false;
-        if (input.action === "deactivate") updates["employment.status"] = "Inactive";
+    if (
+      input.employeeFirestoreId
+    ) {
+      updates[
+        "access.updatedAt"
+      ] =
+        FieldValue.serverTimestamp();
+
+      updates.updatedAt =
+        FieldValue.serverTimestamp();
+
+      if (
+        [
+          "disable",
+          "deactivate",
+          "lock",
+        ].includes(
+          input.action
+        )
+      ) {
+        updates[
+          "access.status"
+        ] =
+          input.action ===
+          "lock"
+            ? "locked"
+            : "inactive";
+
+        updates[
+          "access.loginEnabled"
+        ] =
+          false;
+
+        if (
+          input.action ===
+          "deactivate"
+        ) {
+          updates[
+            "employment.status"
+          ] =
+            "Inactive";
+        }
       }
 
-      if (["unlock", "enable"].includes(input.action)) {
-        updates["access.status"] = "active";
-        updates["access.loginEnabled"] = true;
+      if (
+        [
+          "unlock",
+          "enable",
+        ].includes(
+          input.action
+        )
+      ) {
+        updates[
+          "access.status"
+        ] =
+          "active";
+
+        updates[
+          "access.loginEnabled"
+        ] =
+          true;
       }
 
-      if (input.action === "delete") {
-        updates["access.status"] = "inactive";
-        updates["access.loginEnabled"] = false;
-        updates["access.authUid"] = null;
+      if (
+        input.action ===
+        "delete"
+      ) {
+        updates[
+          "access.status"
+        ] =
+          "inactive";
+
+        updates[
+          "access.loginEnabled"
+        ] =
+          false;
+
+        updates[
+          "access.authUid"
+        ] =
+          null;
       }
 
-      if (input.action === "role") {
-        const roleId = normalizeRoleId(input.roleId);
-        const role = await loadRole(context.companyId, roleId);
-        const requested = input.permissionOverrides || resolvePermissionOverrides(employeeData);
-        const grant = validPermissions(requested.grant);
-        const deny = validPermissions(requested.deny);
-        if (!context.owner && grant.some((permission) => !context.callerPermissions.includes(permission))) throw new Error("PERMISSION_ESCALATION");
-        if (context.callerRole.id === "team_leader" && grant.some((permission) => permission.endsWith(".manage"))) throw new Error("PERMISSION_ESCALATION");
+      /* ====================================
+         Role Update
+      ==================================== */
 
-        updates["access.roleId"] = roleId;
+      if (
+        input.action ===
+        "role"
+      ) {
+        const roleId =
+          normalizeRoleId(
+            input.roleId
+          );
 
-        updates["access.effectivePermissions"] = calculateEffectivePermissions({ rolePermissions: role.permissions, grantedPermissions: grant, deniedPermissions: deny });
+        const role =
+          requestedRole;
 
-        updates["access.permissionOverrides"] = { grant, deny };
+        if (!role) {
+          throw new Error(
+            "ROLE_NOT_FOUND"
+          );
+        }
+
+        const requested =
+          input.permissionOverrides ||
+          resolvePermissionOverrides(
+            employeeData
+          );
+
+        const grant =
+          validPermissions(
+            requested.grant
+          );
+
+        const deny =
+          validPermissions(
+            requested.deny
+          );
+
+        if (
+          !context.owner &&
+          grant.some(
+            (permission) =>
+              !context
+                .callerPermissions
+                .includes(
+                  permission
+                )
+          )
+        ) {
+          throw new Error(
+            "PERMISSION_ESCALATION"
+          );
+        }
+
+        if (
+          context
+            .callerRole
+            .id ===
+            "team_leader" &&
+          grant.some(
+            (permission) =>
+              permission.endsWith(
+                ".manage"
+              )
+          )
+        ) {
+          throw new Error(
+            "PERMISSION_ESCALATION"
+          );
+        }
+
+        updates[
+          "access.roleId"
+        ] =
+          roleId;
+
+        updates[
+          "access.effectivePermissions"
+        ] =
+          calculateEffectivePermissions({
+            rolePermissions:
+              role.permissions,
+
+            grantedPermissions:
+              grant,
+
+            deniedPermissions:
+              deny,
+          });
+
+        updates[
+          "access.permissionOverrides"
+        ] = {
+          grant,
+
+          deny,
+        };
       }
 
-      if (input.action === "expire-password") {
-        updates["access.requirePasswordChange"] = true;
-        updates["login.temporaryPasswordSet"] = true;
-      }
+      /* ====================================
+         Expire Password
+      ==================================== */
 
-      await employeeRef.update(updates);
+      if (
+        input.action ===
+        "expire-password"
+      ) {
+        updates[
+          "access.requirePasswordChange"
+        ] =
+          true;
+
+        updates[
+          "login.temporaryPasswordSet"
+        ] =
+          true;
+      }
     }
 
-    /* =================================================
-       Activity log
-    ================================================= */
+    /* ======================================
+       Firestore Employee + Activity Log
 
-    await adminDb
-      .collection("Companies")
-      .doc(context.companyId)
-      .collection("ActivityLogs")
-      .add({
-        type: input.action === "role" ? "employee.role-changed" : input.action === "deactivate" ? "employee.deactivated" : `employee.account-${input.action === "disable" ? "disabled" : input.action === "enable" || input.action === "unlock" ? "enabled" : input.action}`,
+       One batch instead of:
+       employee update → wait → activity add.
+    ====================================== */
 
-        actorId: context.token.uid,
-        targetUserId: input.targetUid || null,
+    const activityLogRef =
+      adminDb
+        .collection(
+          "Companies"
+        )
+        .doc(
+          context.companyId
+        )
+        .collection(
+          "ActivityLogs"
+        )
+        .doc();
+
+    const batch =
+      adminDb.batch();
+
+    if (
+      employeeRef &&
+      Object.keys(updates)
+        .length
+    ) {
+      batch.update(
+        employeeRef,
+        updates
+      );
+    }
+
+    batch.set(
+      activityLogRef,
+      {
+        type:
+          input.action ===
+          "role"
+            ? "employee.role-changed"
+            : input.action ===
+                "deactivate"
+              ? "employee.deactivated"
+              : `employee.account-${
+                  input.action ===
+                  "disable"
+                    ? "disabled"
+                    : input.action ===
+                          "enable" ||
+                        input.action ===
+                          "unlock"
+                      ? "enabled"
+                      : input.action
+                }`,
+
+        actorId:
+          context.token.uid,
+
+        targetUserId:
+          input.targetUid ||
+          null,
+
         targetEmployeeId:
-          input.employeeFirestoreId || null,
+          input.employeeFirestoreId ||
+          null,
 
-        metadata: input.metadata || {},
+        metadata:
+          input.metadata ||
+          {},
 
-        createdAt: FieldValue.serverTimestamp(),
-      });
+        createdAt:
+          FieldValue.serverTimestamp(),
+      }
+    );
+
+    await batch.commit();
 
     return NextResponse.json({
       success: true,
     });
   } catch (error) {
-    console.error("RBAC user action failed:", error);
+    console.error(
+      "RBAC user action failed:",
+      error
+    );
 
-    return responseError(error);
+    return responseError(
+      error
+    );
   }
 }

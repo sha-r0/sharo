@@ -25,17 +25,116 @@ export async function GET(request) {
     const context = await authorizeCompanyRequest(request);
     requireCompanyPermission(context, "quotation.view", "quotation.manage");
     const companyRef = adminDb.collection("Companies").doc(context.companyId);
-    const quotationId = new URL(request.url).searchParams.get("quotationId");
-    const [settingsSnapshot, clientsSnapshot, quotationSnapshot] = await Promise.all([
+    const searchParams =
+      new URL(request.url).searchParams;
+
+    const quotationId =
+      searchParams.get("quotationId");
+
+    const includeClients =
+      searchParams.get("includeClients") !== "false";
+    const [
+      settingsSnapshot,
+      clientsSnapshot,
+      quotationSnapshot,
+    ] = await Promise.all([
       settingsRef(context.companyId).get(),
-      companyRef.collection("Clients").orderBy("companyName").get(),
-      quotationId ? companyRef.collection("Quotations").doc(quotationId).get() : Promise.resolve(null),
+
+      includeClients
+        ? companyRef
+          .collection("Clients")
+          .orderBy("companyName")
+          .get()
+        : Promise.resolve(null),
+
+      quotationId
+        ? companyRef
+          .collection("Quotations")
+          .doc(quotationId)
+          .get()
+        : Promise.resolve(null),
     ]);
     const settings = settingsSnapshot.exists ? { id: settingsSnapshot.id, ...settingsSnapshot.data() } : null;
+
+    function quotationSortFields(quotationNumber, prefix = "QT") {
+      const value =
+        String(quotationNumber || "").trim();
+
+      const normalizedPrefix =
+        String(prefix || "QT")
+          .trim()
+          .toUpperCase();
+
+      const current =
+        value
+          .toUpperCase()
+          .startsWith(
+            `${normalizedPrefix}-`
+          ) &&
+        /^(\d{2}|\d{4})-\d+$/.test(
+          value.slice(
+            normalizedPrefix.length + 1
+          )
+        );
+
+      const pieces =
+        current
+          ? value
+            .slice(
+              normalizedPrefix.length + 1
+            )
+            .split("-")
+          : [];
+
+      const suffix =
+        value.match(
+          /(\d+)(?:-[A-Za-z]+)?$/
+        )?.[1] || "";
+
+      const year =
+        current
+          ? Number(
+            pieces[0].length === 2
+              ? `20${pieces[0]}`
+              : pieces[0]
+          )
+          : 0;
+
+      /*
+       * String key avoids JS safe-integer issues
+       * while preserving numeric ordering.
+       */
+      const sequenceKey =
+        suffix
+          ? `${String(
+            suffix.length
+          ).padStart(6, "0")}:${suffix}`
+          : "000000:";
+
+      return {
+        quotationSortCurrent:
+          current ? 1 : 0,
+
+        quotationSortYear:
+          year,
+
+        quotationSortSequence:
+          sequenceKey,
+
+        quotationSortValue:
+          value.toLowerCase(),
+      };
+    }
     return NextResponse.json({
       settings,
       nextQuotationNumber: formatNextQuotationNumber(settings),
-      clients: clientsSnapshot.docs.map((document) => ({ id: document.id, ...document.data() })),
+      clients:
+        clientsSnapshot?.docs?.map(
+          (document) => ({
+            id: document.id,
+            ...document.data(),
+          })
+        ) || [],
       quotation: quotationSnapshot?.exists ? { id: quotationSnapshot.id, ...quotationSnapshot.data() } : null,
     });
   } catch (error) {
@@ -92,8 +191,18 @@ export async function POST(request) {
     await adminDb.runTransaction(async (transaction) => {
       const settings = await transaction.get(reference);
       if (!settings.exists) throw new Error("QUOTATION_SETUP_INCOMPLETE");
-      transaction.create(quotationRef, {
-        ...data,
+      const settingsData =
+        settings.data();
+
+      const sortFields =
+        quotationSortFields(
+          data.quotationNumber,
+          settingsData?.quotationPrefix ||
+          "QT"
+        );
+        transaction.create(quotationRef, {
+          ...data,
+          ...sortFields,
         id: quotationRef.id,
         companyId: context.companyId,
         createdBy: context.token.uid,
@@ -106,6 +215,79 @@ export async function POST(request) {
     return NextResponse.json({ success: true, id: quotationRef.id });
   } catch (error) {
     console.error("Quotation creation failed", { code: error?.message || error?.code || "unknown" });
+    return jsonError(error);
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const context = await authorizeCompanyRequest(request);
+
+    requireCompanyPermission(
+      context,
+      "quotation.manage"
+    );
+
+    const quotationId = String(
+      new URL(request.url).searchParams.get("quotationId") || ""
+    ).trim();
+
+    if (!quotationId) {
+      throw new Error("QUOTATION_ID_REQUIRED");
+    }
+
+    const quotationRef = adminDb
+      .collection("Companies")
+      .doc(context.companyId)
+      .collection("Quotations")
+      .doc(quotationId);
+
+    let deletedQuotation = null;
+
+    await adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(quotationRef);
+
+      if (!snapshot.exists) {
+        throw new Error("QUOTATION_NOT_FOUND");
+      }
+
+      deletedQuotation = {
+        id: snapshot.id,
+        ...snapshot.data(),
+      };
+
+      transaction.delete(quotationRef);
+    });
+
+    return NextResponse.json({
+      success: true,
+
+      deletedQuotation: {
+        id: deletedQuotation.id,
+
+        quotationNumber:
+          deletedQuotation.quotationNumber ||
+          deletedQuotation.meta?.quotationNo ||
+          deletedQuotation.id,
+
+        clientName:
+          deletedQuotation.clientName ||
+          deletedQuotation.meta?.clientName ||
+          "",
+
+        status:
+          deletedQuotation.status ||
+          "Draft",
+      },
+    });
+  } catch (error) {
+    console.error("Quotation deletion failed", {
+      code:
+        error?.message ||
+        error?.code ||
+        "unknown",
+    });
+
     return jsonError(error);
   }
 }

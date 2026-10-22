@@ -164,9 +164,31 @@ export async function login({
       await signOut(auth);
       return { success: false, message: "Your employee login is not linked to this company. Contact the Company Owner." };
     }
-    if (!access.loginEnabled || ["inactive", "suspended", "locked", "pending"].includes(String(access.status).toLowerCase())) {
+    if (
+      !access.isOwner &&
+      (
+        !access.loginEnabled ||
+        [
+          "inactive",
+          "suspended",
+          "locked",
+          "pending",
+        ].includes(
+          String(
+            access.status ||
+              ""
+          ).toLowerCase()
+        )
+      )
+    ) {
       await signOut(auth);
-      return { success: false, message: `This account is ${access.status}. Contact the Company Owner.` };
+    
+      return {
+        success: false,
+    
+        message:
+          `This account is ${access.status}. Contact the Company Owner.`,
+      };
     }
 
     // ==========================================
