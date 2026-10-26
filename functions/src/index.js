@@ -38,6 +38,7 @@ const payoutSettingsFunctions = createPayoutSettingsFunctions(db, payoutDependen
 const workforceFunctions = createWorkforceFunctions(db);
 const easyTimeProUsername = defineSecret("EASYTIMEPRO_WEBHOOK_USERNAME");
 const easyTimeProPassword = defineSecret("EASYTIMEPRO_WEBHOOK_PASSWORD");
+const {syncInvoiceSummary, syncPaymentSummary, } = require("./billing/BillingSummaryService");
 
 exports.createAdvanceRequest = advanceFunctions.createAdvanceRequest;
 exports.getAdvanceReferenceData = advanceFunctions.getAdvanceReferenceData;
@@ -59,6 +60,89 @@ exports.correctAttendance = workforceFunctions.correctAttendance;
 exports.previewPayroll = workforceFunctions.previewPayroll;
 exports.generatePayroll = workforceFunctions.generatePayroll;
 exports.transitionPayroll = workforceFunctions.transitionPayroll;
+
+exports.onBillingInvoiceWritten =
+  onDocumentWritten(
+    {
+      document:
+        "Companies/{companyId}/Invoices/{invoiceId}",
+
+      retry:
+        true,
+
+      region:
+        "asia-south1",
+    },
+    async (event) => {
+      const before =
+        event.data?.before
+          ?.exists
+          ? event.data.before.data()
+          : null;
+
+      const after =
+        event.data?.after
+          ?.exists
+          ? event.data.after.data()
+          : null;
+
+      await syncInvoiceSummary({
+        db,
+
+        companyId:
+          event.params.companyId,
+
+        eventId:
+          event.id,
+
+        before,
+
+        after,
+      });
+    }
+  );
+
+
+exports.onBillingPaymentWritten =
+  onDocumentWritten(
+    {
+      document:
+        "Companies/{companyId}/Payments/{paymentId}",
+
+      retry:
+        true,
+
+      region:
+        "asia-south1",
+    },
+    async (event) => {
+      const before =
+        event.data?.before
+          ?.exists
+          ? event.data.before.data()
+          : null;
+
+      const after =
+        event.data?.after
+          ?.exists
+          ? event.data.after.data()
+          : null;
+
+      await syncPaymentSummary({
+        db,
+
+        companyId:
+          event.params.companyId,
+
+        eventId:
+          event.id,
+
+        before,
+
+        after,
+      });
+    }
+  );
 
 exports.easyTimeProAttendanceWebhook = onRequest({
   region: "us-central1", timeoutSeconds: 60, secrets: [easyTimeProUsername, easyTimeProPassword],

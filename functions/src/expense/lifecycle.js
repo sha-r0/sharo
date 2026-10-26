@@ -67,21 +67,74 @@ const normalEmployee = (actor) =>
   !actor.isOwner &&
   String(
     actor.employee?.access?.roleId ||
-      actor.employee?.employment?.role ||
-      "employee"
+    actor.employee?.employment?.role ||
+    "employee"
   ).toLowerCase() === "employee";
 
 const owns = (actor, expense) =>
   expense.employeeFirestoreId
     ? String(expense.employeeFirestoreId) ===
-      String(actor.employee?.id)
+    String(actor.employee?.id)
     : Boolean(expense.employeeId) &&
-      String(expense.employeeId) ===
-        String(
-          actor.employee?.employeeId ||
-            actor.employee?.login?.employeeId ||
-            ""
-        );
+    String(expense.employeeId) ===
+    String(
+      actor.employee?.employeeId ||
+      actor.employee?.login?.employeeId ||
+      ""
+    );
+
+function buildExpenseSearchTerms(
+  expense
+) {
+  const values = [
+    expense.title,
+    expense.description,
+    expense.category,
+    expense.categoryName,
+    expense.projectName,
+    expense.projectId,
+    expense.employeeName,
+    expense.employeeId,
+    expense.vendorName,
+    expense.labourName,
+    expense.remarks,
+  ];
+
+  const terms =
+    new Set();
+
+  for (
+    const value of values
+  ) {
+    const text =
+      String(
+        value || ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (!text) {
+      continue;
+    }
+
+    terms.add(text);
+
+    for (
+      const token of
+      text.split(
+        /\s+/
+      )
+    ) {
+      if (token) {
+        terms.add(token);
+      }
+    }
+  }
+
+  return [
+    ...terms,
+  ];
+}
 
 function assertAuthorized(actor, action, expense) {
   if (["approve", "reject"].includes(action)) {
@@ -273,7 +326,7 @@ async function recompute(
     if (
       project.data().companyId &&
       project.data().companyId !==
-        company.id
+      company.id
     ) {
       throw new Error("FORBIDDEN");
     }
@@ -281,14 +334,14 @@ async function recompute(
     Object.assign(after, {
       projectFirestoreId:
         project.id,
-    
+
       projectFilterKey:
         project.id,
-    
+
       projectId:
         project.data().projectId ||
         project.id,
-    
+
       projectName:
         project.data().projectName ||
         "",
@@ -429,9 +482,9 @@ async function recompute(
           Math.max(
             0,
             Number(after.amount || 0) -
-              before.allowedAmount
+            before.allowedAmount
           ) *
-            100
+          100
         ) / 100;
 
       after.policyExceeded =
@@ -544,15 +597,15 @@ async function recompute(
   return {
     ...after,
     ...policy,
-  
+
     categoryId,
-  
+
     categoryFilterKey:
       categoryId,
-  
+
     category:
       category.name,
-  
+
     categoryName:
       category.name,
   };
@@ -646,7 +699,7 @@ async function mutateExpense(
       if (
         before.companyId &&
         before.companyId !==
-          actor.companyId
+        actor.companyId
       ) {
         throw new Error(
           "FORBIDDEN"
@@ -673,7 +726,7 @@ async function mutateExpense(
           transaction,
           company,
           before.date ||
-            before.expenseDate
+          before.expenseDate
         );
 
         if (
@@ -700,7 +753,7 @@ async function mutateExpense(
           action === "edit" &&
           "amount" in updates &&
           Number(updates.amount) !==
-            Number(before.amount)
+          Number(before.amount)
         )
       ) {
         const payments =
@@ -807,8 +860,8 @@ async function mutateExpense(
           actor.isOwner
             ? "owner"
             : actor.employee?.access
-                ?.roleId ||
-              "employee",
+              ?.roleId ||
+            "employee",
 
         name:
           actor.name ||
@@ -837,7 +890,7 @@ async function mutateExpense(
             after.employeeFirestoreId
           );
       }
-      
+
       if (
         after.projectFirestoreId &&
         !after.projectFilterKey
@@ -847,7 +900,7 @@ async function mutateExpense(
             after.projectFirestoreId
           );
       }
-      
+
       if (
         after.categoryId &&
         !after.categoryFilterKey
@@ -887,11 +940,11 @@ async function mutateExpense(
           (key) =>
             JSON.stringify(
               before[key] ??
-                null
+              null
             ) !==
             JSON.stringify(
               after[key] ??
-                null
+              null
             )
         );
 
@@ -906,7 +959,7 @@ async function mutateExpense(
         const editCount =
           Number(
             before.editCount ||
-              0
+            0
           ) + 1;
 
         Object.assign(
@@ -939,7 +992,7 @@ async function mutateExpense(
               lastEditPreviousAmount:
                 Number(
                   before.amount ||
-                    0
+                  0
                 ),
 
               lastEditNewAmount:
@@ -979,7 +1032,7 @@ async function mutateExpense(
                 (key) => [
                   key,
                   before[key] ??
-                    null,
+                  null,
                 ]
               )
             ),
@@ -990,7 +1043,7 @@ async function mutateExpense(
                 (key) => [
                   key,
                   after[key] ??
-                    null,
+                  null,
                 ]
               )
             ),
@@ -1025,7 +1078,7 @@ async function mutateExpense(
           {
             status:
               action ===
-              "approve"
+                "approve"
                 ? "approved"
                 : "rejected",
 
@@ -1084,12 +1137,12 @@ async function mutateExpense(
  * Rebuild only after the final canonical
  * expense state has been calculated.
  */
-if (action !== "delete") {
-  after.searchTerms =
-    buildExpenseSearchTerms(
-      after
-    );
-}
+      if (action !== "delete") {
+        after.searchTerms =
+          buildExpenseSearchTerms(
+            after
+          );
+      }
 
       /*
        * ==================================
@@ -1106,8 +1159,8 @@ if (action !== "delete") {
         action === "delete"
           ? null
           : expenseMonthKey(
-              after
-            );
+            after
+          );
 
       if (!beforeMonth) {
         throw new Error(
@@ -1175,7 +1228,7 @@ if (action !== "delete") {
       if (
         action === "delete" ||
         beforeMonth ===
-          afterMonth
+        afterMonth
       ) {
         const entry =
           summarySnapshots.get(
@@ -1186,8 +1239,8 @@ if (action !== "delete") {
           entry.snapshot.exists
             ? entry.snapshot.data()
             : emptyExpenseMonthlySummary(
-                beforeMonth
-              );
+              beforeMonth
+            );
 
         const delta =
           expenseSummaryDelta(
@@ -1227,8 +1280,8 @@ if (action !== "delete") {
           previousEntry.snapshot.exists
             ? previousEntry.snapshot.data()
             : emptyExpenseMonthlySummary(
-                beforeMonth
-              );
+              beforeMonth
+            );
 
         summaryWrites.push({
           ref:
@@ -1256,8 +1309,8 @@ if (action !== "delete") {
           nextEntry.snapshot.exists
             ? nextEntry.snapshot.data()
             : emptyExpenseMonthlySummary(
-                afterMonth
-              );
+              afterMonth
+            );
 
         summaryWrites.push({
           ref:
@@ -1355,13 +1408,12 @@ if (action !== "delete") {
         activity,
         {
           type:
-            `expense.${
-              action === "edit"
-                ? "updated"
-                : action ===
-                    "delete"
-                  ? "deleted"
-                  : action
+            `expense.${action === "edit"
+              ? "updated"
+              : action ===
+                "delete"
+                ? "deleted"
+                : action
             }`,
 
           actorId:
@@ -1392,9 +1444,9 @@ if (action !== "delete") {
 
         ...(action === "edit"
           ? {
-              ...metadata,
-              auditVersion: 2,
-            }
+            ...metadata,
+            auditVersion: 2,
+          }
           : {}),
       };
     }
