@@ -2,7 +2,7 @@ import { FieldPath } from "firebase-admin/firestore";
 import { requireCompanyPermission } from "./companyPermission.js";
 import { summarizeExpenses } from "../expenses/dashboard.js";
 import {
-  expenseSearchLookupTerm,
+  expenseSearchValues,
   normalizeExpenseSearch,
 } from "../expenses/searchIndex.js";
 
@@ -105,1077 +105,134 @@ export function expensePeriod(month) {
   if (year < 1900 || year > 9998) throw new Error("INVALID_PERIOD");
   return { start: `${month}-01`, end: `${number === 12 ? year + 1 : year}-${String(number === 12 ? 1 : number + 1).padStart(2, "0")}-01` };
 }
-export async function pageExpenses(
-  db,
-  context,
-  month,
-  cursor
-) {
-  requireCompanyPermission(
-    context,
-    "expense.view"
-  );
-
-  const {
-    start,
-    end,
-  } = expensePeriod(month);
-
-  const company =
-    db
-      .collection("Companies")
-      .doc(context.companyId);
-
-  let source =
-    company.collection("Expenses");
-
-  const employeeId =
-    employeeScope(context);
-
-  if (employeeId) {
-    source =
-      source.where(
-        "employeeId",
-        "==",
-        employeeId
-      );
-  }
-
-  const period =
-    source
-      .where(
-        "date",
-        ">=",
-        start
-      )
-      .where(
-        "date",
-        "<",
-        end
-      );
-
-  let page =
-    period
-      .orderBy(
-        "date",
-        "desc"
-      )
-      .orderBy(
-        FieldPath.documentId(),
-        "desc"
-      );
-
-  let decoded;
-
-  if (cursor) {
-    try {
-      decoded =
-        JSON.parse(
-          Buffer.from(
-            cursor,
-            "base64url"
-          ).toString()
-        );
-    } catch {
-      throw new Error(
-        "INVALID_CURSOR"
-      );
-    }
-
-    if (
-      typeof decoded.date !== "string" ||
-      decoded.date < start ||
-      decoded.date >= end ||
-      typeof decoded.id !== "string" ||
-      !/^[\w-]{1,128}$/.test(
-        decoded.id
-      )
-    ) {
-      throw new Error(
-        "INVALID_CURSOR"
-      );
-    }
-
-    page =
-      page.startAfter(
-        decoded.date,
-        decoded.id
-      );
-  }
-
-  let snapshot;
-
-  let summary = null;
-  let totalCount = null;
-  let options = null;
-
+// date is authoritative; expenseDate is only a legacy fallback. createdAt and
+// month/year describe creation/denormalized metadata, not the expense period.
+const canonicalDate = (expense) => String(expense.date || expense.expenseDate || "");
+const encodeCursor = (positions) => Buffer.from(JSON.stringify({ version: 2, positions })).toString("base64url");
+function decodeCursor(cursor, start, end) {
+  if (!cursor) return { date: null, expenseDate: null };
   try {
-    /*
-     * =================================================
-     * LOAD MORE
-     * =================================================
-     *
-     * Cursor pages only need the next 31 expense docs.
-     * No summary/options are re-read.
-     */
-
-    if (cursor) {
-      snapshot =
-        await page
-          .limit(
-            EXPENSE_PAGE_SIZE + 1
-          )
-          .get();
+    const value = JSON.parse(Buffer.from(cursor, "base64url").toString());
+    const positions = value.version === 2 ? value.positions : { date: value, expenseDate: value };
+    for (const field of ["date", "expenseDate"]) {
+      const position = positions[field];
+      if (position !== null && (!position || typeof position.date !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(position.date) || position.date < start || position.date >= end ||
+        typeof position.id !== "string" || !/^[\w-]{1,128}$/.test(position.id))) throw new Error();
     }
-
-    /*
-     * =================================================
-     * EMPLOYEE-SCOPED VIEW
-     * =================================================
-     *
-     * Do NOT use the company-wide monthly summary here.
-     *
-     * An employee must only see totals belonging
-     * to their own expenses.
-     */
-
-    else if (employeeId) {
-      const [
-        pageSnapshot,
-        totalsSnapshot,
-      ] =
-        await Promise.all([
-          page
-            .limit(
-              EXPENSE_PAGE_SIZE + 1
-            )
-            .get(),
-
-          period
-            .orderBy(
-              "date",
-              "desc"
-            )
-            .select(
-              "amount",
-              "status",
-              "allowedAmount",
-              "employeeId",
-              "employeeFirestoreId",
-              "employeeName",
-              "projectId",
-              "projectFirestoreId",
-              "projectName",
-              "categoryId",
-              "categoryName",
-              "category"
-            )
-            .get(),
-        ]);
-
-      snapshot =
-        pageSnapshot;
-
-      const rows =
-        totalsSnapshot.docs.map(
-          (doc) =>
-            doc.data()
-        );
-
-      summary =
-        summarizeExpenses(
-          rows
-        );
-
-      totalCount =
-        totalsSnapshot.size;
-
-      options = {
-        employees:
-          optionValues(
-            rows,
-            "employee"
-          ),
-
-        projects:
-          optionValues(
-            rows,
-            "project"
-          ),
-
-        categories:
-          optionValues(
-            rows,
-            "category"
-          ),
-      };
-    }
-
-    /*
-     * =================================================
-     * OWNER / MANAGER VIEW
-     * =================================================
-     *
-     * Fast month load:
-     *
-     * - 31 expense documents
-     * - 1 monthly summary document
-     * - small reference collections for filters
-     *
-     * No full-month expense scan.
-     */
-
-    else {
-      const summaryRef =
-        company
-          .collection(
-            "ExpenseMonthlySummaries"
-          )
-          .doc(month);
-
-      const [
-        pageSnapshot,
-        summarySnapshot,
-        employeeSnapshot,
-        projectSnapshot,
-        categorySnapshot,
-      ] =
-        await Promise.all([
-          page
-            .limit(
-              EXPENSE_PAGE_SIZE + 1
-            )
-            .get(),
-
-          summaryRef.get(),
-
-          company
-            .collection(
-              "Usermanagement"
-            )
-            .select(
-              "employeeId",
-              "login.employeeId",
-              "personalInfo.fullName",
-              "fullName",
-              "name",
-              "employeeName"
-            )
-            .get(),
-
-          company
-            .collection(
-              "Projectmanagement"
-            )
-            .select(
-              "projectId",
-              "projectName",
-              "name"
-            )
-            .get(),
-
-          company
-            .collection(
-              "ExpenseCategories"
-            )
-            .select(
-              "name",
-              "categoryName"
-            )
-            .get(),
-        ]);
-
-      snapshot =
-        pageSnapshot;
-
-      /*
-       * A missing summary is valid for a completely
-       * empty month.
-       *
-       * Existing months were already backfilled and
-       * verified before enabling this code.
-       */
-
-      if (
-        summarySnapshot.exists
-      ) {
-        const data =
-          summarySnapshot.data();
-
-        summary =
-          monthlySummary(
-            data
-          );
-
-        totalCount =
-          Number(
-            data.totalCount ||
-            0
-          );
-      } else {
-        summary = {
-          totalExpense: 0,
-          approvedExpense: 0,
-          pendingExpense: 0,
-          rejectedExpense: 0,
-          overPolicy: 0,
-        };
-
-        totalCount = 0;
-      }
-
-      options = {
-        employees:
-          employeeOptions(
-            employeeSnapshot
-          ),
-
-        projects:
-          projectOptions(
-            projectSnapshot
-          ),
-
-        categories:
-          categoryOptions(
-            categorySnapshot
-          ),
-      };
-    }
-  } catch (error) {
-    /*
-     * Existing fallback for employee accounts while
-     * employeeId + date index is unavailable.
-     */
-
-    if (
-      !employeeId ||
-      ![
-        9,
-        "9",
-        "failed-precondition",
-      ].includes(
-        error.code
-      ) ||
-      !/index/i.test(
-        error.message ||
-        ""
-      )
-    ) {
-      error.path =
-        `Companies/${context.companyId}/Expenses`;
-
-      error.operation =
-        "get";
-
-      throw error;
-    }
-
-    const monthRows =
-      await company
-        .collection(
-          "Expenses"
-        )
-        .where(
-          "date",
-          ">=",
-          start
-        )
-        .where(
-          "date",
-          "<",
-          end
-        )
-        .select(
-          "employeeId",
-          "date",
-          "amount",
-          "status",
-          "allowedAmount",
-          "employeeFirestoreId",
-          "employeeName",
-          "projectId",
-          "projectFirestoreId",
-          "projectName",
-          "categoryId",
-          "categoryName",
-          "category"
-        )
-        .get();
-
-    const own =
-      monthRows.docs
-        .filter(
-          (doc) =>
-            doc.data()
-              .employeeId ===
-            employeeId
-        )
-        .sort(
-          (a, b) =>
-            a.data().date ===
-              b.data().date
-              ? a.id < b.id
-                ? 1
-                : -1
-              : a.data()
-                .date <
-                b.data()
-                  .date
-                ? 1
-                : -1
-        );
-
-    if (!cursor) {
-      const rows =
-        own.map(
-          (doc) =>
-            doc.data()
-        );
-
-      summary =
-        summarizeExpenses(
-          rows
-        );
-
-      totalCount =
-        own.length;
-
-      options = {
-        employees:
-          optionValues(
-            rows,
-            "employee"
-          ),
-
-        projects:
-          optionValues(
-            rows,
-            "project"
-          ),
-
-        categories:
-          optionValues(
-            rows,
-            "category"
-          ),
-      };
-    }
-
-    const remaining =
-      decoded
-        ? own.filter(
-          (doc) =>
-            doc.data().date <
-            decoded.date ||
-            (
-              doc.data()
-                .date ===
-              decoded.date &&
-              doc.id <
-              decoded.id
-            )
-        )
-        : own;
-
-    const refs =
-      remaining
-        .slice(
-          0,
-          EXPENSE_PAGE_SIZE +
-          1
-        )
-        .map(
-          (doc) =>
-            doc.ref
-        );
-
-    snapshot = {
-      docs:
-        refs.length
-          ? (
-            await db.getAll(
-              ...refs
-            )
-          ).filter(
-            (doc) =>
-              doc.exists
-          )
-          : [],
-    };
+    return positions;
+  } catch {
+    throw new Error("INVALID_CURSOR");
   }
-
-  const docs =
-    snapshot.docs.slice(
-      0,
-      EXPENSE_PAGE_SIZE
-    );
-
-  const last =
-    docs.at(-1);
-
-  return {
-    expenses:
-      docs.map(
-        (doc) => ({
-          ...doc.data(),
-          id:
-            doc.id,
-        })
-      ),
-
-    cursor:
-      snapshot.docs.length >
-        EXPENSE_PAGE_SIZE &&
-        last
-        ? Buffer.from(
-          JSON.stringify({
-            date:
-              last.data()
-                .date,
-
-            id:
-              last.id,
-          })
-        ).toString(
-          "base64url"
-        )
-        : null,
-
-    ...(
-      !cursor
-        ? {
-          summary,
-          totalCount,
-          options,
-        }
-        : {}
-    ),
-  };
 }
 
-export async function queryExpenseMatches(
-  db,
-  context,
-  month,
-  filters = {},
-  cursor = null
-) {
-  requireCompanyPermission(
-    context,
-    "expense.view"
-  );
+// Merge two indexed date streams. Track consumed positions separately: using
+// the last fetched row would skip unconsumed matches at a page boundary.
+async function scanExpenses(db, context, month, filters, cursor) {
+  const { start, end } = expensePeriod(month);
+  const positions = decodeCursor(cursor, start, end);
+  const employeeId = employeeScope(context);
+  const collection = db.collection("Companies").doc(context.companyId).collection("Expenses");
+  const from = filters.fromDate && filters.fromDate > start ? filters.fromDate : start;
+  const to = filters.toDate && filters.toDate < end ? filters.toDate : null;
+  const search = normalizeExpenseSearch(filters.search);
+  const streams = ["date", "expenseDate"].map((field) => ({ field, docs: [], done: false }));
+  const rows = [];
+  const batchSize = Object.values(filters).some(Boolean) ? 60 : EXPENSE_PAGE_SIZE + 1;
+  let examined = 0;
 
-  const { start, end } =
-    expensePeriod(month);
-
-  const company =
-    db
-      .collection("Companies")
-      .doc(context.companyId);
-
-  const scopedEmployeeId =
-    employeeScope(context);
-
-  const fromDate =
-    filters.fromDate &&
-    filters.fromDate >= start &&
-    filters.fromDate < end
-      ? filters.fromDate
-      : start;
-
-  const toDate =
-    filters.toDate &&
-    filters.toDate >= fromDate &&
-    filters.toDate < end
-      ? filters.toDate
-      : null;
-
-  const searchText =
-    normalizeExpenseSearch(
-      filters.search || ""
-    );
-
-  const searchLookup =
-    expenseSearchLookupTerm(
-      filters.search || ""
-    );
-
-  const indexedSearch =
-    searchLookup.length >= 3;
-
-  /*
-   * Cursor is based on the last scanned Firestore document.
-   */
-  let decodedCursor = null;
-
-  if (cursor) {
-    try {
-      decodedCursor =
-        JSON.parse(
-          Buffer.from(
-            cursor,
-            "base64url"
-          ).toString()
-        );
-    } catch {
-      throw new Error(
-        "INVALID_CURSOR"
-      );
+  function matches(expense) {
+    if (expense.companyId && expense.companyId !== context.companyId) return false;
+    if (employeeId && String(expense.employeeId || "") !== String(employeeId)) return false;
+    if (filters.status && expense.status !== filters.status) return false;
+    for (const field of ["employee", "project", "category"]) {
+      if (!filters[field] || (field === "employee" && employeeId)) continue;
+      // Prefer stored identity over potentially stale derived filter keys.
+      const key = expense[`${field}FirestoreId`] || expense[`${field}Id`] ||
+        expense[`${field}FilterKey`] || expense[`${field}Name`] || expense[field] || "";
+      if (String(key) !== String(filters[field])) return false;
     }
-
-    if (
-      typeof decodedCursor.date !== "string" ||
-      typeof decodedCursor.id !== "string" ||
-      !decodedCursor.date ||
-      !/^[\w-]{1,128}$/.test(
-        decodedCursor.id
-      )
-    ) {
-      throw new Error(
-        "INVALID_CURSOR"
-      );
-    }
+    return !search || expenseSearchValues(expense).some((value) => value.includes(search));
   }
 
-  /*
-   * Final compatibility/security check.
-   */
-  function matchesExpense(expense) {
-    const expenseDate =
-      String(
-        expense.date ||
-        expense.expenseDate ||
-        ""
-      );
-
-    if (
-      !expenseDate ||
-      expenseDate < fromDate
-    ) {
-      return false;
-    }
-
-    if (
-      toDate
-        ? expenseDate > toDate
-        : expenseDate >= end
-    ) {
-      return false;
-    }
-
-    if (
-      scopedEmployeeId &&
-      String(
-        expense.employeeId || ""
-      ) !==
-        String(scopedEmployeeId)
-    ) {
-      return false;
-    }
-
-    if (
-      !scopedEmployeeId &&
-      filters.employee &&
-      String(
-        expense.employeeFilterKey ||
-        expense.employeeFirestoreId ||
-        ""
-      ) !==
-        String(filters.employee)
-    ) {
-      return false;
-    }
-
-    if (
-      filters.project &&
-      String(
-        expense.projectFilterKey ||
-        expense.projectFirestoreId ||
-        ""
-      ) !==
-        String(filters.project)
-    ) {
-      return false;
-    }
-
-    if (
-      filters.status &&
-      String(
-        expense.status || ""
-      ) !==
-        String(filters.status)
-    ) {
-      return false;
-    }
-
-    if (
-      filters.category &&
-      String(
-        expense.categoryFilterKey ||
-        expense.categoryId ||
-        expense.categoryName ||
-        expense.category ||
-        ""
-      ) !==
-        String(filters.category)
-    ) {
-      return false;
-    }
-
-    if (!searchText) {
-      return true;
-    }
-
-    return [
-      expense.employeeName,
-      expense.employeeId,
-
-      expense.projectName,
-      expense.projectId,
-
-      expense.categoryName,
-      expense.category,
-
-      expense.description,
-
-      expense.travelFrom,
-      expense.travelTo,
-
-      expense.vendorName,
-      expense.labourName,
-
-      expense.title,
-      expense.remarks,
-    ].some(
-      (value) =>
-        normalizeExpenseSearch(
-          value
-        ).includes(searchText)
-    );
+  async function fill(stream) {
+    if (stream.docs.length || stream.done) return;
+    let query = collection;
+    if (employeeId) query = query.where("employeeId", "==", employeeId);
+    query = query.where(stream.field, ">=", from)
+      .where(stream.field, to ? "<=" : "<", to || end)
+      .orderBy(stream.field, "desc").orderBy(FieldPath.documentId(), "desc");
+    const position = positions[stream.field];
+    if (position) query = query.startAfter(position.date, position.id);
+    const snapshot = await query.limit(batchSize).get();
+    stream.docs = [...snapshot.docs];
+    stream.done = snapshot.size < batchSize;
   }
 
-  /*
-   * We read candidates in small batches until:
-   *
-   * - 30 matching rows are found, or
-   * - Firestore has no more candidates.
-   *
-   * This prevents one request from returning the
-   * complete month.
-   */
-  const matches = [];
-
-  let scanCursor =
-    decodedCursor;
-
-  let hasMore =
-    true;
-
-  /*
-   * Maximum candidates examined in one HTTP request.
-   *
-   * Prevents a very selective in-memory filter from
-   * producing an unlimited Firestore scan.
-   */
-  const MAX_BATCHES = 5;
-  const SCAN_BATCH_SIZE = 60;
-
-  let batches = 0;
-  let nextCursor = null;
-
-  while (
-    matches.length <
-      EXPENSE_PAGE_SIZE &&
-    hasMore &&
-    batches < MAX_BATCHES
-  ) {
-    batches += 1;
-
-    let source =
-      company.collection(
-        "Expenses"
-      );
-
-    /*
-     * Indexed text search.
-     */
-    if (indexedSearch) {
-      source =
-        source.where(
-          "searchTerms",
-          "array-contains",
-          searchLookup
-        );
-
-      /*
-       * Keep search inside selected date range.
-       */
-      source =
-        source.where(
-          "date",
-          ">=",
-          fromDate
-        );
-
-      if (toDate) {
-        source =
-          source.where(
-            "date",
-            "<=",
-            toDate
-          );
-      } else {
-        source =
-          source.where(
-            "date",
-            "<",
-            end
-          );
-      }
-    } else {
-      /*
-       * Normal structured query.
-       */
-      if (scopedEmployeeId) {
-        source =
-          source.where(
-            "employeeId",
-            "==",
-            scopedEmployeeId
-          );
-      }
-
-      source =
-        source.where(
-          "date",
-          ">=",
-          fromDate
-        );
-
-      if (toDate) {
-        source =
-          source.where(
-            "date",
-            "<=",
-            toDate
-          );
-      } else {
-        source =
-          source.where(
-            "date",
-            "<",
-            end
-          );
-      }
-
-      if (filters.status) {
-        source =
-          source.where(
-            "status",
-            "==",
-            filters.status
-          );
-      }
-
-      if (
-        !scopedEmployeeId &&
-        filters.employee
-      ) {
-        source =
-          source.where(
-            "employeeFilterKey",
-            "==",
-            filters.employee
-          );
-      }
-
-      if (filters.project) {
-        source =
-          source.where(
-            "projectFilterKey",
-            "==",
-            filters.project
-          );
-      }
+  try {
+    // No derived-field predicate is safe for unindexed legacy documents or
+    // substring search. Bound reads to the requested period and 300 candidates.
+    while (rows.length < EXPENSE_PAGE_SIZE && examined < 300) {
+      await Promise.all(streams.map(fill));
+      const available = streams.filter((stream) => stream.docs.length);
+      if (!available.length) break;
+      available.sort((a, b) => {
+        const left = a.docs[0], right = b.docs[0];
+        const x = left.data()[a.field], y = right.data()[b.field];
+        return x === y ? (left.id < right.id ? 1 : left.id > right.id ? -1 : 0) : x < y ? 1 : -1;
+      });
+      const stream = available[0];
+      const doc = stream.docs.shift();
+      const expense = doc.data();
+      positions[stream.field] = { date: expense[stream.field], id: doc.id };
+      examined++;
+      // The primary stream owns every document with date, even if its stale
+      // expenseDate falls in a different month. Never count a document twice.
+      if (stream.field === "expenseDate" && expense.date) continue;
+      if (matches(expense)) rows.push({ ...expense, date: canonicalDate(expense), id: doc.id });
     }
-
-    /*
-     * Stable pagination.
-     */
-    source =
-      source
-        .orderBy(
-          "date",
-          "desc"
-        )
-        .orderBy(
-          FieldPath.documentId(),
-          "desc"
-        );
-
-    if (scanCursor) {
-      source =
-        source.startAfter(
-          scanCursor.date,
-          scanCursor.id
-        );
-    }
-
-    let snapshot;
-
-    try {
-      snapshot =
-        await source
-          .limit(SCAN_BATCH_SIZE)
-          .get();
-    } catch (error) {
-      error.path =
-        `Companies/${context.companyId}/Expenses`;
-
-      error.operation =
-        "get";
-
-      throw error;
-    }
-
-    if (snapshot.empty) {
-      hasMore = false;
-      break;
-    }
-
-    for (const document of snapshot.docs) {
-      const expense =
-        document.data();
-
-      /*
-       * Advance scan position on every candidate.
-       */
-      scanCursor = {
-        date:
-          String(
-            expense.date ||
-            expense.expenseDate ||
-            ""
-          ),
-
-        id:
-          document.id,
-      };
-
-      if (
-        matchesExpense(expense)
-      ) {
-        matches.push(
-          document
-        );
-
-        /*
-         * Stop at exactly 30 visible results.
-         *
-         * Cursor points to this document so no
-         * visible rows are skipped.
-         */
-        if (
-          matches.length ===
-          EXPENSE_PAGE_SIZE
-        ) {
-          nextCursor =
-            Buffer.from(
-              JSON.stringify(
-                scanCursor
-              )
-            ).toString(
-              "base64url"
-            );
-
-          break;
-        }
-      }
-    }
-
-    if (
-      matches.length ===
-      EXPENSE_PAGE_SIZE
-    ) {
-      break;
-    }
-
-    if (
-      snapshot.size <
-      SCAN_BATCH_SIZE
-    ) {
-      hasMore = false;
-      break;
-    }
-
-    /*
-     * Continue scanning from the last candidate.
-     */
-    nextCursor =
-      scanCursor
-        ? Buffer.from(
-            JSON.stringify(
-              scanCursor
-            )
-          ).toString(
-            "base64url"
-          )
-        : null;
+  } catch (error) {
+    error.path = `Companies/${context.companyId}/Expenses`;
+    error.operation = "get";
+    throw error;
   }
+  const hasMore = streams.some((stream) => stream.docs.length || !stream.done);
+  return { expenses: rows, cursor: hasMore ? encodeCursor(positions) : null };
+}
 
-  /*
-   * If the scan cap was reached before finding 30
-   * matches, preserve a cursor so the user can
-   * continue with Load More.
-   */
-  if (
-    hasMore &&
-    matches.length <
-      EXPENSE_PAGE_SIZE &&
-    scanCursor
-  ) {
-    nextCursor =
-      Buffer.from(
-        JSON.stringify(
-          scanCursor
-        )
-      ).toString(
-        "base64url"
-      );
+export async function pageExpenses(db, context, month, cursor) {
+  requireCompanyPermission(context, "expense.view");
+  const page = await scanExpenses(db, context, month, {}, cursor);
+  if (cursor) return page;
+  const company = db.collection("Companies").doc(context.companyId);
+  if (employeeScope(context)) {
+    // Employee cards must never use the company-wide monthly summary.
+    const rows = [...page.expenses];
+    let next = page.cursor;
+    while (next) {
+      const result = await scanExpenses(db, context, month, {}, next);
+      rows.push(...result.expenses);
+      next = result.cursor;
+    }
+    return { ...page, summary: summarizeExpenses(rows), totalCount: rows.length,
+      options: { employees: optionValues(rows, "employee"), projects: optionValues(rows, "project"), categories: optionValues(rows, "category") } };
   }
+  const [summary, employees, projects, categories] = await Promise.all([
+    company.collection("ExpenseMonthlySummaries").doc(month).get(),
+    company.collection("Usermanagement").select("employeeId", "login.employeeId", "personalInfo.fullName", "fullName", "name", "employeeName").get(),
+    company.collection("Projectmanagement").select("projectId", "projectName", "name").get(),
+    company.collection("ExpenseCategories").select("name", "categoryName").get(),
+  ]);
+  return { ...page, summary: monthlySummary(summary.exists ? summary.data() : {}),
+    totalCount: Number(summary.data()?.totalCount || 0),
+    options: { employees: employeeOptions(employees), projects: projectOptions(projects), categories: categoryOptions(categories) } };
+}
 
-  if (!hasMore) {
-    nextCursor = null;
-  }
-
-  const rows =
-    matches.map(
-      (document) => ({
-        ...document.data(),
-        id: document.id,
-      })
-    );
-
-  return {
-    expenses:
-      rows,
-
-    summary:
-      summarizeExpenses(
-        rows
-      ),
-
-    /*
-     * This is deliberately the loaded-page count.
-     * We no longer scan the entire filter result just
-     * to calculate an expensive total.
-     */
-    totalCount:
-      rows.length,
-
-    cursor:
-      nextCursor,
-  };
+export async function queryExpenseMatches(db, context, month, filters = {}, cursor = null) {
+  requireCompanyPermission(context, "expense.view");
+  const page = await scanExpenses(db, context, month, filters, cursor);
+  // Preserve the API's loaded-page totals; the client accumulates pages.
+  return { ...page, summary: summarizeExpenses(page.expenses), totalCount: page.expenses.length };
 }
 export async function getExpense(db, context, id) {
   requireCompanyPermission(context, "expense.view");

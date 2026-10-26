@@ -1,5 +1,6 @@
 "use strict";
 
+const { buildExpenseSearchTerms } = require("./searchIndex");
 const { resolveTravelRoute } = require("./travelRoute");
 const { calculateExpensePolicy } = require("./creationPolicy");
 const { assertExpensePeriodOpen } = require("./period");
@@ -82,59 +83,6 @@ const owns = (actor, expense) =>
       actor.employee?.login?.employeeId ||
       ""
     );
-
-function buildExpenseSearchTerms(
-  expense
-) {
-  const values = [
-    expense.title,
-    expense.description,
-    expense.category,
-    expense.categoryName,
-    expense.projectName,
-    expense.projectId,
-    expense.employeeName,
-    expense.employeeId,
-    expense.vendorName,
-    expense.labourName,
-    expense.remarks,
-  ];
-
-  const terms =
-    new Set();
-
-  for (
-    const value of values
-  ) {
-    const text =
-      String(
-        value || ""
-      )
-        .trim()
-        .toLowerCase();
-
-    if (!text) {
-      continue;
-    }
-
-    terms.add(text);
-
-    for (
-      const token of
-      text.split(
-        /\s+/
-      )
-    ) {
-      if (token) {
-        terms.add(token);
-      }
-    }
-  }
-
-  return [
-    ...terms,
-  ];
-}
 
 function assertAuthorized(actor, action, expense) {
   if (["approve", "reject"].includes(action)) {
