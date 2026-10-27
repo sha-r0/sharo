@@ -185,8 +185,12 @@ function ExpensePeriodPage({ scope, month }) {
   const { company, companyEmployee, can, isOwner, roleId } = useAuth();
 
   const canEditExpense = can("expense.edit") || can("expense.manage");
-  const canApproveExpense = (isOwner || roleId !== "employee") && (can("expense.approve") || can("expense.manage"));
-  const canDeleteExpense = can("expense.delete") || can("expense.manage") || (roleId === "employee" && can("expense.create"));
+  const canApproveExpense =
+  can("expense.approve") ||
+  can("expense.manage");
+  const canDeleteExpense =
+  can("expense.delete") ||
+  can("expense.manage");
   const canExportExpense = can("expense.export");
   const companyExpenseScope = isOwner || roleId !== "employee";
 

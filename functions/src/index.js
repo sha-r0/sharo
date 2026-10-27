@@ -41,6 +41,7 @@ const easyTimeProPassword = defineSecret("EASYTIMEPRO_WEBHOOK_PASSWORD");
 const {syncInvoiceSummary, syncPaymentSummary, } = require("./billing/BillingSummaryService");
 
 exports.createAdvanceRequest = advanceFunctions.createAdvanceRequest;
+exports.updateAdvanceRequest = advanceFunctions.updateAdvanceRequest;
 exports.getAdvanceReferenceData = advanceFunctions.getAdvanceReferenceData;
 exports.decideAdvance = advanceFunctions.decideAdvance;
 exports.deleteAdvanceRequest = advanceFunctions.deleteAdvanceRequest;

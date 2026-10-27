@@ -1,7 +1,13 @@
 "use strict";
 
 const { HttpsError, onCall } = require("firebase-functions/v2/https");
-const { createAdvanceRequest, decideAdvance, deleteAdvanceRequest, getAdvanceReferenceData } = require("./AdvanceService");
+const {
+  createAdvanceRequest,
+  updateAdvanceRequest,
+  decideAdvance,
+  deleteAdvanceRequest,
+  getAdvanceReferenceData,
+} = require("./AdvanceService");
 
 const { AdvanceRequestError } = require("./CreateAdvanceRequest");
 
@@ -21,35 +27,84 @@ function callableError(error) {
 
 function createAdvanceFunctions(db) {
   return {
-    createAdvanceRequest: onCall(OPTIONS, async (request) => {
-      try {
-        return await createAdvanceRequest(db, request);
-      } catch (error) {
-        if (error instanceof AdvanceRequestError) throw new HttpsError(error.code, error.message);
-        throw callableError(error);
+    createAdvanceRequest: onCall(
+      OPTIONS,
+      async (request) => {
+        try {
+          return await createAdvanceRequest(
+            db,
+            request
+          );
+        } catch (error) {
+          if (
+            error instanceof AdvanceRequestError
+          ) {
+            throw new HttpsError(
+              error.code,
+              error.message
+            );
+          }
+
+          throw callableError(error);
+        }
       }
-    }),
-    getAdvanceReferenceData: onCall(OPTIONS, async (request) => {
-      try {
-        return await getAdvanceReferenceData(db, request);
-      } catch (error) {
-        throw callableError(error);
+    ),
+
+    updateAdvanceRequest: onCall(
+      OPTIONS,
+      async (request) => {
+        try {
+          return await updateAdvanceRequest(
+            db,
+            request
+          );
+        } catch (error) {
+          throw callableError(error);
+        }
       }
-    }),
-    decideAdvance: onCall(OPTIONS, async (request) => {
-      try {
-        return await decideAdvance(db, request);
-      } catch (error) {
-        throw callableError(error);
+    ),
+
+    getAdvanceReferenceData: onCall(
+      OPTIONS,
+      async (request) => {
+        try {
+          return await getAdvanceReferenceData(
+            db,
+            request
+          );
+        } catch (error) {
+          throw callableError(error);
+        }
       }
-    }),
-    deleteAdvanceRequest: onCall(OPTIONS, async (request) => {
-      try {
-        return await deleteAdvanceRequest(db, request);
-      } catch (error) {
-        throw callableError(error);
+    ),
+
+    decideAdvance: onCall(
+      OPTIONS,
+      async (request) => {
+        try {
+          return await decideAdvance(
+            db,
+            request
+          );
+        } catch (error) {
+          throw callableError(error);
+        }
       }
-    }),
+    ),
+
+    deleteAdvanceRequest: onCall(
+      OPTIONS,
+      async (request) => {
+        try {
+          return await deleteAdvanceRequest(
+            db,
+            request
+          );
+        } catch (error) {
+          throw callableError(error);
+        }
+      }
+    ),
   };
 }
 

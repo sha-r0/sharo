@@ -64,68 +64,113 @@ const has = (actor, permission) =>
   actor.permissions?.includes(permission) ||
   actor.permissions?.includes("expense.manage");
 
-const normalEmployee = (actor) =>
-  !actor.isOwner &&
-  String(
-    actor.employee?.access?.roleId ||
-    actor.employee?.employment?.role ||
-    "employee"
-  ).toLowerCase() === "employee";
 
 const owns = (actor, expense) =>
   expense.employeeFirestoreId
-    ? String(expense.employeeFirestoreId) ===
-    String(actor.employee?.id)
-    : Boolean(expense.employeeId) &&
-    String(expense.employeeId) ===
-    String(
-      actor.employee?.employeeId ||
-      actor.employee?.login?.employeeId ||
-      ""
-    );
+    ? String(
+        expense.employeeFirestoreId
+      ) ===
+      String(
+        actor.employee?.id
+      )
+    : Boolean(
+        expense.employeeId
+      ) &&
+      String(
+        expense.employeeId
+      ) ===
+      String(
+        actor.employee?.employeeId ||
+          actor.employee?.login
+            ?.employeeId ||
+          ""
+      );
 
-function assertAuthorized(actor, action, expense) {
-  if (["approve", "reject"].includes(action)) {
+
+function assertAuthorized(
+  actor,
+  action,
+  expense
+) {
+  /* ======================================
+      Approve / Reject
+  ====================================== */
+
+  if (
+    action === "approve" ||
+    action === "reject"
+  ) {
     if (
-      !has(actor, "expense.approve") ||
-      normalEmployee(actor)
+      !has(
+        actor,
+        "expense.approve"
+      )
     ) {
-      throw new Error("FORBIDDEN");
+      throw new Error(
+        "FORBIDDEN"
+      );
     }
 
-    if (expense.status !== "pending") {
-      throw new Error("EXPENSE_FINAL");
+    if (
+      expense.status !==
+      "pending"
+    ) {
+      throw new Error(
+        "EXPENSE_FINAL"
+      );
     }
 
     return;
   }
 
-  const permission =
+
+  /* ======================================
+      Delete
+  ====================================== */
+
+  if (
     action === "delete"
-      ? "expense.delete"
-      : "expense.edit";
-
-  const employeeDelete =
-    action === "delete" &&
-    normalEmployee(actor) &&
-    has(actor, "expense.create");
-
-  if (
-    !has(actor, permission) &&
-    !employeeDelete
   ) {
-    throw new Error("FORBIDDEN");
+    if (
+      !has(
+        actor,
+        "expense.delete"
+      )
+    ) {
+      throw new Error(
+        "FORBIDDEN"
+      );
+    }
+
+    return;
   }
 
+
+  /* ======================================
+      Edit
+  ====================================== */
+
   if (
-    normalEmployee(actor) &&
-    (
-      !owns(actor, expense) ||
-      expense.status !== "pending"
-    )
+    action === "edit"
   ) {
-    throw new Error("FORBIDDEN");
+    if (
+      !has(
+        actor,
+        "expense.edit"
+      )
+    ) {
+      throw new Error(
+        "FORBIDDEN"
+      );
+    }
+
+    return;
   }
+
+
+  throw new Error(
+    "FORBIDDEN"
+  );
 }
 
 function editableUpdates(input) {

@@ -925,10 +925,6 @@ export async function PUT(
       ==================================== */
 
       if (authUid) {
-        /*
-         * Claims only need syncing if the role
-         * or permission-related access changed.
-         */
         if (
           roleChanged ||
           overridesChanged
@@ -936,44 +932,35 @@ export async function PUT(
           await syncEmployeeClaims(
             adminAuth,
             {
-              uid:
-                authUser.uid,
-          
+              uid: authUid,
+      
               companyId:
                 context.companyId,
-          
+      
               employeeFirestoreId:
                 employeeRef.id,
-          
+      
               employee: {
-                ...employeeData,
-          
+                ...existing,
+      
                 access: {
-                  ...employeeData.access,
-          
-                  authUid:
-                    authUser.uid,
-          
-                  roleId,
-          
-                  effectivePermissions:
-                    permissions,
-          
-                  permissionOverrides,
+                  ...existing.access,
+      
+                  authUid,
+      
+                  roleId:
+                    requestedRoleId,
+      
+                  effectivePermissions,
+      
+                  permissionOverrides:
+                    requestedOverrides,
                 },
               },
-          
-              // Already returned by createUser().
-              // Avoid another Firebase Auth lookup.
-              authUser,
             }
           );
         }
-
-        /*
-         * Only call Firebase Auth update when
-         * login-enabled state actually changed.
-         */
+      
         if (loginChanged) {
           await adminAuth.updateUser(
             authUid,
@@ -982,7 +969,7 @@ export async function PUT(
                 !requestedLoginEnabled,
             }
           );
-
+      
           if (
             !requestedLoginEnabled
           ) {
